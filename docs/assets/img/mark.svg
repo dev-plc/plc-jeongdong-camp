@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" role="img" aria-label="정동 근대건축 심볼">
+  <!-- 정동 근대 건축(붉은 벽돌 + 아치창)을 단순화한 마크.
+       앱바(붉은 배경) 위에 <img> 로 얹으므로 색을 흰색으로 고정한다. -->
+  <path d="M8 44V19l16-11 16 11v25z" fill="#ffffff" fill-opacity=".18"/>
+  <path d="M8 44V19l16-11 16 11v25" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="round"/>
+  <path d="M4 20 24 6l20 14" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M16 44V32a8 8 0 0 1 16 0v12" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="round"/>
+  <path d="M24 24v6M21 27h6" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+</svg>
