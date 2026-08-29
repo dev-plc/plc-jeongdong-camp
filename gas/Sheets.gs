@@ -122,7 +122,41 @@ function rowTeamKey_(row) {
   return teamKey_(row[COL.SESSION], row[COL.GROUP]);
 }
 
+/**
+ * 논리 시트 이름 → 실제 탭 이름 후보.
+ * 행정팀 원장 탭은 `마스터` 이고, 앱이 만드는 나머지 탭은 이름이 그대로다.
+ * 앞에 있는 후보부터 찾아 먼저 존재하는 탭을 쓴다.
+ */
+var SHEET_ALIASES = {
+  Participants: ['마스터', 'Participants', '명단']
+};
+
+/** 앱이 직접 관리하는 탭(= 마스터 동기화 대상이 아닌 탭)들의 논리 이름. */
+function appManagedSheetNames_() {
+  return Object.keys(SCHEMA)
+    .filter(function (n) { return n !== 'Participants'; })
+    .map(resolveSheetName_);
+}
+
 // ---------------------------------------------------------------- 스프레드시트
+
+var __sheetNameCache = {};
+
+/** 논리 이름을 실제 탭 이름으로 바꾼다. 없으면 논리 이름을 그대로 돌려준다. */
+function resolveSheetName_(logical) {
+  if (__sheetNameCache[logical]) return __sheetNameCache[logical];
+
+  var aliases = SHEET_ALIASES[logical] || [logical];
+  var ss = getSpreadsheet_();
+  for (var i = 0; i < aliases.length; i++) {
+    if (ss.getSheetByName(aliases[i])) {
+      __sheetNameCache[logical] = aliases[i];
+      return aliases[i];
+    }
+  }
+  __sheetNameCache[logical] = logical;
+  return logical;
+}
 
 function getSpreadsheet_() {
   var active = SpreadsheetApp.getActiveSpreadsheet();
@@ -133,9 +167,13 @@ function getSpreadsheet_() {
   return SpreadsheetApp.openById(id);
 }
 
-function getSheet_(name) {
+/** 논리 이름을 받아 실제 탭을 돌려준다(`Participants` → `마스터` 등). */
+function getSheet_(logical) {
+  var name = resolveSheetName_(logical);
   var sh = getSpreadsheet_().getSheetByName(name);
-  if (!sh) throw new AppError('SERVER_ERROR', '시트가 없습니다: ' + name + ' (setupSpreadsheet 실행 필요)');
+  if (!sh) {
+    throw new AppError('SERVER_ERROR', '시트가 없습니다: ' + name + ' (setupSpreadsheet 실행 필요)');
+  }
   return sh;
 }
 

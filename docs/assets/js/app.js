@@ -10,6 +10,15 @@
 
   var $ = UI.$, esc = UI.esc, nl2br = UI.nl2br, toast = UI.toast;
 
+  /**
+   * 항목 이름은 서버가 내려주는 마스터시트 헤더를 그대로 쓴다.
+   * 행정팀이 시트에서 부르는 이름과 앱 문구를 일치시키기 위해서다(bootstrap.labels).
+   */
+  function L(key, fallback) {
+    var labels = (state.boot && state.boot.labels) || {};
+    return labels[key] || fallback;
+  }
+
   var state = {
     boot: null,          // bootstrap 응답 (config / checkpoints / notices / timeline)
     me: null,            // me 응답
@@ -110,9 +119,10 @@
       '</section>' +
       '<form id="loginForm" class="card card--form" autocomplete="off">' +
         '<h2 class="card__title">참가자 확인</h2>' +
-        '<p class="hint">신청하신 이름과 연락처 뒷 4자리로 들어갑니다.</p>' +
+        '<p class="hint">신청하신 ' + esc(L('name', '이름')) + '과(와) ' +
+          esc(L('phone', '연락처')) + ' 뒷 4자리로 들어갑니다.</p>' +
         (sessions.length
-          ? '<label class="field"><span class="field__label">참여 일자</span>' +
+          ? '<label class="field"><span class="field__label">' + esc(L('session', '참여 일자')) + '</span>' +
               '<div class="seg" role="radiogroup">' +
                 sessions.map(function (s, i) {
                   return '<label class="seg__item"><input type="radio" name="session" value="' +
@@ -123,9 +133,9 @@
               '<p class="hint">날짜를 잘못 골라도 명단이 맞으면 들어갈 수 있습니다.</p>' +
             '</label>'
           : '') +
-        '<label class="field"><span class="field__label">이름</span>' +
+        '<label class="field"><span class="field__label">' + esc(L('name', '이름')) + '</span>' +
           '<input class="input" type="text" name="name" placeholder="홍길동" required></label>' +
-        '<label class="field"><span class="field__label">연락처 뒷 4자리</span>' +
+        '<label class="field"><span class="field__label">' + esc(L('phone', '연락처')) + ' 뒷 4자리</span>' +
           '<input class="input" type="tel" name="last4" inputmode="numeric" pattern="[0-9]{4}" ' +
           'maxlength="4" placeholder="5678" required></label>' +
         '<button class="btn btn--primary btn--block" type="submit">입장하기</button>' +
@@ -178,13 +188,13 @@
           (me.participant.audience ? ' · ' : '') + esc(me.participant.session) + '</p>' +
         '<h2 class="card__title">' + esc(team ? team.name : '조 미배정') + '</h2>' +
         '<dl class="kv">' +
-          '<div><dt>이름</dt><dd>' + esc(me.participant.name) +
+          '<div><dt>' + esc(L('name', '이름')) + '</dt><dd>' + esc(me.participant.name) +
             (me.isLeader ? ' <span class="badge">조장</span>' : '') + '</dd></div>' +
           (team && team.leaderName ? '<div><dt>조장</dt><dd>' + esc(team.leaderName) + '</dd></div>' : '') +
           (team && team.meetingPoint ? '<div><dt>집결</dt><dd>' + esc(team.meetingPoint) + '</dd></div>' : '') +
         '</dl>' +
         (team
-          ? '<p class="card__foot">' + (team.course ? esc(team.course) + '<br>' : '') +
+          ? '<p class="card__foot">' + (team.course ? esc(L('course', '배정 코스')) + ' · ' + esc(team.course) + '<br>' : '') +
             esc(routeNames(team.route).join(' → ')) + '</p>'
           : '') +
       '</section>' +
@@ -644,16 +654,20 @@
       '<section class="card">' +
         '<h2 class="card__title">내 정보</h2>' +
         '<dl class="kv">' +
-          '<div><dt>이름</dt><dd>' + esc(me.participant.name) + '</dd></div>' +
-          '<div><dt>대상</dt><dd>' + esc(me.participant.audience || '-') + '</dd></div>' +
-          '<div><dt>일자</dt><dd>' + esc(me.participant.session) + '</dd></div>' +
-          '<div><dt>조</dt><dd>' + esc(me.team ? me.team.name : '미배정') + '</dd></div>' +
-          '<div><dt>역할</dt><dd>' + esc(me.participant.role) + '</dd></div>' +
-          '<div><dt>보험</dt><dd>' + esc(me.participant.insurance || '확인 중') + '</dd></div>' +
+          '<div><dt>' + esc(L('name', '이름')) + '</dt><dd>' + esc(me.participant.name) + '</dd></div>' +
+          '<div><dt>' + esc(L('audience', '캠프 대상')) + '</dt><dd>' +
+            esc(me.participant.audience || '-') + '</dd></div>' +
+          '<div><dt>' + esc(L('session', '참여 일자')) + '</dt><dd>' +
+            esc(me.participant.session) + '</dd></div>' +
+          '<div><dt>' + esc(L('group', '조 배정')) + '</dt><dd>' +
+            esc(me.team ? me.team.name : '미배정') + '</dd></div>' +
+          '<div><dt>' + esc(L('role', '역할')) + '</dt><dd>' + esc(me.participant.role) + '</dd></div>' +
+          '<div><dt>' + esc(L('insurance', '여행자 보험 가입')) + '</dt><dd>' +
+            esc(me.participant.insurance || '확인 중') + '</dd></div>' +
         '</dl>' +
       '</section>' +
-      (showFee ? '<section class="card" id="feeCard"><h2 class="card__title">회비</h2>' +
-        '<p class="loading">불러오는 중…</p></section>' : '') +
+      (showFee ? '<section class="card" id="feeCard"><h2 class="card__title">' +
+        esc(L('feeStatus', '입금 여부')) + '</h2><p class="loading">불러오는 중…</p></section>' : '') +
       (me.isLeader && me.members.length
         ? '<section class="card"><h2 class="card__title">우리 조 (' + me.members.length + '명)</h2>' +
           '<ul class="members">' + me.members.map(function (m) {
@@ -681,14 +695,15 @@
         .then(function (fee) {
           var card = $('#feeCard');
           if (!card) return;
-          card.innerHTML = '<h2 class="card__title">회비</h2>' +
+          card.innerHTML = '<h2 class="card__title">' + esc(L('feeStatus', '입금 여부')) + '</h2>' +
             '<p class="fee"><span class="chip chip--' + feeClass(fee.me.status) + '">' +
             esc(fee.me.status) + '</span></p>' +
             '<p class="hint">회비 수납은 운영진이 관리합니다. 문의는 행정팀으로 부탁드립니다.</p>';
         })
         .catch(function (err) {
           var card = $('#feeCard');
-          if (card) card.innerHTML = '<h2 class="card__title">회비</h2><p class="empty">' + esc(err.message) + '</p>';
+          if (card) card.innerHTML = '<h2 class="card__title">' + esc(L('feeStatus', '입금 여부')) +
+            '</h2><p class="empty">' + esc(err.message) + '</p>';
         });
     }
   }

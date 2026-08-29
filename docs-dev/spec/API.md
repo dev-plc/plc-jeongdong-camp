@@ -56,6 +56,8 @@ fetch(API_BASE, {
 // data
 {
   "config": { "CAMP_NAME": "...", "GALLERY_SCOPE": "ALL", "SHOW_FEE": true, ... },
+  "labels": { "audience": "캠프 대상", "session": "참여 일자", "group": "조 배정",
+              "feeStatus": "입금 여부", "insurance": "여행자 보험 가입", "course": "배정 코스", ... },
   "sessions": [ { "label": "10/24(토)", "date": "2026-10-24" },
                 { "label": "10/31(토)", "date": "2026-10-31" } ],
   "checkpoints": [ { "code": "CP1", "order": 1, "name": "배재학당역사박물관", ... } ],
@@ -65,6 +67,9 @@ fetch(API_BASE, {
   "serverTime": "2026-10-24T09:12:00+09:00"
 }
 ```
+
+`labels` 는 마스터시트의 헤더 이름을 그대로 내려보냅니다. 화면의 항목 이름이 전부 여기서 나오므로,
+`gas/Sheets.gs` 의 `COL` 을 고치면 앱 문구도 자동으로 따라갑니다.
 
 #### `auth.login`
 ```jsonc

@@ -14,6 +14,12 @@
 
   var state = { boot: null, view: 'review', authed: false };
 
+  /** 항목 이름은 서버가 내려주는 마스터시트 헤더를 그대로 쓴다(bootstrap.labels). */
+  function L(key, fallback) {
+    var labels = (state.boot && state.boot.labels) || {};
+    return labels[key] || fallback;
+  }
+
   function init() {
     $('#tabbar').addEventListener('click', function (e) {
       var btn = e.target.closest('[data-view]');
@@ -154,11 +160,12 @@
     API.call('admin.progress.board')
       .then(function (board) {
         setView(
-          '<section class="section-head"><h2>조별 진행 현황</h2>' +
+          '<section class="section-head"><h2>' + esc(L('group', '조 배정')) + '별 진행 현황</h2>' +
             '<p class="hint">조장이 기록한 도착·완료 상태입니다. 조마다 배정 코스가 달라 방문 순서가 다릅니다.</p></section>' +
           (board.teams.length
             ? '<div class="card"><div class="table-scroll"><table class="admin-table">' +
-                '<thead><tr><th>일자</th><th>조</th><th>조장</th><th>인원</th>' +
+                '<thead><tr><th>' + esc(L('session', '참여 일자')) + '</th>' +
+                '<th>' + esc(L('group', '조 배정')) + '</th><th>조장</th><th>인원</th>' +
                 board.checkpoints.map(function (c) { return '<th>' + esc(c.name) + '</th>'; }).join('') +
                 '</tr></thead><tbody>' +
                 board.teams.map(function (t) {
@@ -194,7 +201,7 @@
       .then(function (data) {
         var s = data.summary;
         setView(
-          '<section class="section-head"><h2>회비 현황</h2>' +
+          '<section class="section-head"><h2>' + esc(L('feeStatus', '입금 여부')) + ' 현황</h2>' +
             '<p class="hint">수납 입력은 시트에서 합니다. 이 화면은 조회 전용입니다.</p></section>' +
           '<section class="card"><h2 class="card__title">전체</h2><dl class="kv">' +
             '<div><dt>완납</dt><dd>' + (s['완납'] || 0) + '명</dd></div>' +
@@ -204,8 +211,9 @@
             '<div><dt>수납액</dt><dd>' + won(s['수납액']) + ' / ' + won(s['예상수입']) + '</dd></div>' +
           '</dl></section>' +
           '<div class="card"><div class="table-scroll"><table class="admin-table">' +
-            '<thead><tr><th>일자 · 조</th><th>완납</th><th>미납</th><th>면제</th>' +
-            '<th>보험 미가입</th><th>미납자</th></tr></thead><tbody>' +
+            '<thead><tr><th>' + esc(L('session', '참여 일자')) + ' · ' + esc(L('group', '조 배정')) + '</th>' +
+            '<th>완납</th><th>미납</th><th>면제</th>' +
+            '<th>' + esc(L('insurance', '여행자 보험 가입')) + ' 미가입</th><th>미납자</th></tr></thead><tbody>' +
             data.teams.map(function (t) {
               return '<tr><td>' + esc(t.label) + '</td>' +
                 '<td>' + (t['완납'] || 0) + '</td>' +
