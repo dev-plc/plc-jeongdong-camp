@@ -97,11 +97,35 @@ function jsonErr_(err) {
 function bootstrap_() {
   return {
     config: publicConfig_(),
+    labels: labels_(),
     sessions: sessions_(),
     checkpoints: checkpoints_(),
     notices: activeNotices_(),
     timeline: timeline_(),
     serverTime: nowIso_()
+  };
+}
+
+/**
+ * 화면에 쓰는 항목 이름을 마스터시트 헤더 그대로 내려보낸다.
+ * 행정팀이 시트에서 부르는 이름과 앱에서 보는 이름을 일치시키기 위해서다.
+ * 헤더를 바꾸면(= Sheets.gs 의 COL 을 고치면) 앱 문구도 자동으로 따라간다.
+ */
+function labels_() {
+  return {
+    audience: COL.AUDIENCE,
+    session: COL.SESSION,
+    name: COL.NAME,
+    gender: COL.GENDER,
+    age: COL.AGE,
+    phone: COL.PHONE,
+    feeAmount: COL.FEE_AMOUNT,
+    feeStatus: COL.FEE_STATUS,
+    group: COL.GROUP,
+    role: COL.ROLE,
+    insurance: COL.INSURANCE,
+    course: COL.COURSE,
+    note: COL.NOTE
   };
 }
 

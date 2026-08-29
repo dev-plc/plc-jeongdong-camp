@@ -9,9 +9,11 @@ function setupSpreadsheet() {
   var ss = getSpreadsheet_();
   ss.setSpreadsheetTimeZone(TZ);
 
-  Object.keys(SCHEMA).forEach(function (name) {
+  Object.keys(SCHEMA).forEach(function (logical) {
+    // 행정팀 원장이 이미 `마스터` 탭으로 있으면 Participants 를 새로 만들지 않는다.
+    var name = resolveSheetName_(logical);
     var sh = ss.getSheetByName(name) || ss.insertSheet(name);
-    ensureHeaders_(sh, SCHEMA[name]);
+    ensureHeaders_(sh, SCHEMA[logical]);
     sh.setFrozenRows(1);
   });
 
@@ -32,8 +34,8 @@ function setupSpreadsheet() {
     '남은 작업:',
     pin ? '  · ADMIN_PIN 설정됨' : '  ⚠ 스크립트 속성에 ADMIN_PIN 을 추가하세요 (6자리 이상)',
     '  · Config 시트의 DRIVE_FOLDER_ID 에 사진 저장용 Drive 폴더 ID 입력',
-    '  · Participants 시트에 행정팀 마스터시트를 붙여넣기 (헤더가 같아야 합니다)',
-    '  · 참가자ID 채우기 실행 → 명단 점검 실행',
+    '  · 원장 탭: ' + resolveSheetName_('Participants') + ' (헤더가 스키마와 같아야 합니다)',
+    '  · 참가자ID 채우기 → 조 목록 동기화 → 명단 점검 순으로 실행',
     '  · Checkpoints 의 주소·위도·경도는 1차 사전답사 결과로 검증 후 채울 것',
     '  · 배포 → 웹 앱 → 실행: 나 / 액세스: 모든 사용자'
   ].join('\n');
@@ -241,8 +243,8 @@ function dropdown_(sheetName, header, values) {
 }
 
 function autoResize_() {
-  Object.keys(SCHEMA).forEach(function (name) {
-    var sh = getSheet_(name);
+  Object.keys(SCHEMA).forEach(function (logical) {
+    var sh = getSheet_(logical);
     sh.autoResizeColumns(1, Math.max(sh.getLastColumn(), 1));
   });
 }
@@ -383,17 +385,30 @@ function syncTeams() {
   });
 }
 
-/** 스프레드시트 메뉴에 운영 도구를 붙인다. */
+/**
+ * 스프레드시트 메뉴.
+ *
+ * ⚠ Apps Script 프로젝트 하나에 `onOpen` 은 **한 개만** 있을 수 있다.
+ *   (같은 이름이 여러 파일에 있으면 마지막에 로드된 것만 살아남아 다른 메뉴가 조용히 사라진다)
+ *   그래서 행정팀 동기화 스크립트의 메뉴도 여기서 함께 만든다 — MasterSync.gs 참고.
+ */
 function onOpen() {
+  var ui;
   try {
-    SpreadsheetApp.getUi()
-      .createMenu('🧭 정동캠프')
-      .addItem('초기 세팅 실행', 'setupSpreadsheet')
-      .addItem('참가자ID 채우기', 'fillParticipantIds')
-      .addItem('조 목록 동기화', 'syncTeams')
-      .addItem('명단 점검', 'checkDuplicates')
-      .addSeparator()
-      .addItem('설정 캐시 비우기', 'clearConfigCache')
-      .addToUi();
-  } catch (e) { /* UI 없는 컨텍스트 */ }
+    ui = SpreadsheetApp.getUi();
+  } catch (e) {
+    return; // UI 없는 컨텍스트
+  }
+
+  ui.createMenu('🧭 정동캠프')
+    .addItem('초기 세팅 실행', 'setupSpreadsheet')
+    .addItem('참가자ID 채우기', 'fillParticipantIds')
+    .addItem('조 목록 동기화', 'syncTeams')
+    .addItem('명단 점검', 'checkDuplicates')
+    .addSeparator()
+    .addItem('설정 캐시 비우기', 'clearConfigCache')
+    .addToUi();
+
+  // 행정팀 탭 동기화 도구 (MasterSync.gs). 그 파일을 안 넣었으면 조용히 건너뛴다.
+  if (typeof addMasterSyncMenu_ === 'function') addMasterSyncMenu_(ui);
 }

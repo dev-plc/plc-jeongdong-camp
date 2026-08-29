@@ -26,6 +26,7 @@
 docs/                     GitHub Pages 로 서비스되는 정적 앱
   index.html              참가자 앱
   admin.html              운영 콘솔 (PIN)
+  demo.html               ⭐ 서버 없이 클릭해 보는 화면 미리보기 (생성물)
   assets/css/app.css      브랜드 토큰 + 전체 스타일
   assets/js/config.js     ⚠ 배포 후 API_BASE 를 여기에 넣습니다
   assets/js/api.js        GAS 통신 계층
@@ -38,8 +39,12 @@ gas/                      Apps Script 프로젝트 (편집기에 붙여넣기)
   Auth.gs                 로그인 · 토큰 · 권한
   Sheets.gs               시트 접근 레이어 + 스키마 정의
   Journal.gs              탐험일지 (작성/수정/삭제/검수)
-  Setup.gs                최초 세팅 · 명단 점검 도구
+  Setup.gs                최초 세팅 · 명단 점검 도구 · 메뉴
+  MasterSync.gs           행정팀 탭 간 명단 동기화 + 헤더 검증
   appsscript.json         매니페스트
+
+tools/
+  build-demo.js           docs/demo.html 생성기
 
 docs-dev/                 개발·운영 문서 (배포되지 않음)
   plan/                   원본 업무 계획서 PDF
@@ -47,6 +52,19 @@ docs-dev/                 개발·운영 문서 (배포되지 않음)
   spec/                   시트 스키마 · API 명세 · 결정사항(ADR) · 명단 CSV 템플릿
   ops/                    배포 가이드
 ```
+
+## 화면 먼저 보기
+
+GAS 배포 전에도 `docs/demo.html` 하나만 열면 전 화면을 클릭해 볼 수 있습니다.
+참가자 앱 ↔ 운영 콘솔, 조장 ↔ 일반 참가자 시점을 상단 바에서 전환합니다(운영 콘솔 PIN: `000000`).
+
+```bash
+python3 -m http.server 8080 --directory docs   # → http://localhost:8080/demo.html
+```
+
+앱 코드를 고친 뒤에는 `node tools/build-demo.js` 로 데모를 다시 만듭니다.
+데모는 실제 `app.css` / `api.js` / `ui.js` / `app.js` / `admin.js` 를 그대로 인라인하고
+`fetch` 만 가짜 백엔드에 물리므로, 화면이 실제와 어긋나지 않습니다.
 
 ## 시작하기
 
@@ -78,6 +96,7 @@ docs-dev/                 개발·운영 문서 (배포되지 않음)
 | 회비 | **조회 전용** | 수납·정산은 행정가가 시트에서. 앱에 쓰기 경로 없음 |
 | 진행 기록 | 조 단위, **조장만** 기록 | 80명 개인 체크인은 현장 병목. 조 = `(참여 일자, 조 배정)` |
 | 시트 헤더 | 마스터시트 표기 **그대로** | 행정팀이 자기 시트를 복사·붙여넣기 하는 흐름을 그대로 살림 |
+| 화면 문구 | 시트 헤더를 **따라감** | `COL` 을 고치면 앱 라벨도 같이 바뀜 — 시트와 앱에서 부르는 이름이 항상 일치 |
 
 자세한 배경은 [결정사항 문서](docs-dev/spec/DECISIONS.md)에 있습니다.
 
