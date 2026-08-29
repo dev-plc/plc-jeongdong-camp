@@ -121,6 +121,8 @@ Cloudflare 대시보드 → Caching → **Purge Everything** 을 한 번 실행�
 - [ ] `/admin.html` PIN 로그인 → 승인 대기에 그 사진이 뜨는지 → 승인 후 갤러리에 보이는지
 - [ ] 갤러리 공개 범위를 `같은 조만` 으로 바꿔 보고, 다른 조 계정에서 안 보이는지
 - [ ] 로그인 5회 실패 후 잠기는지 (`LOGIN_MAX_ATTEMPTS`)
+- [ ] **실제 연락처를 다 채운 뒤** `Config.LOGIN_ALLOW_NAME_DIGITS = FALSE` 로 내렸는지
+      (명단 점검이 시점을 알려줍니다 — 켜 둔 채로는 이름 뒤 4자리로 로그인됩니다)
 
 ---
 

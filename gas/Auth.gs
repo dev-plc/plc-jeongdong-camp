@@ -42,16 +42,25 @@ function phoneLast4_(phone) {
 
 /**
  * 이름 + 뒷 4자리가 이 참가자와 맞는지.
- * 뒷 4자리는 연락처의 마지막 4자리 또는 이름 뒤에 붙은 4자리 중 하나만 맞으면 통과시킨다.
- * (명단 작성 시점에 연락처가 아직 임시값인 행이 있기 때문 — docs-dev/spec/DECISIONS.md D-003)
+ *
+ * 기본은 **연락처 뒷 4자리**만 인정한다.
+ * `Config.LOGIN_ALLOW_NAME_DIGITS = TRUE` 인 동안에만 이름 뒤에 붙은 4자리(`이승천7377`)도
+ * 대체 수단으로 받아 준다 — 명단에 연락처가 아직 임시값인 기간용 임시 조치다.
+ *
+ * ⚠ 실제 연락처를 다 채운 뒤에는 반드시 `FALSE` 로 내려야 한다.
+ *   이름 뒤 4자리는 명단을 본 사람이면 누구나 알 수 있어, 켜 둔 채로는 사실상 이름만으로
+ *   로그인되는 것과 같다. (docs-dev/spec/DECISIONS.md D-003)
  */
 function matchesParticipant_(row, typedName, typedLast4) {
   var name = splitName_(row[COL.NAME]);
   var typed = normalizeName_(typedName);
   if (typed !== name.full && typed !== name.base) return false;
 
-  var candidates = [phoneLast4_(row[COL.PHONE]), name.digits].filter(String);
-  return candidates.indexOf(typedLast4) >= 0;
+  var candidates = [phoneLast4_(row[COL.PHONE])];
+  if (confBool_('LOGIN_ALLOW_NAME_DIGITS', true) && name.digits) {
+    candidates.push(name.digits);
+  }
+  return candidates.filter(String).indexOf(typedLast4) >= 0;
 }
 
 /** 화면에 보여줄 이름 — 뒤에 붙은 구분용 4자리는 떼고 보여준다. */
