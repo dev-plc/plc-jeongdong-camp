@@ -89,6 +89,8 @@ function seedConfig_() {
     ['DRIVE_FOLDER_ID', '', '⚠ 탐험일지 사진이 저장될 Drive 폴더 ID — 반드시 입력'],
     ['TOKEN_TTL_HOURS', '12', '로그인 유지 시간(시간)'],
     ['LOGIN_MAX_ATTEMPTS', '5', '10분 내 최대 로그인 실패 횟수'],
+    ['LOGIN_ALLOW_NAME_DIGITS', 'TRUE',
+      '⚠ 연락처가 임시값인 동안만 TRUE. 실제 연락처를 다 채우면 FALSE 로 내릴 것 (명단 점검이 알려줌)'],
     ['PHOTO_MAX_BYTES', '4000000', '사진 1장 최대 바이트'],
     ['NOTICE_TICKER', '', '앱 상단 한 줄 공지. 비우면 숨김']
   ];
@@ -263,12 +265,23 @@ function checkDuplicates() {
   var seen = {};
   var dup = [], missing = [], badSession = [], noLeader = [], courseMismatch = [], badCourse = [];
 
+  // 같은 연락처가 여러 행에 반복되면 아직 채우지 않은 임시값으로 본다.
+  var phoneCount = {};
+  var noPhone = 0;
+  rows.forEach(function (r) {
+    var digits = str_(r[COL.PHONE]).replace(/\D/g, '');
+    if (!digits) { noPhone++; return; }
+    phoneCount[digits] = (phoneCount[digits] || 0) + 1;
+  });
+  var placeholders = Object.keys(phoneCount).filter(function (p) { return phoneCount[p] >= 3; });
+  var placeholderRows = placeholders.reduce(function (n, p) { return n + phoneCount[p]; }, 0);
+
   rows.forEach(function (r) {
     var name = str_(r[COL.NAME]);
     var parsed = splitName_(name);
     var last4 = phoneLast4_(r[COL.PHONE]);
 
-    if (!last4 && !parsed.digits) {
+    if (!last4 && !(confBool_('LOGIN_ALLOW_NAME_DIGITS', true) && parsed.digits)) {
       missing.push('행 ' + r.__row + ' (' + name + '): 연락처 없음 — 로그인 불가');
     }
     if (!str_(r['참가자ID'])) {
@@ -286,8 +299,10 @@ function checkDuplicates() {
     }
 
     // 로그인 키 충돌: 이름(끝 4자리 뗀 것) + 뒷4자리.
-    // 연락처 뒷자리와 이름 뒤 구분번호가 같으면 후보가 겹치므로 중복 제거 후 검사한다.
-    var digits = [last4, parsed.digits].filter(String).filter(function (d, i, arr) {
+    // 실제로 인정되는 후보만 본다. 연락처 뒷자리와 이름 뒤 구분번호가 같으면 겹치므로 중복 제거.
+    var candidates = [last4];
+    if (confBool_('LOGIN_ALLOW_NAME_DIGITS', true)) candidates.push(parsed.digits);
+    var digits = candidates.filter(String).filter(function (d, i, arr) {
       return arr.indexOf(d) === i;
     });
     digits.forEach(function (d) {
@@ -319,8 +334,30 @@ function checkDuplicates() {
     if (cs.length > 1) courseMismatch.push(key + ': 배정 코스가 섞여 있음 (' + cs.join(' / ') + ')');
   });
 
+  // 로그인 방식 점검 — 임시 연락처 여부에 따라 안내가 달라진다 (D-003)
+  var allowNameDigits = confBool_('LOGIN_ALLOW_NAME_DIGITS', true);
+  var loginNotes = [];
+  if (placeholderRows) {
+    loginNotes.push('연락처가 임시값으로 보이는 행 ' + placeholderRows + '건 (같은 번호 반복: ' +
+      placeholders.map(function (p) { return '****' + p.slice(-4); }).join(', ') + ')');
+  }
+  if (noPhone) loginNotes.push('연락처가 비어 있는 행 ' + noPhone + '건');
+
+  if (allowNameDigits && !placeholderRows && !noPhone) {
+    loginNotes.push('✅ 연락처가 모두 실제 값으로 보입니다 → Config 의 LOGIN_ALLOW_NAME_DIGITS 를 ' +
+      'FALSE 로 내리세요. 켜 둔 채로는 명단을 본 사람이 이름 뒤 4자리로 로그인할 수 있습니다.');
+  } else if (allowNameDigits) {
+    loginNotes.push('LOGIN_ALLOW_NAME_DIGITS=TRUE — 이름 뒤 4자리로도 로그인됩니다(임시 조치). ' +
+      '연락처를 다 채우면 FALSE 로 내리세요.');
+  } else {
+    loginNotes.push('LOGIN_ALLOW_NAME_DIGITS=FALSE — 연락처 뒷 4자리로만 로그인됩니다.');
+  }
+
   var out = [];
   out.push('참가자 ' + rows.length + '명, 조 ' + Object.keys(groups).length + '개');
+  out.push('');
+  out.push('[로그인]');
+  loginNotes.forEach(function (n) { out.push('   · ' + n); });
   out.push('');
   block_(out, dup, '❌ 로그인 충돌 (해당 인원은 로그인 불가)', '✅ 로그인 충돌 없음');
   block_(out, missing, '⚠ 필수값 누락', '✅ 필수값 누락 없음');
