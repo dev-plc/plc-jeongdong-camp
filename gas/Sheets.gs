@@ -186,13 +186,19 @@ function resolveSheetName_(logical) {
   return logical;
 }
 
+/**
+ * 이 스크립트는 **반드시 스프레드시트에 바인딩된 상태**로 배포한다(확장 프로그램 → Apps Script).
+ *
+ * appsscript.json 의 권한이 `spreadsheets.currentonly` 이므로 **붙어 있는 그 문서 하나만**
+ * 열 수 있다. 예전에는 독립형 스크립트를 대비해 `SPREADSHEET_ID` 속성으로
+ * `openById` 하는 폴백이 있었는데, 좁힌 권한 아래에서는 어차피 실패한다.
+ * 남겨 두면 "속성만 넣으면 되겠지" 하고 헛짚게 되므로 지웠다 (D-020).
+ */
 function getSpreadsheet_() {
   var active = SpreadsheetApp.getActiveSpreadsheet();
   if (active) return active;
-  // 컨테이너 바인딩이 아닌 경우(독립형 스크립트) 대비
-  var id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
-  if (!id) throw new AppError('SERVER_ERROR', '스프레드시트를 찾을 수 없습니다.');
-  return SpreadsheetApp.openById(id);
+  throw new AppError('SERVER_ERROR',
+    '스프레드시트를 찾을 수 없습니다. 이 스크립트는 시트에 바인딩된 상태로 배포해야 합니다.');
 }
 
 /** 논리 이름을 받아 실제 탭을 돌려준다(`Participants` → `마스터` 등). */
