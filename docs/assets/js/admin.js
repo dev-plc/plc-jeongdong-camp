@@ -12,7 +12,7 @@
 
   var $ = UI.$, esc = UI.esc, nl2br = UI.nl2br, toast = UI.toast;
 
-  var state = { boot: null, view: 'review', authed: false };
+  var state = { boot: null, view: 'review', authed: false, audience: '전체' };
 
   /** 항목 이름은 서버가 내려주는 마스터시트 헤더를 그대로 쓴다(bootstrap.labels). */
   function L(key, fallback) {
@@ -54,6 +54,37 @@
   }
 
   function setView(html) { $('#view').innerHTML = html; }
+
+  /**
+   * 부서 필터.
+   * 원칙은 부서=일자 1:1 이지만 예외 인원이 섞일 수 있어(D-016) 조가 `혼합` 으로
+   * 잡힐 수 있다. `혼합` 조는 어느 부서를 골라도 보이게 해서 누락되지 않도록 한다.
+   */
+  function audienceFilterHtml() {
+    return '<div class="tabs" id="audienceFilter">' +
+      ['전체', '청년부', '장년부'].map(function (a) {
+        return '<button type="button" class="tab' + (state.audience === a ? ' is-active' : '') +
+          '" data-audience="' + esc(a) + '">' + esc(a) + '</button>';
+      }).join('') +
+      '</div>';
+  }
+
+  function bindAudienceFilter(rerender) {
+    var el = $('#audienceFilter');
+    if (!el) return;
+    el.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-audience]');
+      if (!btn) return;
+      state.audience = btn.getAttribute('data-audience');
+      rerender();
+    });
+  }
+
+  function matchesAudience(value) {
+    if (state.audience === '전체') return true;
+    var v = String(value || '');
+    return v === state.audience || v.indexOf('혼합') >= 0 || v.indexOf(state.audience) >= 0;
+  }
 
   // ------------------------------------------------------------ 로그인
 
@@ -159,18 +190,23 @@
     setView('<p class="loading">불러오는 중…</p>');
     API.call('admin.progress.board')
       .then(function (board) {
+        var teams = board.teams.filter(function (t) { return matchesAudience(t.audience); });
+
         setView(
           '<section class="section-head"><h2>' + esc(L('group', '조 배정')) + '별 진행 현황</h2>' +
             '<p class="hint">조장이 기록한 도착·완료 상태입니다. 조마다 배정 코스가 달라 방문 순서가 다릅니다.</p></section>' +
-          (board.teams.length
+          audienceFilterHtml() +
+          (teams.length
             ? '<div class="card"><div class="table-scroll"><table class="admin-table">' +
                 '<thead><tr><th>' + esc(L('session', '참여 일자')) + '</th>' +
+                '<th>' + esc(L('audience', '캠프 대상')) + '</th>' +
                 '<th>' + esc(L('group', '조 배정')) + '</th><th>조장</th><th>인원</th>' +
                 board.checkpoints.map(function (c) { return '<th>' + esc(c.name) + '</th>'; }).join('') +
                 '</tr></thead><tbody>' +
-                board.teams.map(function (t) {
+                teams.map(function (t) {
                   return '<tr>' +
                     '<td>' + esc(t.session) + '</td>' +
+                    '<td>' + esc(t.audience || '—') + '</td>' +
                     '<td>' + esc(t.name) + '</td>' +
                     '<td>' + esc(t.leaderName || '—') + '</td>' +
                     '<td>' + t.memberCount + '</td>' +
@@ -187,8 +223,11 @@
                   '</tr>';
                 }).join('') +
               '</tbody></table></div></div>'
-            : '<p class="empty">명단에 조가 배정된 참가자가 아직 없습니다.</p>')
+            : '<p class="empty">' + (state.audience === '전체'
+                ? '명단에 조가 배정된 참가자가 아직 없습니다.'
+                : esc(state.audience) + '에 배정된 조가 없습니다.') + '</p>')
         );
+        bindAudienceFilter(renderProgress);
       })
       .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
   }
@@ -199,23 +238,28 @@
     setView('<p class="loading">불러오는 중…</p>');
     API.call('admin.fee.board')
       .then(function (data) {
-        var s = data.summary;
+        var sum = data.summary;
+        var teams = data.teams.filter(function (t) { return matchesAudience(t.audience); });
+
         setView(
           '<section class="section-head"><h2>' + esc(L('feeStatus', '입금 여부')) + ' 현황</h2>' +
             '<p class="hint">수납 입력은 시트에서 합니다. 이 화면은 조회 전용입니다.</p></section>' +
           '<section class="card"><h2 class="card__title">전체</h2><dl class="kv">' +
-            '<div><dt>완납</dt><dd>' + (s['완납'] || 0) + '명</dd></div>' +
-            '<div><dt>미납</dt><dd>' + (s['미납'] || 0) + '명</dd></div>' +
-            '<div><dt>면제</dt><dd>' + (s['면제'] || 0) + '명</dd></div>' +
-            '<div><dt>합계</dt><dd>' + (s['합계'] || 0) + '명</dd></div>' +
-            '<div><dt>수납액</dt><dd>' + won(s['수납액']) + ' / ' + won(s['예상수입']) + '</dd></div>' +
-          '</dl></section>' +
+            '<div><dt>완납</dt><dd>' + (sum['완납'] || 0) + '명</dd></div>' +
+            '<div><dt>미납</dt><dd>' + (sum['미납'] || 0) + '명</dd></div>' +
+            '<div><dt>면제</dt><dd>' + (sum['면제'] || 0) + '명</dd></div>' +
+            '<div><dt>합계</dt><dd>' + (sum['합계'] || 0) + '명</dd></div>' +
+            '<div><dt>수납액</dt><dd>' + won(sum['수납액']) + ' / ' + won(sum['예상수입']) + '</dd></div>' +
+          '</dl><p class="hint">전체 합계는 부서 필터와 무관하게 전원 기준입니다.</p></section>' +
+          audienceFilterHtml() +
           '<div class="card"><div class="table-scroll"><table class="admin-table">' +
             '<thead><tr><th>' + esc(L('session', '참여 일자')) + ' · ' + esc(L('group', '조 배정')) + '</th>' +
+            '<th>' + esc(L('audience', '캠프 대상')) + '</th>' +
             '<th>완납</th><th>미납</th><th>면제</th>' +
             '<th>' + esc(L('insurance', '여행자 보험 가입')) + ' 미가입</th><th>미납자</th></tr></thead><tbody>' +
-            data.teams.map(function (t) {
+            teams.map(function (t) {
               return '<tr><td>' + esc(t.label) + '</td>' +
+                '<td>' + esc(t.audience || '—') + '</td>' +
                 '<td>' + (t['완납'] || 0) + '</td>' +
                 '<td>' + (t['미납'] || 0) + '</td>' +
                 '<td>' + (t['면제'] || 0) + '</td>' +
@@ -224,6 +268,7 @@
             }).join('') +
           '</tbody></table></div></div>'
         );
+        bindAudienceFilter(renderFee);
       })
       .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
   }
@@ -255,7 +300,8 @@
               (c.GALLERY_SCOPE === s[0] ? ' checked' : '') + '><span>' + s[1] + '</span></label>';
           }).join('') +
         '</div>' +
-        '<p class="hint">전체 공개는 같은 회차(청년/장년) 안에서만 보입니다.</p>' +
+        '<p class="hint">전체 공개는 같은 ' + esc(L('session', '참여 일자')) + ' 안에서만 보입니다. ' +
+          esc(L('audience', '캠프 대상')) + '이 달라도 같은 날 참여했다면 서로 보입니다.</p>' +
       '</section>' +
 
       '<section class="card"><h2 class="card__title">기능 열기 / 닫기</h2>' +

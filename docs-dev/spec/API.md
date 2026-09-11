@@ -36,7 +36,6 @@ fetch(API_BASE, {
 | `BAD_REQUEST` | 필수 파라미터 누락/형식 오류 | 폼에 메시지 표시 |
 | `NOT_FOUND` | 명단에 없음 | "운영진 문의" 안내 |
 | `AMBIGUOUS` | 이름+뒷4자리 중복 (동명이인) | "운영진 문의" 안내 |
-| `LOCKED` | 로그인 실패 누적 잠금 | 남은 시간 표시 |
 | `UNAUTHORIZED` | 토큰 없음/만료/위조 | 토큰 삭제 후 로그인 화면 |
 | `FORBIDDEN` | 권한 없음 (조장/관리자 전용) | 버튼 숨김 + 토스트 |
 | `CLOSED` | 기능이 닫혀 있음 (`*_OPEN=FALSE`) | 안내 문구 |
@@ -58,22 +57,32 @@ fetch(API_BASE, {
   "config": { "CAMP_NAME": "...", "GALLERY_SCOPE": "ALL", "SHOW_FEE": true, ... },
   "labels": { "audience": "캠프 대상", "session": "참여 일자", "group": "조 배정",
               "feeStatus": "입금 여부", "insurance": "여행자 보험 가입", "course": "배정 코스", ... },
-  "sessions": [ { "label": "10/24(토)", "date": "2026-10-24" },
-                { "label": "10/31(토)", "date": "2026-10-31" } ],
+  "sessions": [ { "label": "10/31(토)", "date": "2026-10-31" },
+                { "label": "11/07(토)", "date": "2026-11-07" } ],
   "checkpoints": [ { "code": "CP1", "order": 1, "name": "배재학당역사박물관", ... } ],
   "notices": [ { "id": "N001", "target": "전체", "title": "...", "body": "...", "pinned": true } ],
-  "timeline": { "10/24(토)": [ { "start": "09:30", "end": "09:50", "title": "...", ... } ],
-                "10/31(토)": [ ... ] },
-  "serverTime": "2026-10-24T09:12:00+09:00"
+  "timeline": { "10/31(토)": [ { "start": "09:30", "end": "09:50", "title": "...", ... } ],
+                "11/07(토)": [ ... ] },
+  "serverTime": "2026-10-31T09:12:00+09:00"
 }
 ```
 
 `labels` 는 마스터시트의 헤더 이름을 그대로 내려보냅니다. 화면의 항목 이름이 전부 여기서 나오므로,
 `gas/Sheets.gs` 의 `COL` 을 고치면 앱 문구도 자동으로 따라갑니다.
 
+#### `health`
+배포가 살아 있는지 확인하는 용도. **GET 전용**이며 시트를 읽지 않습니다.
+```jsonc
+// GET {API_BASE}?action=health
+// data
+{ "ok": true, "serverTime": "2026-10-31T09:12:00+09:00" }
+```
+브라우저에서 `{API_BASE}?action=health` 를 열었을 때 이 JSON 이 보이면 배포·권한 설정이
+정상입니다. HTML 이 보이면 웹 앱 접근 권한이 `모든 사용자` 가 아닙니다 (`DEPLOY.md` 참고).
+
 #### `auth.login`
 ```jsonc
-{ "action": "auth.login", "session": "10/24(토)", "name": "홍길동", "phoneLast4": "5678" }
+{ "action": "auth.login", "session": "10/31(토)", "name": "홍길동", "phoneLast4": "5678" }
 // data
 { "token": "eyJ...", "expiresAt": "...", "me": { /* me 와 동일 + sessionCorrected */ } }
 ```
@@ -94,9 +103,9 @@ fetch(API_BASE, {
 ```jsonc
 {
   "participant": { "id": "P0001", "name": "홍길동", "audience": "청년부",
-                   "session": "10/24(토)", "role": "조장", "group": "1조",
+                   "session": "10/31(토)", "role": "조장", "group": "1조",
                    "feeStatus": "완납", "insurance": "가입완료" },
-  "team": { "session": "10/24(토)", "group": "1조", "name": "1조 배재", "color": "#984534",
+  "team": { "session": "10/31(토)", "group": "1조", "name": "1조 배재", "color": "#984534",
             "leaderName": "김캠티", "meetingPoint": "PL교회 본당 앞",
             "course": "C코스(보구여관 시작)", "route": ["CP3","CP4","CP1","CP2"] },
   "isLeader": true,
@@ -181,14 +190,15 @@ fetch(API_BASE, {
 | `admin.journal.update` / `admin.journal.delete` | 참가자용과 동일하나 전 범위 |
 | `admin.progress.board` | 전 조 진행 현황 보드 — 조는 Teams 가 아니라 **명단에 실제로 존재하는 (참여 일자, 조 배정) 조합**에서 뽑습니다 |
 | `admin.fee.board` | 회비·보험 현황 집계 (읽기). 수납액/예상수입 합계 포함 |
-| `admin.config.set` | `{ key, value }` — `Config` 값 변경 |
+| `admin.config.set` | `{ key, value, note? }` — `Config` 값 변경. `note` 는 `설명` 열에 함께 기록됩니다. 반환: `{ key, value }` (반영된 값). 설정·부트스트랩 캐시를 함께 비웁니다 |
 
 ---
 
 ## 레이트 리밋 / 보안 메모
 
-- `auth.login` 은 **이름 기준** 10분 슬라이딩 윈도우로 `LOGIN_MAX_ATTEMPTS` 회 실패 시 잠금
-  (`CacheService` 사용, 서버 재시작과 무관하게 10분 후 자동 해제).
+- `auth.login` 에 **시도 횟수 제한은 없습니다**(D-003). 현장에서 참가자가 잠기는 비용이
+  무차별 시도로 얻을 수 있는 것(같은 조 진행 상황·일지)보다 크다고 판단했습니다.
+  실패는 `Log` 시트에 남으므로 사후 확인은 됩니다.
 - 토큰은 `payload.서명` 형식. 서명은 `HMAC-SHA256(TOKEN_SECRET)`. payload 는 `{ pid, exp }` 뿐입니다.
   역할·조·회차를 토큰에 담지 않는 이유: 발급 후 명단이 바뀌면 어긋나고, 권한 판단은 요청마다
   시트를 다시 읽어서 하기 때문입니다. 서명 검증은 **상수 시간 비교**로 합니다.

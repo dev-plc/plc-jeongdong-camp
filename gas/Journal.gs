@@ -123,7 +123,7 @@ function journalList_(ctx, body) {
       } else if (galleryScope === 'TEAM') {
         rows = rows.filter(function (r) { return rowTeamKey_(r) === ctx.teamKey; });
       } else {
-        // ALL — 같은 참여 일자 안에서만 공개한다(10/24 와 10/31 은 서로 섞지 않는다).
+        // ALL — 같은 참여 일자 안에서만 공개한다(10/31 과 11/07 은 서로 섞지 않는다).
         rows = rows.filter(function (r) { return str_(r[COL.SESSION]) === ctx.session; });
       }
     }

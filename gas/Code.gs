@@ -93,9 +93,24 @@ function jsonErr_(err) {
 
 // ---------------------------------------------------------------- bootstrap
 
-/** 앱 초기 로딩용 공개 데이터. 개인정보는 포함하지 않는다. */
+/**
+ * 앱 초기 로딩용 공개 데이터. 개인정보는 포함하지 않는다.
+ *
+ * 가장 자주 불리는 요청이면서 시트 4개(Checkpoints·Notices·Timeline·Config)를 읽는다.
+ * 개인정보가 없어 사용자별로 다를 것이 없으므로 **요청 간 5분 캐시**를 둔다.
+ * `serverTime` 만 캐시 밖에서 매번 새로 채운다 — 캐시된 시각을 내려보내면 안 된다.
+ *
+ * 공지·타임라인을 고친 뒤 즉시 반영하려면 메뉴 → "설정 캐시 비우기".
+ * `admin.config.set` 은 이 캐시도 함께 비운다(clearConfigCache).
+ */
 function bootstrap_() {
-  return {
+  var cached = cacheGet_('bootstrap_v1');
+  if (cached) {
+    cached.serverTime = nowIso_();
+    return cached;
+  }
+
+  var data = {
     config: publicConfig_(),
     labels: labels_(),
     sessions: sessions_(),
@@ -104,6 +119,8 @@ function bootstrap_() {
     timeline: timeline_(),
     serverTime: nowIso_()
   };
+  cachePut_('bootstrap_v1', data, 300);
+  return data;
 }
 
 /**
@@ -193,7 +210,7 @@ function activeNotices_() {
     });
 }
 
-/** 참여 일자별 타임라인. { '10/24(토)': [...], '10/31(토)': [...] } */
+/** 참여 일자별 타임라인. { '10/31(토)': [...], '11/07(토)': [...] } */
 function timeline_() {
   var out = {};
   sessionLabels_().forEach(function (label) { out[label] = []; });
@@ -341,51 +358,94 @@ function feeStatus_(ctx) {
  * 행정팀이 Teams 를 안 채워도 보드가 비지 않게 하기 위해서다.
  */
 function allTeams_() {
-  var seen = {};
-  var out = [];
+  var byKey = {};
   readTable_(SHEETS.PARTICIPANTS).forEach(function (r) {
     var session = str_(r[COL.SESSION]);
     var group = str_(r[COL.GROUP]);
     if (!session || !group) return;
+
     var key = teamKey_(session, group);
-    if (seen[key]) return;
-    seen[key] = true;
-    out.push({ key: key, session: session, group: group });
+    if (!byKey[key]) byKey[key] = { key: key, session: session, group: group, audiences: {} };
+
+    var audience = str_(r[COL.AUDIENCE]);
+    if (audience) byKey[key].audiences[audience] = (byKey[key].audiences[audience] || 0) + 1;
   });
-  return out.sort(function (a, b) { return a.key.localeCompare(b.key); });
+
+  return Object.keys(byKey).sort().map(function (key) {
+    var t = byKey[key];
+    return { key: t.key, session: t.session, group: t.group, audience: dominantAudience_(t.audiences) };
+  });
 }
 
+/**
+ * 조의 대표 부서. 원칙은 부서=일자 1:1 이지만 예외 인원이 섞일 수 있어(D-016),
+ * 다수 부서를 대표로 쓰고 실제로 섞였으면 `혼합` 으로 표시한다.
+ */
+function dominantAudience_(counts) {
+  var names = Object.keys(counts);
+  if (!names.length) return '';
+  if (names.length === 1) return names[0];
+
+  names.sort(function (a, b) { return counts[b] - counts[a]; });
+  return counts[names[0]] === counts[names[1]] ? '혼합' : names[0] + ' 외';
+}
+
+/**
+ * 전 조 진행 현황.
+ *
+ * 조마다 teamMembers_·findTeam_·routeFor_ 를 다시 부르면 조 수 × 명단 크기만큼
+ * 훑게 된다(조 32개면 O(N×M)). 그래서 **참가자·Teams·Progress 를 각각 한 번만 훑어
+ * 인덱스로 만든 뒤** 조회한다.
+ */
 function progressBoard_(ctx) {
-  var progress = readTable_(SHEETS.PROGRESS);
   var codes = defaultRoute_();
   var names = {};
   checkpoints_().forEach(function (c) { names[c.code] = c.name; });
 
+  // --- 한 번씩만 훑어 인덱스를 만든다
+  var membersByTeam = {};
+  readTable_(SHEETS.PARTICIPANTS).forEach(function (r) {
+    var key = rowTeamKey_(r);
+    (membersByTeam[key] = membersByTeam[key] || []).push(r);
+  });
+
+  var teamRowByKey = {};
+  readTable_(SHEETS.TEAMS).forEach(function (r) { teamRowByKey[rowTeamKey_(r)] = r; });
+
+  var cellsByTeam = {};
+  readTable_(SHEETS.PROGRESS).forEach(function (r) {
+    var key = rowTeamKey_(r);
+    (cellsByTeam[key] = cellsByTeam[key] || {})[str_(r['지점코드'])] = {
+      status: str_(r['상태']) || '대기',
+      arrivedAt: toIso_(r['도착시각']),
+      completedAt: toIso_(r['완료시각']),
+      score: r['퀴즈점수'] !== '' ? Number(r['퀴즈점수']) : null
+    };
+  });
+
+  // 같은 코스명은 방문 순서 변환을 한 번만 한다
+  var routeByCourse = {};
+  function routeCached_(course) {
+    if (!(course in routeByCourse)) routeByCourse[course] = routeFor_(course);
+    return routeByCourse[course];
+  }
+
   return {
     checkpoints: codes.map(function (c) { return { code: c, name: names[c] || c }; }),
     teams: allTeams_().map(function (t) {
-      var members = teamMembers_(t.session, t.group);
-      var teamRow = findTeam_(t.session, t.group);
-      var cells = {};
-      progress.forEach(function (r) {
-        if (rowTeamKey_(r) === t.key) {
-          cells[str_(r['지점코드'])] = {
-            status: str_(r['상태']) || '대기',
-            arrivedAt: toIso_(r['도착시각']),
-            completedAt: toIso_(r['완료시각']),
-            score: r['퀴즈점수'] !== '' ? Number(r['퀴즈점수']) : null
-          };
-        }
-      });
+      var members = membersByTeam[t.key] || [];
+      var teamRow = teamRowByKey[t.key];
+      var course = courseNameOf_(members, null);
       return {
         session: t.session,
         group: t.group,
+        audience: t.audience,
         name: teamRow ? (str_(teamRow['조이름']) || t.group) : t.group,
         leaderName: leaderNameOf_(members),
         memberCount: members.length,
-        course: courseNameOf_(members, null),
-        route: routeFor_(courseNameOf_(members, null)),
-        cells: cells
+        course: course,
+        route: routeCached_(course),
+        cells: cellsByTeam[t.key] || {}
       };
     })
   };
@@ -412,7 +472,11 @@ function feeBoard_(ctx) {
     var group = str_(r[COL.GROUP]) || '(조 미배정)';
     var key = session + ' ' + group;
     if (!byTeam[key]) {
-      byTeam[key] = { label: key, session: session, group: group, 미납: 0, 완납: 0, 면제: 0, unpaid: [], 미가입: 0 };
+      byTeam[key] = {
+        label: key, session: session, group: group,
+        audience: str_(r[COL.AUDIENCE]),
+        미납: 0, 완납: 0, 면제: 0, unpaid: [], 미가입: 0
+      };
     }
     if (byTeam[key][st] === undefined) byTeam[key][st] = 0;
     byTeam[key][st]++;
