@@ -150,8 +150,8 @@ body { padding-top: var(--demobar-h, 76px); }
   };
 
   var SESSIONS = [
-    { label: '10/24(토)', date: '2026-10-24' },
-    { label: '10/31(토)', date: '2026-10-31' }
+    { label: '10/31(토)', date: '2026-10-31' },
+    { label: '11/07(토)', date: '2026-11-07' }
   ];
 
   var CHECKPOINTS = [
@@ -179,7 +179,7 @@ body { padding-top: var(--demobar-h, 76px); }
   ];
 
   var TIMELINE = {
-    '10/24(토)': [
+    '10/31(토)': [
       { start: '09:30', end: '09:50', title: '도착 · 등록 · 조편성 확인', place: 'PL교회', note: '명찰/조 배정표 배부' },
       { start: '09:50', end: '10:20', title: '오프닝 (OT + 찬양)', place: 'PL교회', note: '전체 모임' },
       { start: '10:20', end: '11:10', title: '강의 1챕터', place: 'PL교회', note: '' },
@@ -191,7 +191,7 @@ body { padding-top: var(--demobar-h, 76px); }
       { start: '14:00', end: '16:10', title: '정동 답사', place: '정동 일대', note: '조별 배정 코스 순서대로' },
       { start: '16:25', end: '17:00', title: '마무리 모임 — 소감 나눔', place: '인근 카페', note: '' }
     ],
-    '10/31(토)': [
+    '11/07(토)': [
       { start: '13:00', end: '13:30', title: '당일 세부일정 OT', place: 'PL교회', note: '등록 & 이름표 배부' },
       { start: '13:30', end: '14:00', title: '이동 (노량진역 → 시청역)', place: '지하철 1호선', note: '약 30분' },
       { start: '14:00', end: '16:10', title: '정동 답사', place: '정동 일대', note: '조별 배정 코스 순서대로' },
@@ -202,16 +202,16 @@ body { padding-top: var(--demobar-h, 76px); }
   var NOTICES = [
     { id: 'N1', target: '전체', title: '점심 도시락 안내', pinned: true,
       body: '도시락은 조별로 한 번에 받습니다. 조장이 인원수를 확인해 주세요.', publishedAt: '2026-10-20T09:00:00+09:00' },
-    { id: 'N2', target: '10/24(토)', title: '교통카드 지참', pinned: false,
+    { id: 'N2', target: '10/31(토)', title: '교통카드 지참', pinned: false,
       body: '지하철 이동이 있습니다. 교통카드를 꼭 챙겨 주세요.', publishedAt: '2026-10-19T09:00:00+09:00' }
   ];
 
   // ---- 사람 / 조 -------------------------------------------------------
   var PEOPLE = {
     leader: {
-      participant: { id: 'P0002', name: '김캠티', audience: '청년부', session: '10/24(토)',
+      participant: { id: 'P0002', name: '김캠티', audience: '청년부', session: '10/31(토)',
                      role: '조장', group: '1조', feeStatus: '완납', insurance: '가입완료' },
-      team: { session: '10/24(토)', group: '1조', name: '1조 배재', color: '#984534',
+      team: { session: '10/31(토)', group: '1조', name: '1조 배재', color: '#984534',
               leaderName: '김캠티', meetingPoint: 'PL교회 본당 앞',
               course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'] },
       isLeader: true, isAdmin: false,
@@ -223,9 +223,9 @@ body { padding-top: var(--demobar-h, 76px); }
       ]
     },
     member: {
-      participant: { id: 'P0001', name: '이승천', audience: '청년부', session: '10/24(토)',
+      participant: { id: 'P0001', name: '이승천', audience: '청년부', session: '10/31(토)',
                      role: '일반', group: '1조', feeStatus: '미납', insurance: '미가입' },
-      team: { session: '10/24(토)', group: '1조', name: '1조 배재', color: '#984534',
+      team: { session: '10/31(토)', group: '1조', name: '1조 배재', color: '#984534',
               leaderName: '김캠티', meetingPoint: 'PL교회 본당 앞',
               course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'] },
       isLeader: false, isAdmin: false,
@@ -240,9 +240,9 @@ body { padding-top: var(--demobar-h, 76px); }
 
   // ---- 가변 상태 -------------------------------------------------------
   var progress = [
-    { checkpoint: 'CP3', visitOrder: 1, status: '완료', arrivedAt: '2026-10-24T14:00:00+09:00',
-      completedAt: '2026-10-24T14:24:00+09:00', score: 9, memo: '' },
-    { checkpoint: 'CP4', visitOrder: 2, status: '도착', arrivedAt: '2026-10-24T14:36:00+09:00',
+    { checkpoint: 'CP3', visitOrder: 1, status: '완료', arrivedAt: '2026-10-31T14:00:00+09:00',
+      completedAt: '2026-10-31T14:24:00+09:00', score: 9, memo: '' },
+    { checkpoint: 'CP4', visitOrder: 2, status: '도착', arrivedAt: '2026-10-31T14:36:00+09:00',
       completedAt: '', score: null, memo: '' },
     { checkpoint: 'CP1', visitOrder: 3, status: '대기', arrivedAt: '', completedAt: '', score: null, memo: '' },
     { checkpoint: 'CP2', visitOrder: 4, status: '대기', arrivedAt: '', completedAt: '', score: null, memo: '' }
@@ -250,22 +250,22 @@ body { padding-top: var(--demobar-h, 76px); }
 
   var seq = 100;
   var journals = [
-    { id: 'J0001', session: '10/24(토)', group: '1조', authorId: 'P0007', authorName: '한지민',
+    { id: 'J0001', session: '10/31(토)', group: '1조', authorId: 'P0007', authorName: '한지민',
       checkpoint: 'CP3', text: '보구여관 터 표석 앞에서. 병원이 있던 자리라는 걸 안내판을 보고서야 알았다.\\n이름의 뜻이 "여성을 널리 구제한다"라는 게 오래 남는다.',
       photoUrl: '', status: '승인', rejectReason: '',
-      createdAt: '2026-10-24T14:20:00+09:00', updatedAt: '' },
-    { id: 'J0002', session: '10/24(토)', group: '1조', authorId: 'P0008', authorName: '오세훈',
+      createdAt: '2026-10-31T14:20:00+09:00', updatedAt: '' },
+    { id: 'J0002', session: '10/31(토)', group: '1조', authorId: 'P0008', authorName: '오세훈',
       checkpoint: 'CP4', text: '심슨기념관 계단. 학생 한 명으로 시작했다는 이야기가 계속 맴돈다.',
       photoUrl: '', status: '승인', rejectReason: '',
-      createdAt: '2026-10-24T14:52:00+09:00', updatedAt: '' },
-    { id: 'J0003', session: '10/24(토)', group: '2조', authorId: 'P0011', authorName: '박서준',
+      createdAt: '2026-10-31T14:52:00+09:00', updatedAt: '' },
+    { id: 'J0003', session: '10/31(토)', group: '2조', authorId: 'P0011', authorName: '박서준',
       checkpoint: 'CP1', text: '배재학당 교훈을 찾았다. 欲爲大者 當爲人役 — 크고자 하거든 남을 섬기라.',
       photoUrl: '', status: '승인', rejectReason: '',
-      createdAt: '2026-10-24T14:05:00+09:00', updatedAt: '' },
-    { id: 'J0004', session: '10/24(토)', group: '3조', authorId: 'P0015', authorName: '최유나',
+      createdAt: '2026-10-31T14:05:00+09:00', updatedAt: '' },
+    { id: 'J0004', session: '10/31(토)', group: '3조', authorId: 'P0015', authorName: '최유나',
       checkpoint: 'CP2', text: '킹스로드를 걸으며. 고종이 걸었던 길이라는 게 실감이 안 난다.',
       photoUrl: '', status: '대기', rejectReason: '',
-      createdAt: '2026-10-24T15:10:00+09:00', updatedAt: '' }
+      createdAt: '2026-10-31T15:10:00+09:00', updatedAt: '' }
   ];
 
   function decorate(j) {
@@ -292,7 +292,7 @@ body { padding-top: var(--demobar-h, 76px); }
     switch (body.action) {
       case 'bootstrap':
         return { config: CONFIG, labels: LABELS, sessions: SESSIONS, checkpoints: CHECKPOINTS,
-                 notices: NOTICES, timeline: TIMELINE, serverTime: '2026-10-24T14:40:00+09:00' };
+                 notices: NOTICES, timeline: TIMELINE, serverTime: '2026-10-31T14:40:00+09:00' };
 
       case 'auth.login': {
         var m = me();
@@ -311,7 +311,7 @@ body { padding-top: var(--demobar-h, 76px); }
         if (!me().isLeader) return { __error: { code: 'FORBIDDEN', message: '조장만 기록할 수 있습니다.' } };
         progress = progress.map(function (p) {
           if (p.checkpoint !== body.checkpoint) return p;
-          var now = '2026-10-24T15:0' + (seq++ % 10) + ':00+09:00';
+          var now = '2026-10-31T15:0' + (seq++ % 10) + ':00+09:00';
           return Object.assign({}, p, {
             status: body.status,
             arrivedAt: body.status === '대기' ? '' : (p.arrivedAt || now),
@@ -348,7 +348,7 @@ body { padding-top: var(--demobar-h, 76px); }
           checkpoint: body.checkpoint || '', text: body.text || '',
           photoUrl: body.photo ? ('data:' + body.photo.mimeType + ';base64,' + body.photo.dataBase64) : '',
           status: CONFIG.JOURNAL_REQUIRE_APPROVAL ? '대기' : '승인', rejectReason: '',
-          createdAt: '2026-10-24T15:30:00+09:00', updatedAt: ''
+          createdAt: '2026-10-31T15:30:00+09:00', updatedAt: ''
         };
         journals = [created].concat(journals);
         return decorate(created);
@@ -411,22 +411,22 @@ body { padding-top: var(--demobar-h, 76px); }
         return {
           checkpoints: CHECKPOINTS.map(function (c) { return { code: c.code, name: c.name }; }),
           teams: [
-            { session: '10/24(토)', group: '1조', name: '1조 배재', leaderName: '김캠티', memberCount: 4,
+            { session: '10/31(토)', group: '1조', audience: '청년부', name: '1조 배재', leaderName: '김캠티', memberCount: 4,
               course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'],
               cells: {
-                CP3: { status: '완료', arrivedAt: '2026-10-24T14:00:00+09:00', completedAt: '2026-10-24T14:24:00+09:00', score: 9 },
-                CP4: { status: '도착', arrivedAt: '2026-10-24T14:36:00+09:00', completedAt: '', score: null }
+                CP3: { status: '완료', arrivedAt: '2026-10-31T14:00:00+09:00', completedAt: '2026-10-31T14:24:00+09:00', score: 9 },
+                CP4: { status: '도착', arrivedAt: '2026-10-31T14:36:00+09:00', completedAt: '', score: null }
               } },
-            { session: '10/24(토)', group: '2조', name: '2조 정동', leaderName: '윤지한', memberCount: 5,
+            { session: '10/31(토)', group: '2조', audience: '청년부', name: '2조 정동', leaderName: '윤지한', memberCount: 5,
               course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'],
               cells: {
-                CP1: { status: '완료', arrivedAt: '2026-10-24T14:02:00+09:00', completedAt: '2026-10-24T14:26:00+09:00', score: 10 },
-                CP2: { status: '완료', arrivedAt: '2026-10-24T14:38:00+09:00', completedAt: '2026-10-24T15:00:00+09:00', score: 8 },
-                CP3: { status: '도착', arrivedAt: '2026-10-24T15:12:00+09:00', completedAt: '', score: null }
+                CP1: { status: '완료', arrivedAt: '2026-10-31T14:02:00+09:00', completedAt: '2026-10-31T14:26:00+09:00', score: 10 },
+                CP2: { status: '완료', arrivedAt: '2026-10-31T14:38:00+09:00', completedAt: '2026-10-31T15:00:00+09:00', score: 8 },
+                CP3: { status: '도착', arrivedAt: '2026-10-31T15:12:00+09:00', completedAt: '', score: null }
               } },
-            { session: '10/24(토)', group: '3조', name: '3조 이화', leaderName: '박민수', memberCount: 5,
+            { session: '10/31(토)', group: '3조', audience: '청년부', name: '3조 이화', leaderName: '박민수', memberCount: 5,
               course: 'B코스(러시아 시작)', route: ['CP2', 'CP3', 'CP4', 'CP1'], cells: {} },
-            { session: '10/31(토)', group: '1조', name: '1조', leaderName: '이휘영', memberCount: 6,
+            { session: '11/07(토)', group: '1조', audience: '장년부', name: '1조', leaderName: '이휘영', memberCount: 6,
               course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'], cells: {} }
           ]
         };
@@ -435,10 +435,10 @@ body { padding-top: var(--demobar-h, 76px); }
         return {
           summary: { 완납: 14, 미납: 4, 면제: 1, 합계: 19, 예상수입: 460000, 수납액: 340000 },
           teams: [
-            { label: '10/24(토) 1조', session: '10/24(토)', group: '1조', 완납: 3, 미납: 1, 면제: 0, 미가입: 1, unpaid: ['이승천'] },
-            { label: '10/24(토) 2조', session: '10/24(토)', group: '2조', 완납: 4, 미납: 1, 면제: 0, 미가입: 0, unpaid: ['정하늘'] },
-            { label: '10/24(토) 3조', session: '10/24(토)', group: '3조', 완납: 4, 미납: 1, 면제: 0, 미가입: 2, unpaid: ['강도현'] },
-            { label: '10/31(토) 1조', session: '10/31(토)', group: '1조', 완납: 3, 미납: 1, 면제: 1, 미가입: 0, unpaid: ['서지우'] }
+            { label: '10/31(토) 1조', session: '10/31(토)', group: '1조', audience: '청년부', 완납: 3, 미납: 1, 면제: 0, 미가입: 1, unpaid: ['이승천'] },
+            { label: '10/31(토) 2조', session: '10/31(토)', group: '2조', audience: '청년부', 완납: 4, 미납: 1, 면제: 0, 미가입: 0, unpaid: ['정하늘'] },
+            { label: '10/31(토) 3조', session: '10/31(토)', group: '3조', audience: '청년부', 완납: 4, 미납: 1, 면제: 0, 미가입: 2, unpaid: ['강도현'] },
+            { label: '11/07(토) 1조', session: '11/07(토)', group: '1조', audience: '장년부', 완납: 3, 미납: 1, 면제: 1, 미가입: 0, unpaid: ['서지우'] }
           ]
         };
 

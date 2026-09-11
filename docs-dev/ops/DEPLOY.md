@@ -16,7 +16,12 @@
 1. Google Sheets 새 문서 → 이름: `PLC 정동캠프 2026`
 2. 확장 프로그램 → Apps Script
 3. `gas/` 안의 파일을 같은 이름으로 붙여넣기
-   (`Code.gs` `Auth.gs` `Sheets.gs` `Journal.gs` `Setup.gs`, 그리고 `appsscript.json`)
+   (`Code.gs` `Auth.gs` `Sheets.gs` `Journal.gs` `Setup.gs` `MasterSync.gs`, 그리고 `appsscript.json`)
+
+   > ⚠ **`MasterSync.gs` 를 빠뜨리면 에러 없이 조용히** 시트 메뉴에서 `🔄 동기화 관리` 가
+   > 사라집니다. `Setup.gs` 의 `onOpen` 이 이 파일의 함수를 `typeof` 로 확인한 뒤 부르기
+   > 때문에, 없으면 실패하지 않고 메뉴만 안 붙습니다. 행정팀이 쓰던 마스터시트 동기화가
+   > 통째로 멈추므로 붙여넣기 목록에서 빠지지 않게 하세요.
    - `appsscript.json` 이 안 보이면: 프로젝트 설정 → "`appsscript.json` 매니페스트 파일 표시" 체크
 4. 저장 → 함수 목록에서 `setupSpreadsheet` 선택 → 실행 → 권한 승인 (탭 10개가 생성됩니다)
 
@@ -113,14 +118,13 @@ Cloudflare 대시보드 → Caching → **Purge Everything** 을 한 번 실행�
 
 - [ ] `/exec?action=health` 를 브라우저에서 열어 `{"ok":true,...}` 가 나오는지
 - [ ] `/exec?action=bootstrap` 에 checkpoints 4개와 timeline 이 들어 있는지
-- [ ] 앱 첫 화면에 참여 일자 두 개(10/24·10/31)가 보이는지
+- [ ] 앱 첫 화면에 참여 일자 두 개(10/31·11/07)가 보이는지
 - [ ] 테스트 참가자로 로그인되는지 — 이름 뒤 구분번호를 빼고 입력해도 되는지
 - [ ] 일부러 다른 날짜를 골라 로그인 → 실제 배정 일자로 들어가며 안내가 뜨는지
 - [ ] 조장 계정으로 코스 화면에서 `도착` → `완료` 버튼이 눌리고 시트에 기록되는지
 - [ ] 사진 1장 올려 보고 Drive 폴더에 파일이 생기는지
 - [ ] `/admin.html` PIN 로그인 → 승인 대기에 그 사진이 뜨는지 → 승인 후 갤러리에 보이는지
 - [ ] 갤러리 공개 범위를 `같은 조만` 으로 바꿔 보고, 다른 조 계정에서 안 보이는지
-- [ ] 로그인 5회 실패 후 잠기는지 (`LOGIN_MAX_ATTEMPTS`)
 - [ ] **실제 연락처를 다 채운 뒤** `Config.LOGIN_ALLOW_NAME_DIGITS = FALSE` 로 내렸는지
       (명단 점검이 시점을 알려줍니다 — 켜 둔 채로는 이름 뒤 4자리로 로그인됩니다)
 
@@ -128,7 +132,7 @@ Cloudflare 대시보드 → Caching → **Purge Everything** 을 한 번 실행�
 
 ## 5. 캠프 당일 운영 메모
 
-- **회차 사이**: 10/24 종료 후 10/31 준비 시 `Progress` / `Journal` 을 지우지 마세요.
+- **회차 사이**: 10/31 종료 후 11/07 준비 시 `Progress` / `Journal` 을 지우지 마세요.
   `참여 일자` 컬럼으로 분리되어 있어 서로 섞이지 않습니다.
   같은 "1조" 라도 날짜가 다르면 별개의 조로 처리됩니다.
 - **일지 마감**: 캠프 종료 후 `Config.JOURNAL_OPEN = FALSE` 로 작성을 닫습니다.

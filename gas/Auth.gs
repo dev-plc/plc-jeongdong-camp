@@ -127,35 +127,15 @@ function verifyToken_(token) {
   return payload;
 }
 
-// ---------------------------------------------------------------- 로그인 시도 제한
-
-function attemptKey_(name) {
-  return 'login:' + normalizeName_(name);
-}
-
-function assertNotLocked_(name) {
-  var max = confInt_('LOGIN_MAX_ATTEMPTS', 5);
-  var count = parseInt(CacheService.getScriptCache().get(attemptKey_(name)) || '0', 10);
-  if (count >= max) {
-    throw new AppError('LOCKED', '로그인 시도가 너무 많습니다. 10분 뒤에 다시 시도하거나 운영진에게 문의해 주세요.');
-  }
-}
-
-function recordFailure_(name) {
-  var cache = CacheService.getScriptCache();
-  var key = attemptKey_(name);
-  var count = parseInt(cache.get(key) || '0', 10) + 1;
-  cache.put(key, String(count), 600); // 10분
-}
-
-function clearFailures_(name) {
-  CacheService.getScriptCache().remove(attemptKey_(name));
-}
-
 // ---------------------------------------------------------------- 로그인
 
 /**
  * 이름 + 뒷4자리로 참가자를 찾는다.
+ *
+ * 시도 횟수 제한은 **의도적으로 두지 않는다**(D-003).
+ * 무차별 시도가 가능해지지만, 명단에 없는 사람은 어차피 아무것도 못 하고,
+ * 현장에서 참가자가 잠겨 못 들어오는 비용이 더 크다는 판단이다.
+ * 실패는 Log 시트에 남으므로 이상 징후는 사후에 확인할 수 있다.
  *
  * 참여 일자는 **후보를 좁히는 힌트**일 뿐, 필수 조건이 아니다.
  * 참가자가 자기 날짜를 헷갈려 고른 경우에도 명단이 맞으면 들어오게 하고,
@@ -169,14 +149,11 @@ function login_(body) {
   if (!name) throw new AppError('BAD_REQUEST', '이름을 입력해 주세요.');
   if (last4.length !== 4) throw new AppError('BAD_REQUEST', '연락처 뒷 4자리를 입력해 주세요.');
 
-  assertNotLocked_(name);
-
   var matches = readTable_(SHEETS.PARTICIPANTS).filter(function (r) {
     return matchesParticipant_(r, name, last4);
   });
 
   if (matches.length === 0) {
-    recordFailure_(name);
     logEvent_('auth.login', name, '', 'NOT_FOUND', '');
     throw new AppError('NOT_FOUND', '명단에서 찾지 못했습니다. 이름과 연락처를 확인하시거나 운영진에게 문의해 주세요.');
   }
@@ -198,8 +175,6 @@ function login_(body) {
   if (!str_(p['참가자ID'])) {
     throw new AppError('SERVER_ERROR', '참가자 ID가 비어 있습니다. 운영진에게 문의해 주세요. (fillParticipantIds 실행 필요)');
   }
-
-  clearFailures_(name);
 
   var issued = issueToken_({ pid: str_(p['참가자ID']) });
   logEvent_('auth.login', str_(p['참가자ID']), '', 'OK', '');

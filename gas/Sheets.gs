@@ -28,7 +28,7 @@ var SHEETS = {
  */
 var COL = {
   AUDIENCE: '캠프 대상',        // 청년부 / 장년부
-  SESSION: '참여 일자',         // 10/24(토) / 10/31(토)  — 캠프 대상과 독립적이다
+  SESSION: '참여 일자',         // 10/31(토) / 11/07(토)  — 캠프 대상과 독립적이다
   NAME: '이름',
   GENDER: '성별',
   AGE: '나이',
@@ -91,7 +91,7 @@ var LEADER_ROLES = ['조장', '스태프', '사역자'];
 
 /**
  * 참여 일자 목록. Config 에서 읽으므로 날짜가 바뀌어도 배포가 필요 없다.
- * 반환: [{ label: '10/24(토)', date: '2026-10-24' }, ...]
+ * 반환: [{ label: '10/31(토)', date: '2026-10-31' }, ...]
  */
 function sessions_() {
   var out = [];
@@ -190,6 +190,11 @@ function invalidateTable_(name) {
   delete __tableCache[name];
 }
 
+/** 헤더를 새로 쓴 뒤(setupSpreadsheet) 호출한다. */
+function invalidateHeaders_() {
+  __headerCache = {};
+}
+
 /**
  * 시트 전체를 객체 배열로 읽는다.
  * 각 객체에는 원본 행 번호가 `__row` 로 붙는다(수정 시 사용).
@@ -231,8 +236,16 @@ function readTable_(name) {
   return out;
 }
 
-/** 헤더 이름 → 1-based 열 번호 맵 */
+/**
+ * 헤더 이름 → 1-based 열 번호 맵.
+ * appendRow_/updateRow_ 가 매번 호출하므로 실행 단위로 캐시한다.
+ * 헤더 행은 요청 중에 바뀌지 않으므로 쓰기 후에도 무효화할 필요가 없다.
+ */
+var __headerCache = {};
+
 function headerIndex_(name) {
+  if (__headerCache[name]) return __headerCache[name];
+
   var sh = getSheet_(name);
   var lastCol = sh.getLastColumn();
   if (lastCol < 1) return {};
@@ -242,6 +255,7 @@ function headerIndex_(name) {
     var h = String(headers[i]).trim();
     if (h) map[h] = i + 1;
   }
+  __headerCache[name] = map;
   return map;
 }
 
@@ -261,13 +275,35 @@ function appendRow_(name, obj) {
   return sh.getLastRow();
 }
 
-/** 특정 행의 일부 컬럼만 갱신한다. */
+/**
+ * 특정 행의 일부 컬럼만 갱신한다.
+ *
+ * 셀마다 setValue() 를 부르면 patch 키 수만큼 스프레드시트 API 를 왕복한다.
+ * (열 11개를 고치는 progress.set 이 11회) 그래서 **바꿀 열들을 감싸는 최소 구간을
+ * 한 번 읽어, 필요한 칸만 갈아 끼운 뒤 setValues() 로 한 번에 쓴다.**
+ * 구간 안의 건드리지 않을 칸은 읽은 값을 그대로 되돌려 쓰므로 내용이 보존된다.
+ */
 function updateRow_(name, rowNumber, patch) {
-  var sh = getSheet_(name);
   var idx = headerIndex_(name);
+
+  var cols = Object.keys(patch)
+    .filter(function (k) { return idx[k]; })
+    .map(function (k) { return idx[k]; });
+  if (!cols.length) return;
+
+  var from = Math.min.apply(null, cols);
+  var to = Math.max.apply(null, cols);
+  var width = to - from + 1;
+
+  var sh = getSheet_(name);
+  var range = sh.getRange(rowNumber, from, 1, width);
+  var row = range.getValues()[0];
+
   Object.keys(patch).forEach(function (k) {
-    if (idx[k]) sh.getRange(rowNumber, idx[k]).setValue(patch[k]);
+    if (idx[k]) row[idx[k] - from] = patch[k];
   });
+
+  range.setValues([row]);
   invalidateTable_(name);
 }
 
@@ -301,10 +337,47 @@ function getConfig_() {
   return conf;
 }
 
+/**
+ * 요청 간 캐시(CacheService) 읽기/쓰기 공용 헬퍼.
+ *
+ * CacheService 는 값 하나당 약 100KB 제한이 있고, 넘으면 **조용히 실패**한다.
+ * 그래서 넣기 전에 크기를 재고, 너무 크면 캐시를 포기하고 매번 계산한다.
+ * (틀린 값을 캐시하는 것보다 느린 편이 낫다.)
+ */
+var CACHE_MAX_BYTES = 90000;
+
+function cacheGet_(key) {
+  try {
+    var hit = CacheService.getScriptCache().get(key);
+    return hit ? JSON.parse(hit) : null;
+  } catch (e) {
+    return null; // 캐시 손상 — 그냥 다시 계산한다
+  }
+}
+
+function cachePut_(key, value, seconds) {
+  try {
+    var json = JSON.stringify(value);
+    if (json.length > CACHE_MAX_BYTES) return false;
+    CacheService.getScriptCache().put(key, json, seconds);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/** 앱이 쓰는 요청 간 캐시 키 전부. 하나라도 늘면 여기에 추가한다. */
+var CACHE_KEYS = ['config_v1', 'bootstrap_v1'];
+
+/** 설정·부트스트랩 캐시를 모두 비운다. 메뉴와 admin.config.set 이 호출한다. */
 function clearConfigCache() {
   __configMemo = null;
   invalidateTable_(SHEETS.CONFIG);
-  CacheService.getScriptCache().remove('config_v1');
+  try {
+    CacheService.getScriptCache().removeAll(CACHE_KEYS);
+  } catch (e) {
+    console.warn('cache clear failed: ' + e);
+  }
 }
 
 function confStr_(key, fallback) {
@@ -361,14 +434,25 @@ function bool_(v) {
  * 반드시 스크립트 락 안에서 호출할 것.
  */
 function nextId_(sheetName, column, prefix, pad) {
+  return padId_(prefix, maxIdNumber_(readTable_(sheetName), column, prefix) + 1, pad);
+}
+
+/** 이미 읽어 둔 행 목록에서 가장 큰 번호를 찾는다. 시트를 다시 읽지 않는다. */
+function maxIdNumber_(rows, column, prefix) {
+  var re = new RegExp('^' + prefix + '(\\d+)$');
   var max = 0;
-  readTable_(sheetName).forEach(function (r) {
-    var m = String(r[column] || '').match(new RegExp('^' + prefix + '(\\d+)$'));
+  rows.forEach(function (r) {
+    var m = String(r[column] || '').match(re);
     if (m) max = Math.max(max, parseInt(m[1], 10));
   });
-  var n = String(max + 1);
-  while (n.length < pad) n = '0' + n;
-  return prefix + n;
+  return max;
+}
+
+/** 번호를 자리수에 맞춰 'P0007' 꼴로 만든다. */
+function padId_(prefix, n, pad) {
+  var s = String(n);
+  while (s.length < pad) s = '0' + s;
+  return prefix + s;
 }
 
 /** 쓰기 작업 직렬화. 동시 요청이 같은 행을 깨뜨리지 않게 한다. */

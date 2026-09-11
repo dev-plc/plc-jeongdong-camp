@@ -16,6 +16,7 @@ function setupSpreadsheet() {
     ensureHeaders_(sh, SCHEMA[logical]);
     sh.setFrozenRows(1);
   });
+  invalidateHeaders_(); // 헤더가 바뀌었으니 열 번호 캐시를 버린다
 
   seedConfig_();
   seedCheckpoints_();
@@ -77,10 +78,10 @@ function seedConfig_() {
   var defaults = [
     ['CAMP_NAME', '정동, 신앙탐험대', '앱 상단 타이틀'],
     ['CAMP_SUBTITLE', 'PLC 성경적세계관 캠프', '부제'],
-    ['SESSION_1', '10/24(토)', '1차 참여 일자 — 명단의 "참여 일자" 표기와 글자까지 같아야 함'],
-    ['SESSION_1_DATE', '2026-10-24', '1차 실제 날짜'],
-    ['SESSION_2', '10/31(토)', '2차 참여 일자'],
-    ['SESSION_2_DATE', '2026-10-31', '2차 실제 날짜'],
+    ['SESSION_1', '10/31(토)', '1차 참여 일자(청년부) — 명단의 "참여 일자" 표기와 글자까지 같아야 함'],
+    ['SESSION_1_DATE', '2026-10-31', '1차 실제 날짜'],
+    ['SESSION_2', '11/07(토)', '2차 참여 일자(장년부)'],
+    ['SESSION_2_DATE', '2026-11-07', '2차 실제 날짜'],
     ['GALLERY_SCOPE', 'ALL', '탐험일지 공개 범위: ALL(전체) / TEAM(같은 조) / SELF(본인만)'],
     ['JOURNAL_REQUIRE_APPROVAL', 'TRUE', 'TRUE면 승인된 일지만 갤러리에 노출'],
     ['JOURNAL_OPEN', 'TRUE', 'FALSE면 일지 작성/수정 차단'],
@@ -88,7 +89,6 @@ function seedConfig_() {
     ['SHOW_FEE', 'TRUE', '회비 상태 화면 노출 여부'],
     ['DRIVE_FOLDER_ID', '', '⚠ 탐험일지 사진이 저장될 Drive 폴더 ID — 반드시 입력'],
     ['TOKEN_TTL_HOURS', '12', '로그인 유지 시간(시간)'],
-    ['LOGIN_MAX_ATTEMPTS', '5', '10분 내 최대 로그인 실패 횟수'],
     ['LOGIN_ALLOW_NAME_DIGITS', 'TRUE',
       '⚠ 연락처가 임시값인 동안만 TRUE. 실제 연락처를 다 채우면 FALSE 로 내릴 것 (명단 점검이 알려줌)'],
     ['PHOTO_MAX_BYTES', '4000000', '사진 1장 최대 바이트'],
@@ -169,7 +169,7 @@ function seedCourses_() {
 
 /**
  * 기획안 4장의 당일 타임라인.
- * 10/24 은 교육(오전)부터, 10/31 은 오후 답사만 진행한다.
+ * 10/31 은 교육(오전)부터, 11/07 은 오후 답사만 진행한다.
  * 확정 시 시트에서 직접 수정하면 앱에 바로 반영된다.
  */
 function seedTimeline_() {
@@ -385,18 +385,44 @@ function block_(out, items, badTitle, okTitle) {
 /** 참가자 ID 가 비어 있는 행에 ID 를 채운다. 명단을 붙여넣기로 옮긴 뒤 실행. */
 function fillParticipantIds() {
   return withLock_(function () {
-    var filled = 0;
-    readTable_(SHEETS.PARTICIPANTS).forEach(function (r) {
-      if (str_(r['참가자ID']) || !str_(r[COL.NAME])) return;
-      var patch = { '참가자ID': nextId_(SHEETS.PARTICIPANTS, '참가자ID', 'P', 4) };
-      if (!str_(r['등록일시'])) patch['등록일시'] = nowIso_();
-      updateRow_(SHEETS.PARTICIPANTS, r.__row, patch);
-      filled++;
+    var rows = readTable_(SHEETS.PARTICIPANTS);
+    var targets = rows.filter(function (r) {
+      return !str_(r['참가자ID']) && str_(r[COL.NAME]);
     });
-    var msg = filled + '건에 참가자ID를 채웠습니다.';
+
+    if (targets.length) {
+      // 다음 번호는 **루프 밖에서 한 번만** 구하고 메모리에서 올린다.
+      // 예전에는 행마다 nextId_ 를 불렀는데, updateRow_ 가 캐시를 무효화하는 바람에
+      // 다음 행에서 명단 전체를 다시 읽었다 — 160명이면 시트 전체 읽기가 160회였다.
+      var seq = maxIdNumber_(rows, '참가자ID', 'P');
+
+      // 대상 행이 흩어져 있어도 한 덩어리로 읽어 고치고 한 번에 되쓴다.
+      var idx = headerIndex_(SHEETS.PARTICIPANTS);
+      var cols = [idx['참가자ID'], idx['등록일시']].filter(function (c) { return c; });
+      var from = Math.min.apply(null, cols);
+      var to = Math.max.apply(null, cols);
+      var first = targets[0].__row;
+      var last = targets[targets.length - 1].__row;
+
+      var range = getSheet_(SHEETS.PARTICIPANTS)
+        .getRange(first, from, last - first + 1, to - from + 1);
+      var block = range.getValues();
+      var now = nowIso_();
+
+      targets.forEach(function (r) {
+        var line = block[r.__row - first];
+        line[idx['참가자ID'] - from] = padId_('P', ++seq, 4);
+        if (idx['등록일시'] && !str_(r['등록일시'])) line[idx['등록일시'] - from] = now;
+      });
+
+      range.setValues(block);
+      invalidateTable_(SHEETS.PARTICIPANTS);
+    }
+
+    var msg = targets.length + '건에 참가자ID를 채웠습니다.';
     console.log(msg);
     alert_(msg);
-    return filled;
+    return targets.length;
   });
 }
 
@@ -443,7 +469,7 @@ function onOpen() {
     .addItem('조 목록 동기화', 'syncTeams')
     .addItem('명단 점검', 'checkDuplicates')
     .addSeparator()
-    .addItem('설정 캐시 비우기', 'clearConfigCache')
+    .addItem('캐시 비우기 (설정·공지·일정)', 'clearConfigCache')
     .addToUi();
 
   // 행정팀 탭 동기화 도구 (MasterSync.gs). 그 파일을 안 넣었으면 조용히 건너뛴다.
