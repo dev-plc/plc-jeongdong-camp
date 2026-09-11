@@ -1,0 +1,8 @@
+# 데모 빌드(tools/build-demo.js)는 아래 파일들을 base64 로 인라인한다.
+# 윈도우에서 CRLF 로 체크아웃되면 같은 그림인데도 base64 문자열이 달라져
+# docs/demo.html 이 기계마다 뒤집힌다. 빌드 입력은 줄바꿈을 LF 로 고정한다.
+*.svg text eol=lf
+*.css text eol=lf
+*.js  text eol=lf
+*.gs  text eol=lf
+*.html text eol=lf
