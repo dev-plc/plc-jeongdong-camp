@@ -19,7 +19,7 @@
  */
 
 /** 탭마다 따로 관리하는 열 — 동기화에서 제외한다. */
-var SYNC_READONLY_HEADERS = ['성별', '나이', '연락처'];
+var SYNC_READONLY_HEADERS = ['성별', '나이', '만나이', '연락처', '핸드폰', '휴대폰', '휴대전화', '전화번호'];
 
 /** 행을 식별하는 기준 열. */
 var SYNC_PRIMARY_KEY = '이름';

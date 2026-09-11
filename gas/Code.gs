@@ -129,13 +129,17 @@ function bootstrap_() {
  * 헤더를 바꾸면(= Sheets.gs 의 COL 을 고치면) 앱 문구도 자동으로 따라간다.
  */
 function labels_() {
+  // 별칭이 걸린 열은 **시트에 실제로 적힌 이름**을 내려보낸다.
+  // 명단에 '핸드폰' 이라 적혀 있으면 화면에도 '핸드폰' 이라고 떠야
+  // 행정팀과 참가자가 같은 말을 쓰게 된다.
+  var h = function (canonical) { return actualHeader_(SHEETS.PARTICIPANTS, canonical); };
   return {
     audience: COL.AUDIENCE,
     session: COL.SESSION,
     name: COL.NAME,
     gender: COL.GENDER,
-    age: COL.AGE,
-    phone: COL.PHONE,
+    age: h(COL.AGE),
+    phone: h(COL.PHONE),
     feeAmount: COL.FEE_AMOUNT,
     feeStatus: COL.FEE_STATUS,
     group: COL.GROUP,

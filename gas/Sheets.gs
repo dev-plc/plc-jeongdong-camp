@@ -42,6 +42,34 @@ var COL = {
   NOTE: '비고'
 };
 
+/**
+ * 마스터시트 표기가 흔들리는 열의 **별칭**.
+ *
+ * 행정팀 실물 시트를 확인해 보니 `연락처` 가 `핸드폰`, `나이` 가 `만나이` 로 적혀 있었다.
+ * 열을 헤더 글자로 찾기 때문에(D-012) 이름이 어긋나면 **에러 없이 빈 값**이 되고,
+ * 하필 `연락처` 는 로그인에서 뒷 4자리를 대조하는 열이라 **로그인이 통째로 막힌다.**
+ *
+ * 한쪽으로 강제하는 대신 양쪽을 모두 인정한다. 시트가 어느 쪽으로 적혀 있든 동작하고,
+ * 앞으로 표기가 또 바뀌어도 여기 한 줄만 늘리면 된다.
+ * 화면 문구는 **시트에 실제로 있는 이름**을 따라간다 (D-013, labels_()).
+ *
+ * 맨 앞이 정식 이름(= COL 값)이고 나머지가 받아 주는 표기다.
+ */
+var COL_ALIASES = {};
+COL_ALIASES[COL.PHONE] = [COL.PHONE, '핸드폰', '휴대폰', '휴대전화', '전화번호'];
+COL_ALIASES[COL.AGE] = [COL.AGE, '만나이', '만 나이'];
+
+/** 시트에 실제로 적힌 헤더 이름을 돌려준다. 못 찾으면 정식 이름 그대로. */
+function actualHeader_(sheetName, canonical) {
+  var alts = COL_ALIASES[canonical];
+  if (!alts) return canonical;
+  var present = headerIndex_(sheetName).__present || {};
+  for (var i = 0; i < alts.length; i++) {
+    if (present[alts[i]]) return alts[i];
+  }
+  return canonical;
+}
+
 /** 각 시트의 헤더 정의. 배열 순서가 setupSpreadsheet() 이 만드는 열 순서다. */
 var SCHEMA = {
   Config: ['키', '값', '설명'],
@@ -230,10 +258,23 @@ function readTable_(name) {
       if (!headers[j]) continue;
       obj[headers[j]] = row[j];
     }
+    // 시트가 '핸드폰' 으로 적어 놨어도 row[COL.PHONE] 로 읽히게 한다.
+    aliasRowKeys_(obj);
     out.push(obj);
   }
   __tableCache[name] = out;
   return out;
+}
+
+/** 별칭으로 적힌 열을 정식 이름으로도 읽을 수 있게 키를 하나 더 단다. */
+function aliasRowKeys_(obj) {
+  Object.keys(COL_ALIASES).forEach(function (canonical) {
+    if (obj[canonical] !== undefined) return;
+    var alts = COL_ALIASES[canonical];
+    for (var i = 0; i < alts.length; i++) {
+      if (obj[alts[i]] !== undefined) { obj[canonical] = obj[alts[i]]; return; }
+    }
+  });
 }
 
 /**
@@ -251,12 +292,30 @@ function headerIndex_(name) {
   if (lastCol < 1) return {};
   var headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
   var map = {};
+  var present = {};
   for (var i = 0; i < headers.length; i++) {
     var h = String(headers[i]).trim();
-    if (h) map[h] = i + 1;
+    if (h) { map[h] = i + 1; present[h] = i + 1; }
   }
+  applyColumnAliases_(map);
+  // 실제로 시트에 적힌 이름만 따로 남긴다(별칭으로 채워 넣은 것과 구분).
+  Object.defineProperty(map, '__present', { value: present, enumerable: false });
   __headerCache[name] = map;
   return map;
+}
+
+/**
+ * 정식 이름이 없고 별칭만 있는 열을, 정식 이름으로도 찾을 수 있게 심어 준다.
+ * 정식 이름이 이미 있으면 건드리지 않는다(시트가 우선).
+ */
+function applyColumnAliases_(map) {
+  Object.keys(COL_ALIASES).forEach(function (canonical) {
+    if (map[canonical]) return;
+    var alts = COL_ALIASES[canonical];
+    for (var i = 0; i < alts.length; i++) {
+      if (map[alts[i]]) { map[canonical] = map[alts[i]]; return; }
+    }
+  });
 }
 
 // ---------------------------------------------------------------- 쓰기

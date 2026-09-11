@@ -59,7 +59,16 @@ function ensureHeaders_(sh, headers) {
   if (existing.filter(String).length === 0) {
     sh.getRange(1, 1, 1, headers.length).setValues([headers]);
   } else {
-    var missing = headers.filter(function (h) { return existing.indexOf(h) < 0; });
+    // 별칭으로 이미 있는 열(`연락처` ↔ `핸드폰`)은 '없는 것'으로 치면 안 된다.
+    // 그대로 덧붙이면 빈 중복 열이 생기고, 값이 없는 쪽이 우선돼 로그인이 조용히 막힌다.
+    var missing = headers.filter(function (h) {
+      if (existing.indexOf(h) >= 0) return false;
+      var alts = COL_ALIASES[h] || [];
+      for (var i = 0; i < alts.length; i++) {
+        if (existing.indexOf(alts[i]) >= 0) return false;
+      }
+      return true;
+    });
     if (missing.length) {
       sh.getRange(1, existing.length + 1, 1, missing.length).setValues([missing]);
     }
