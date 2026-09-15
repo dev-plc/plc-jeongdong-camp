@@ -121,6 +121,13 @@ function onEdit(e) {
       clearConfigCache();
     }
 
+    // Config 탭에서 회차 라벨(SESSION_1/2)을 고치면 5개 탭을 따라 바꾼다.
+    // 이것도 조기 return 앞이어야 한다 — Config 는 앱 탭이다.
+    if (sheetName === SHEETS.CONFIG) {
+      applyScheduleEdit_(e, sheet);
+      return;
+    }
+
     // 앱 전용 탭·원천 탭(DB참조·신규DB·설문지)은 (캐시 무효화 말고는) 손대지 않는다.
     if (isSyncExcludedSheet_(sheetName)) return;
 
@@ -509,4 +516,64 @@ function syncFormToNewDb() {
     say("설문지 응답 중 성도여부가 'X'인 대상자가 없습니다.");
   }
   return rows.length;
+}
+
+// ------------------------------------------------- Config 에서 회차 라벨 변경
+
+/**
+ * `Config` 탭에서 `SESSION_1` / `SESSION_2` 의 **값**을 고치면
+ * 명단·Teams·Timeline·Progress·Journal 다섯 탭의 `참여 일자` 를 따라 바꾼다.
+ *
+ * **왜 자동으로 해야 하나**: `참여 일자` 는 설정값이 아니라 조를 특정하는 키의 일부다(D-011).
+ * Config 만 바뀌면 다섯 탭이 옛 라벨에 묶인 채 남아 **조가 통째로 사라진 것처럼** 보인다.
+ *
+ * **🔴 겹침 방어**: 새 1차 라벨이 옛 2차 라벨과 같은 경우가 실제로 있다
+ * (`10/24·10/31` → `10/31·11/07`). 한 셀씩 고치는 순서가 곧 순차 치환이라,
+ * 1차를 먼저 바꾸면 두 회차가 한 값으로 뭉갠다.
+ * 그래서 **옮겨갈 라벨에 이미 행이 있으면 되돌리고** 순서를 안내한다.
+ * 안내대로 2차부터 바꾸면 충돌 없이 끝난다.
+ */
+function applyScheduleEdit_(e, sheet) {
+  if (!e.range || e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1) return;
+  if (e.oldValue === undefined) return;   // 붙여넣기·삭제 등은 oldValue 가 없다
+
+  var idx = headerIndex_(SHEETS.CONFIG);
+  if (e.range.getColumn() !== idx['값']) return;   // '값' 열이 아니면 무관
+
+  var key = str_(sheet.getRange(e.range.getRow(), idx['키']).getValue());
+  if (key !== 'SESSION_1' && key !== 'SESSION_2') return;
+
+  var from = str_(e.oldValue);
+  var to = str_(e.range.getValue());
+  if (!from || !to || from === to) return;
+
+  var ss = getSpreadsheet_();
+  var targets = [SHEETS.PARTICIPANTS, SHEETS.TEAMS, SHEETS.TIMELINE,
+                 SHEETS.PROGRESS, SHEETS.JOURNAL];
+
+  // 옮겨갈 라벨에 이미 행이 있으면 두 무리가 섞인다. 되돌리고 순서를 알려 준다.
+  var blocked = 0;
+  targets.forEach(function (name) { blocked += countSessionRows_(name, keyedMap_(to)); });
+  if (blocked) {
+    e.range.setValue(from);
+    invalidateTable_(SHEETS.CONFIG);
+    clearConfigCache();
+    var other = key === 'SESSION_1' ? 'SESSION_2' : 'SESSION_1';
+    ss.toast('"' + to + '" 에 이미 ' + blocked + '행이 있어 두 회차가 섞입니다.\n' +
+      other + ' 를 먼저 바꾼 뒤 다시 시도하세요. (값은 되돌렸습니다)', '⚠ 일정 변경 보류', 15);
+    return;
+  }
+
+  var rename = {};
+  rename[from] = to;
+  var changed = 0;
+  targets.forEach(function (name) { changed += renameSessionIn_(name, rename); });
+  clearConfigCache();
+
+  if (changed) {
+    ss.toast(from + ' → ' + to + '  ·  ' + changed + '행을 함께 바꿨습니다.', '✅ 일정 변경', 10);
+  } else {
+    ss.toast('Config 는 바꿨지만 "' + from + '" 로 적힌 행이 없었습니다.\n' +
+      '명단의 참여 일자 표기를 확인해 주세요.', '⚠ 바뀐 행 없음', 10);
+  }
 }
