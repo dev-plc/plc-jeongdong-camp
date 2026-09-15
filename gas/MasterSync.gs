@@ -48,7 +48,16 @@ function onEdit(e) {
     var sheet = e.source.getActiveSheet();
     var sheetName = sheet.getName();
 
-    // 앱 전용 탭은 손대지 않는다.
+    // ── 캐시 무효화는 **아래 조기 return 보다 먼저** 해야 한다. ──────────────
+    // Config·Notices·Timeline·Checkpoints·Courses 는 전부 '앱 전용 탭' 이라
+    // isAppSheet_ 에 걸려 곧바로 빠져나간다. 이 줄을 아래로 내리면
+    // 에러 없이 **아무 일도 일어나지 않고**, 설정 변경이 최대 5분 늦게 반영된다.
+    // (앱이 고치는 경로인 configSet_ 은 스스로 캐시를 비우므로 여기선 사람 편집만 본다.)
+    if (isCachedSourceSheet_(sheetName)) {
+      clearConfigCache();
+    }
+
+    // 앱 전용 탭은 (캐시 무효화 말고는) 손대지 않는다.
     if (isAppSheet_(sheetName)) return;
 
     var range = e.range;

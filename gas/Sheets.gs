@@ -434,6 +434,15 @@ function cachePut_(key, value, seconds) {
 /** 앱이 쓰는 요청 간 캐시 키 전부. 하나라도 늘면 여기에 추가한다. */
 var CACHE_KEYS = ['config_v1', 'bootstrap_v1'];
 
+/**
+ * 위 캐시에 담기는 값의 **원천 탭**.
+ * 이 탭들이 바뀌면 캐시가 낡으므로 즉시 비워야 한다 (onEdit 이 호출한다).
+ */
+function isCachedSourceSheet_(sheetName) {
+  return [SHEETS.CONFIG, SHEETS.NOTICES, SHEETS.TIMELINE,
+          SHEETS.CHECKPOINTS, SHEETS.COURSES].indexOf(sheetName) >= 0;
+}
+
 /** 설정·부트스트랩 캐시를 모두 비운다. 메뉴와 admin.config.set 이 호출한다. */
 function clearConfigCache() {
   __configMemo = null;

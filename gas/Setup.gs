@@ -273,6 +273,7 @@ function checkDuplicates() {
 
   var seen = {};
   var dup = [], missing = [], badSession = [], noLeader = [], courseMismatch = [], badCourse = [];
+  var audienceBySession = {};   // 회차별 부서 분포 — 1:1 원칙과 어긋나는지 보기 위함
 
   // 같은 연락처가 여러 행에 반복되면 아직 채우지 않은 임시값으로 본다.
   var phoneCount = {};
@@ -302,6 +303,14 @@ function checkDuplicates() {
     } else if (sessionList.indexOf(session) < 0) {
       badSession.push('행 ' + r.__row + ' (' + name + '): 참여 일자 "' + session + '" 가 Config 의 SESSION_1/2 와 다름');
     }
+    if (session && sessionList.indexOf(session) >= 0) {
+      var aud = str_(r[COL.AUDIENCE]);
+      if (aud) {
+        if (!audienceBySession[session]) audienceBySession[session] = {};
+        audienceBySession[session][aud] = (audienceBySession[session][aud] || 0) + 1;
+      }
+    }
+
     var course = str_(r[COL.COURSE]);
     if (course && courseNames.indexOf(course) < 0) {
       badCourse.push('행 ' + r.__row + ' (' + name + '): 배정 코스 "' + course + '" 가 Courses 시트에 없음');
@@ -374,6 +383,20 @@ function checkDuplicates() {
   block_(out, badCourse, '⚠ 배정 코스 오타', '✅ 배정 코스 정상');
   block_(out, courseMismatch, '⚠ 조 안에서 배정 코스 불일치', '✅ 조별 배정 코스 일관됨');
   block_(out, noLeader, '⚠ 조장 없는 조', '✅ 모든 조에 조장 있음');
+
+  // 부서=일자 1:1 이 운영 원칙이지만 예외 인원이 있을 수 있다(D-016).
+  // 그래서 **차단이 아니라 알림**이다. 섞였다는 사실만 보여 주고 판단은 사람이 한다.
+  var mixed = [];
+  Object.keys(audienceBySession).forEach(function (session) {
+    var counts = audienceBySession[session];
+    var names = Object.keys(counts);
+    if (names.length <= 1) return;
+    names.sort(function (a, b) { return counts[b] - counts[a]; });
+    var detail = names.map(function (n) { return n + ' ' + counts[n] + '명'; }).join(', ');
+    mixed.push(session + ': ' + detail + '  (주로 ' + names[0] + ')');
+  });
+  block_(out, mixed, 'ℹ 한 회차에 두 부서가 섞여 있음 — 의도한 것이면 무시하세요',
+    '✅ 회차별 부서 단일');
 
   var text = out.join('\n');
   console.log(text);
@@ -464,6 +487,167 @@ function syncTeams() {
  *   (같은 이름이 여러 파일에 있으면 마지막에 로드된 것만 살아남아 다른 메뉴가 조용히 사라진다)
  *   그래서 행정팀 동기화 스크립트의 메뉴도 여기서 함께 만든다 — MasterSync.gs 참고.
  */
+/**
+ * 회차 날짜(참여 일자)를 바꾼다.
+ *
+ * **왜 메뉴로 만들었나**: `seedConfig_` 는 이미 있는 키를 덮어쓰지 않는다.
+ * 그래서 `setupSpreadsheet()` 을 한 번 돌린 뒤에는 코드의 날짜를 아무리 고쳐도
+ * 시트의 SESSION_1/2 는 그대로다. 일정 변경은 **배포가 아니라 운영 작업**이다 (D-021).
+ *
+ * **왜 다섯 탭인가**: 참여 일자는 표시값이 아니라 조를 특정하는 복합키의 한 축이다
+ * (D-011). Config 만 바꾸면 명단·조·일정표·진행·일지가 전부 옛 라벨에 묶인 채 남아
+ * 조가 통째로 사라진 것처럼 보인다.
+ */
+function changeSchedule() {
+  var ui;
+  try {
+    ui = SpreadsheetApp.getUi();
+  } catch (e) {
+    throw new Error('이 기능은 시트 메뉴에서 실행해 주세요.');
+  }
+
+  var cur1 = confStr_('SESSION_1', '');
+  var cur2 = confStr_('SESSION_2', '');
+
+  var next1 = promptFor_(ui, '1차 참여 일자', cur1);
+  if (next1 === null) return;
+  var next1Date = promptFor_(ui, '1차 실제 날짜 (YYYY-MM-DD)', confStr_('SESSION_1_DATE', ''));
+  if (next1Date === null) return;
+  var next2 = promptFor_(ui, '2차 참여 일자', cur2);
+  if (next2 === null) return;
+  var next2Date = promptFor_(ui, '2차 실제 날짜 (YYYY-MM-DD)', confStr_('SESSION_2_DATE', ''));
+  if (next2Date === null) return;
+
+  if (!next1 || !next2) { ui.alert('참여 일자는 둘 다 입력해야 합니다.'); return; }
+  if (next1 === next2) { ui.alert('1차와 2차가 같습니다. 서로 다른 값이어야 합니다.'); return; }
+
+  // 옛 라벨 → 새 라벨. **반드시 이 맵을 한 번만 적용한다.**
+  // 1차를 먼저 치환하고 2차를 치환하면, 새 1차 라벨이 옛 2차 라벨과 같은 경우
+  // (10/24·10/31 → 10/31·11/07 이 정확히 그렇다) 두 회차가 한 값으로 뭉갠다.
+  var rename = {};
+  if (cur1 && cur1 !== next1) rename[cur1] = next1;
+  if (cur2 && cur2 !== next2) rename[cur2] = next2;
+
+  var targets = [SHEETS.PARTICIPANTS, SHEETS.TEAMS, SHEETS.TIMELINE,
+                 SHEETS.PROGRESS, SHEETS.JOURNAL];
+
+  // 되돌리기가 없으므로 바뀔 행 수를 먼저 보여 준다.
+  var counts = targets.map(function (name) {
+    return { name: name, n: countSessionRows_(name, rename) };
+  });
+  var total = counts.reduce(function (a, c) { return a + c.n; }, 0);
+
+  // 옮겨갈 라벨에 **이미 행이 있으면** 두 무리가 한 회차로 합쳐진다.
+  // (예: Timeline 이 이미 새 라벨로 시드돼 있는데 옛 라벨을 그쪽으로 미는 경우)
+  // 조용히 합치면 조가 통째로 뒤섞이므로 반드시 먼저 보여 준다.
+  var collisions = [];
+  targets.forEach(function (name) {
+    Object.keys(rename).forEach(function (from) {
+      var to = rename[from];
+      var n = countSessionRows_(name, keyedMap_(to));
+      if (n) collisions.push('  · ' + name + ': "' + to + '" 에 이미 ' + n + '행이 있습니다');
+    });
+  });
+
+  var lines = ['회차 날짜를 이렇게 바꿉니다.', ''];
+  Object.keys(rename).forEach(function (from) { lines.push('  ' + from + '  →  ' + rename[from]); });
+  if (!Object.keys(rename).length) lines.push('  (참여 일자 라벨은 그대로. 날짜만 갱신합니다)');
+  lines.push('', '바뀌는 행:');
+  counts.forEach(function (c) { lines.push('  · ' + c.name + ': ' + c.n + '행'); });
+  if (total === 0 && Object.keys(rename).length) {
+    lines.push('', '⚠ 바뀔 행이 하나도 없습니다.');
+    lines.push('  명단의 참여 일자 표기가 현재 Config 값과 다를 수 있습니다.');
+    lines.push('  (Config: "' + cur1 + '" / "' + cur2 + '")');
+  }
+  if (collisions.length) {
+    lines.push('', '⚠ 합쳐질 수 있습니다 — 옮겨갈 회차에 이미 행이 있습니다:');
+    collisions.forEach(function (c) { lines.push(c); });
+    lines.push('  두 무리가 한 회차로 섞입니다. 의도한 것인지 확인하세요.');
+  }
+  lines.push('', '되돌리기는 없습니다. 진행할까요?');
+  lines.push('(문제가 생기면 파일 → 버전 기록 으로 되돌릴 수 있습니다)');
+
+  if (ui.alert('일정 변경', lines.join('\n'), ui.ButtonSet.OK_CANCEL) !== ui.Button.OK) return;
+
+  var changed = withLock_(function () {
+    var done = targets.map(function (name) {
+      return { name: name, n: renameSessionIn_(name, rename) };
+    });
+    // allowNew: 키가 지워졌더라도 이 내부 호출은 통과해야 한다(오타 방어는 콘솔 입력용).
+    [['SESSION_1', next1], ['SESSION_1_DATE', next1Date],
+     ['SESSION_2', next2], ['SESSION_2_DATE', next2Date]].forEach(function (kv) {
+      configSet_({ isAdmin: true }, { key: kv[0], value: kv[1], allowNew: true });
+    });
+    return done;
+  });
+
+  clearConfigCache();
+
+  var out = ['✅ 일정을 바꿨습니다.', '',
+             '1차: ' + next1 + ' (' + next1Date + ')',
+             '2차: ' + next2 + ' (' + next2Date + ')', ''];
+  changed.forEach(function (c) { out.push('  · ' + c.name + ': ' + c.n + '행 수정'); });
+  out.push('', '앱에는 즉시 반영됩니다.');
+  ui.alert(out.join('\n'));
+  return changed;
+}
+
+/** 기본값을 채워 보여 주는 입력창. 취소하면 null. */
+function promptFor_(ui, label, current) {
+  var res = ui.prompt(label, '현재: ' + (current || '(비어 있음)') + '\n\n새 값을 입력하세요.',
+    ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return null;
+  var v = str_(res.getResponseText());
+  return v || str_(current);
+}
+
+/** 값 하나만 담은 맵. countSessionRows_ 를 '이 라벨인 행 세기' 로도 쓰기 위한 것. */
+function keyedMap_(label) {
+  var m = {};
+  m[label] = true;
+  return m;
+}
+
+/** 이 탭에서 rename 대상이 되는 행 수를 센다(쓰지 않는다). */
+function countSessionRows_(name, rename) {
+  var idx = headerIndex_(name);
+  if (!idx[COL.SESSION]) return 0;
+  var n = 0;
+  readTable_(name).forEach(function (r) {
+    if (rename[str_(r[COL.SESSION])]) n++;
+  });
+  return n;
+}
+
+/**
+ * 한 탭의 참여 일자 열을 rename 맵대로 바꾼다.
+ * 열 하나만 통째로 읽어 고치고 **setValues 한 번**으로 되쓴다
+ * (행마다 updateRow_ 를 부르면 fillParticipantIds 에서 겪은 전체 재읽기가 반복된다).
+ */
+function renameSessionIn_(name, rename) {
+  var idx = headerIndex_(name);
+  var col = idx[COL.SESSION];
+  if (!col) return 0;
+
+  var sh = getSheet_(name);
+  var lastRow = sh.getLastRow();
+  if (lastRow < 2) return 0;
+
+  var range = sh.getRange(2, col, lastRow - 1, 1);
+  var values = range.getValues();
+  var changed = 0;
+
+  for (var i = 0; i < values.length; i++) {
+    var to = rename[str_(values[i][0])];
+    if (to) { values[i][0] = to; changed++; }
+  }
+  if (changed) {
+    range.setValues(values);
+    invalidateTable_(name);
+  }
+  return changed;
+}
+
 function onOpen() {
   var ui;
   try {
@@ -478,6 +662,7 @@ function onOpen() {
     .addItem('조 목록 동기화', 'syncTeams')
     .addItem('명단 점검', 'checkDuplicates')
     .addSeparator()
+    .addItem('일정 변경 (회차 날짜)', 'changeSchedule')
     .addItem('캐시 비우기 (설정·공지·일정)', 'clearConfigCache')
     .addToUi();
 
