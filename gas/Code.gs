@@ -494,6 +494,47 @@ function feeBoard_(ctx) {
   };
 }
 
+/** 대소문자·언더스코어를 무시하고 가장 비슷한 기존 키를 찾는다. 없으면 빈 문자열. */
+function nearestKey_(key, known) {
+  var norm = function (v) { return String(v).toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+  var target = norm(key);
+  var best = '';
+  var bestScore = 0;
+  known.forEach(function (k) {
+    var c = norm(k);
+    if (c === target) { best = k; bestScore = 999; return; }
+    // 부분문자열 비교로는 **한 글자 누락**(PROGRES_OPEN ← PROGRESS_OPEN)을 못 잡는다.
+    // 가장 흔한 오타가 그것이므로 편집 거리를 쓴다.
+    var d = editDistance_(c, target);
+    var score = 100 - d;
+    if (d <= 2 && score > bestScore) { best = k; bestScore = score; }
+  });
+  return best;
+}
+
+/** 레벤슈타인 거리. 설정 키는 짧아서 이 정도면 충분하다. */
+function editDistance_(a, b) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  var prev = [];
+  for (var j = 0; j <= b.length; j++) prev[j] = j;
+
+  for (var i = 1; i <= a.length; i++) {
+    var cur = [i];
+    for (var k = 1; k <= b.length; k++) {
+      cur[k] = Math.min(
+        prev[k] + 1,                                        // 삭제
+        cur[k - 1] + 1,                                     // 삽입
+        prev[k - 1] + (a.charAt(i - 1) === b.charAt(k - 1) ? 0 : 1)  // 치환
+      );
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
 function configSet_(ctx, body) {
   var key = str_(body.key);
   if (!key) throw new AppError('BAD_REQUEST', '키를 입력해 주세요.');
@@ -502,6 +543,19 @@ function configSet_(ctx, body) {
     var rows = readTable_(SHEETS.CONFIG);
     var target = null;
     rows.forEach(function (r) { if (str_(r['키']) === key) target = r; });
+
+    // 오타로 새 키가 조용히 생기는 것을 막는다.
+    // PROGRESS_OPEN 을 PROGRES_OPEN 으로 잘못 치면 에러 없이 새 행이 생기고
+    // 원래 설정은 그대로 남는다 — "분명히 껐는데 왜 안 꺼지지?" 가 된다.
+    // 일부러 새 키를 넣을 때만 allowNew 로 뚫는다.
+    if (!target && !body.allowNew) {
+      var known = rows.map(function (r) { return str_(r['키']); }).filter(String);
+      var hint = nearestKey_(key, known);
+      throw new AppError('BAD_REQUEST',
+        '없는 설정 키입니다: ' + key +
+        (hint ? '\n혹시 "' + hint + '" 를 찾으셨나요?' : '') +
+        '\n새 키를 정말 추가하려면 allowNew 를 함께 보내세요.');
+    }
 
     if (target) {
       updateRow_(SHEETS.CONFIG, target.__row, { '값': str_(body.value) });
