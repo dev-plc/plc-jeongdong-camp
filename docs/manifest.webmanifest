@@ -1,0 +1,14 @@
+{
+  "name": "정동, 신앙탐험대",
+  "short_name": "신앙탐험대",
+  "description": "PLC 정동 가을캠프 현장 앱",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f2ed",
+  "theme_color": "#984534",
+  "icons": [
+    { "src": "./assets/img/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
