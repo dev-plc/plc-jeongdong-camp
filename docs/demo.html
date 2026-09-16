@@ -1,0 +1,2394 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#984534">
+<meta name="robots" content="noindex, nofollow">
+<title>정동, 신앙탐험대</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+CiAgPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTAiIGZpbGw9IiM5ODQ1MzQiLz4KICA8ZyBmaWxsPSJub25lIiBzdHJva2U9IiNmNmYyZWQiIHN0cm9rZS13aWR0aD0iMi42IiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBzdHJva2UtbGluZWNhcD0icm91bmQiPgogICAgPHBhdGggZD0iTTEwIDQxVjIxbDE0LTkgMTQgOXYyMCIvPgogICAgPHBhdGggZD0iTTcgMjIgMjQgMTFsMTcgMTEiLz4KICAgIDxwYXRoIGQ9Ik0xOCA0MVYzMWE2IDYgMCAwIDEgMTIgMHYxMCIvPgogIDwvZz4KPC9zdmc+Cg==" type="image/svg+xml">
+
+<style>
+/* ==========================================================================
+   PLC 정동 가을캠프 — 신앙탐험대
+   브랜드: 붉은벽돌 #984534 / 회색담벼락 #c2c2c2  (docs-dev/brand/BRAND.md)
+   모바일 우선. 현장에서 한 손으로 쓰는 화면이 기준이다.
+   ========================================================================== */
+
+:root {
+  --brick: #984534;
+  --brick-dark: #7a3729;
+  --brick-light: #b9705f;
+  --wall: #c2c2c2;
+  --paper: #f6f2ed;
+  --paper-2: #fffdfa;
+  --ink: #2c2320;
+  --ink-2: #6b5d57;
+  --line: #e2d9d1;
+  --ok: #3f7d5a;
+  --warn: #b8863b;
+
+  --radius: 14px;
+  --radius-sm: 9px;
+  --shadow: 0 1px 2px rgba(44, 35, 32, .06), 0 8px 24px rgba(44, 35, 32, .06);
+  --font-serif: 'Gowun Batang', 'Nanum Myeongjo', serif;
+  --font-sans: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  --appbar-h: 64px;
+  --tabbar-h: 62px;
+}
+
+* { box-sizing: border-box; }
+
+/* display 를 지정한 요소(.tabbar 의 flex 등)가 [hidden] 을 덮어쓰는 걸 막는다.
+   JS 는 el.hidden 으로만 표시를 토글하므로 이 규칙이 없으면 숨김이 먹지 않는다. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+}
+
+img { max-width: 100%; display: block; }
+a { color: var(--brick); }
+
+/* ------------------------------------------------------------------ 앱바 */
+
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--brick);
+  color: #fff;
+  padding-top: env(safe-area-inset-top);
+}
+.appbar__inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+.appbar__mark { width: 30px; height: 30px; opacity: .95; }
+.appbar__sub {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: .08em;
+  opacity: .82;
+}
+.appbar__title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: .01em;
+}
+.ticker {
+  margin: 0;
+  padding: 7px 18px;
+  background: rgba(0, 0, 0, .16);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ------------------------------------------------------------------ 레이아웃 */
+
+.view {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 18px 16px calc(var(--tabbar-h) + 28px + env(safe-area-inset-bottom));
+}
+body.is-auth .view { padding-bottom: calc(var(--tabbar-h) + 28px + env(safe-area-inset-bottom)); }
+
+.section-head { margin: 4px 2px 14px; }
+.section-head h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 20px;
+}
+
+.loading, .empty {
+  padding: 34px 12px;
+  text-align: center;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+/* ------------------------------------------------------------------ 히어로 (로그인) */
+
+.hero { padding: 28px 6px 18px; text-align: center; }
+.hero__eyebrow { margin: 0 0 8px; font-size: 12px; color: var(--ink-2); letter-spacing: .04em; }
+.hero__title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 32px;
+  color: var(--brick);
+  letter-spacing: .02em;
+}
+.hero__sub { margin: 6px 0 0; font-size: 13px; color: var(--ink-2); }
+
+/* ------------------------------------------------------------------ 카드 */
+
+.card {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px;
+  margin-bottom: 14px;
+}
+.card__title {
+  margin: 0 0 12px;
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 700;
+}
+.card__eyebrow { margin: 0 0 4px; font-size: 12px; color: var(--ink-2); }
+.card__foot {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.card--team { border-left: 5px solid var(--team-color, var(--brick)); }
+.card--form .field:last-of-type { margin-bottom: 18px; }
+
+.kv { margin: 0; display: grid; gap: 8px; }
+.kv > div { display: flex; gap: 12px; font-size: 14px; }
+.kv dt { margin: 0; width: 54px; flex: none; color: var(--ink-2); }
+.kv dd { margin: 0; font-weight: 500; }
+
+/* ------------------------------------------------------------------ 폼 */
+
+.field { display: block; margin-bottom: 14px; }
+.field__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.field__label em { font-style: normal; opacity: .7; font-weight: 400; }
+
+.input {
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 16px; /* iOS 자동 확대 방지 */
+  line-height: 1.5;
+}
+.input:focus {
+  outline: none;
+  border-color: var(--brick);
+  box-shadow: 0 0 0 3px rgba(152, 69, 52, .12);
+}
+textarea.input { resize: vertical; min-height: 96px; }
+
+.seg { display: flex; gap: 8px; }
+.seg__item { flex: 1; position: relative; }
+.seg__item input { position: absolute; opacity: 0; pointer-events: none; }
+.seg__item span {
+  display: block;
+  padding: 11px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  text-align: center;
+  font-size: 14px;
+  cursor: pointer;
+}
+.seg__item span em { display: block; font-style: normal; font-size: 11px; color: var(--ink-2); }
+.seg__item input:checked + span {
+  border-color: var(--brick);
+  background: var(--brick);
+  color: #fff;
+}
+.seg__item input:checked + span em { color: rgba(255, 255, 255, .8); }
+.seg__item input:focus-visible + span { box-shadow: 0 0 0 3px rgba(152, 69, 52, .2); }
+
+.check { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 12px; }
+
+.filepick {
+  display: block;
+  padding: 13px;
+  border: 1px dashed var(--wall);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  text-align: center;
+  font-size: 14px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.filepick--sm { padding: 9px; font-size: 13px; margin-bottom: 8px; }
+
+.photo-preview { margin-top: 10px; }
+.photo-preview img {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  margin-bottom: 8px;
+}
+
+.hint { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-2); }
+.hint--center { text-align: center; }
+
+/* ------------------------------------------------------------------ 버튼 */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .12s, border-color .12s, opacity .12s;
+}
+.btn:disabled { opacity: .55; cursor: default; }
+.btn--primary { background: var(--brick); color: #fff; }
+.btn--primary:not(:disabled):active { background: var(--brick-dark); }
+.btn--ghost { border-color: var(--line); background: #fff; color: var(--ink); }
+.btn--ghost:not(:disabled):active { background: #f2ece6; }
+.btn--danger { background: #a33; color: #fff; }
+.btn--danger-text { color: #a33; }
+.btn--block { width: 100%; }
+.btn--sm { padding: 8px 12px; font-size: 13px; }
+
+/* ------------------------------------------------------------------ 칩 / 배지 */
+
+.chip {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.chip--wait { background: #efe9e3; color: var(--ink-2); }
+.chip--here { background: #f6ecd8; color: var(--warn); }
+.chip--done { background: #e3efe7; color: var(--ok); }
+.chip--reject { background: #f7e3e0; color: #a33; }
+
+.badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--brick);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+/* ------------------------------------------------------------------ 공지 / 타임라인 */
+
+.notice { padding: 12px 0; border-bottom: 1px dashed var(--line); }
+.notice:last-child { border-bottom: 0; padding-bottom: 0; }
+.notice:first-child { padding-top: 0; }
+.notice h3 { margin: 0 0 4px; font-size: 15px; }
+.notice p { margin: 0; font-size: 14px; color: var(--ink-2); }
+.notice--pinned h3::before { content: '📌 '; }
+
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline__row {
+  display: flex;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.timeline__row:last-child { border-bottom: 0; }
+.timeline__time {
+  flex: none;
+  width: 86px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  padding-top: 2px;
+}
+.timeline__body { font-size: 14.5px; }
+.timeline__body em { font-style: normal; font-size: 12.5px; color: var(--ink-2); margin-left: 6px; }
+.timeline__note { display: block; font-size: 12px; color: var(--ink-2); }
+
+/* ------------------------------------------------------------------ 코스 */
+
+.cp {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--wall);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.cp--here { border-left-color: var(--warn); }
+.cp--done { border-left-color: var(--ok); }
+
+.cp__head { display: flex; align-items: flex-start; gap: 11px; }
+.cp__head > div { flex: 1; min-width: 0; }
+.cp__no {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--brick);
+  color: #fff;
+  font-size: 13px;
+  display: grid;
+  place-items: center;
+  margin-top: 2px;
+}
+.cp__name { margin: 0; font-family: var(--font-serif); font-size: 16.5px; }
+.cp__sum { margin: 2px 0 0; font-size: 12.5px; color: var(--ink-2); }
+.cp__desc { margin: 12px 0 0; font-size: 14px; }
+.cp__mission {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  background: #f6f0e8;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+}
+.cp__mission strong { color: var(--brick); margin-right: 4px; }
+.cp__times { margin: 10px 0 0; font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.cp__links { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.cp__hours { font-size: 12px; color: var(--ink-2); }
+.cp__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+.cp__actions .btn { flex: 1; }
+
+/* ------------------------------------------------------------------ 탐험일지 */
+
+.tabs { display: flex; gap: 8px; margin: 4px 0 14px; }
+.tab {
+  flex: 1;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.tab.is-active { background: var(--brick); border-color: var(--brick); color: #fff; }
+
+.grid { display: grid; gap: 12px; }
+@media (min-width: 560px) { .grid { grid-template-columns: 1fr 1fr; } }
+
+.jcard {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.jcard--editing { grid-column: 1 / -1; }
+.jcard__photo { display: block; }
+.jcard__photo img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #eee; }
+.jcard__body { padding: 14px; }
+.jcard__meta { margin: 0 0 6px; font-size: 12px; color: var(--ink-2); }
+.jcard__meta strong { color: var(--ink); font-weight: 500; }
+.jcard__text { margin: 0; font-size: 14px; white-space: normal; }
+.jcard__reject {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: #a33;
+  background: #f9eeec;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+}
+.jcard__actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.jcard__role { font-size: 11.5px; color: var(--ink-2); }
+
+.members { list-style: none; margin: 0; padding: 0; }
+.members li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 14.5px;
+}
+.members li:last-child { border-bottom: 0; }
+.members li > span:first-child { flex: 1; }
+
+.fee { margin: 0 0 6px; }
+
+/* ------------------------------------------------------------------ 탭바 */
+
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  background: var(--paper-2);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar__btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 9px 4px;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.tabbar__icon { font-size: 19px; line-height: 1.2; filter: grayscale(1); opacity: .55; }
+.tabbar__btn.is-active { color: var(--brick); font-weight: 700; }
+.tabbar__btn.is-active .tabbar__icon { filter: none; opacity: 1; }
+
+/* ------------------------------------------------------------------ 토스트 / 모달 */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--tabbar-h) + 18px + env(safe-area-inset-bottom));
+  transform: translate(-50%, 14px);
+  z-index: 60;
+  max-width: min(92vw, 460px);
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: rgba(44, 35, 32, .94);
+  color: #fff;
+  font-size: 13.5px;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s, transform .18s;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast--error { background: #8c2f26; }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(44, 35, 32, .45);
+}
+.modal__panel {
+  width: 100%;
+  max-width: 360px;
+  background: var(--paper-2);
+  border-radius: var(--radius);
+  padding: 22px;
+}
+.modal__msg { margin: 0 0 18px; font-size: 14.5px; }
+.modal__actions { display: flex; gap: 8px; }
+.modal__actions .btn { flex: 1; }
+
+/* ------------------------------------------------------------------ 관리자 */
+
+.admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.admin-table th, .admin-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+.admin-table th { background: #f2ece6; font-weight: 500; color: var(--ink-2); }
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+</style>
+
+<style>
+/* ---- 데모 전용 UI. 실제 앱에는 없는 부분입니다. ---- */
+.demobar {
+  position: fixed; left: 0; right: 0; top: 0; z-index: 90;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  background: #2c2320; color: #fff;
+  font-size: 12px; line-height: 1.4;
+}
+.demobar__tag {
+  padding: 2px 8px; border-radius: 999px;
+  background: rgba(255,255,255,.16); font-weight: 700; letter-spacing: .04em;
+}
+.demobar__label { opacity: .7; margin-left: 4px; }
+.demobar__group { display: flex; gap: 4px; }
+.demobar button {
+  padding: 5px 10px; border: 1px solid rgba(255,255,255,.28); border-radius: 999px;
+  background: none; color: #fff; font-family: inherit; font-size: 12px; cursor: pointer;
+}
+.demobar button.is-on { background: #984534; border-color: #984534; font-weight: 700; }
+.demobar__note { flex-basis: 100%; opacity: .62; font-size: 11px; }
+body { padding-top: var(--demobar-h, 76px); }
+.appbar { top: var(--demobar-h, 76px); }
+@media (max-width: 520px) { .demobar { font-size: 11px; } }
+</style>
+</head>
+<body>
+
+<div class="demobar" id="demobar">
+  <span class="demobar__tag">DEMO</span>
+  <span class="demobar__group">
+    <button type="button" data-mode="participant">참가자 앱</button>
+    <button type="button" data-mode="admin">운영 콘솔</button>
+  </span>
+  <span class="demobar__label">로그인 계정</span>
+  <span class="demobar__group" id="personaGroup">
+    <button type="button" data-persona="leader">조장</button>
+    <button type="button" data-persona="member">일반 참가자</button>
+  </span>
+  <p class="demobar__note" id="demoNote"></p>
+</div>
+
+<header class="appbar">
+  <div class="appbar__inner">
+    <img class="appbar__mark" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsPSLsoJXrj5kg6re864yA6rG07LaVIOyLrOuzvCI+CiAgPCEtLSDsoJXrj5kg6re864yAIOqxtOy2lSjrtonsnYAg67K964+MICsg7JWE7LmY7LC9KeydhCDri6jsiJztmZTtlZwg66eI7YGsLgogICAgICAg7JWx67CUKOu2ieydgCDrsLDqsr0pIOychOyXkCA8aW1nPiDroZwg7Ja57Jy866+A66GcIOyDieydhCDtnbDsg4nsnLzroZwg6rOg7KCV7ZWc64ukLiAtLT4KICA8cGF0aCBkPSJNOCA0NFYxOWwxNi0xMSAxNiAxMXYyNXoiIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iLjE4Ii8+CiAgPHBhdGggZD0iTTggNDRWMTlsMTYtMTEgMTYgMTF2MjUiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSIyLjQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KICA8cGF0aCBkPSJNNCAyMCAyNCA2bDIwIDE0IiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMi40IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KICA8cGF0aCBkPSJNMTYgNDRWMzJhOCA4IDAgMCAxIDE2IDB2MTIiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSIyLjQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KICA8cGF0aCBkPSJNMjQgMjR2Nk0yMSAyN2g2IiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMi4yIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPC9zdmc+Cg==" alt="" aria-hidden="true">
+    <div>
+      <p class="appbar__sub" id="brandSub">PLC 성경적세계관 캠프</p>
+      <h1 class="appbar__title" id="brandTitle">정동, 신앙탐험대</h1>
+    </div>
+  </div>
+  <p class="ticker" id="ticker" hidden></p>
+</header>
+
+<main id="view" class="view">
+  <p class="loading">불러오는 중…</p>
+</main>
+
+<nav class="tabbar" id="tabbar" hidden aria-label="주 메뉴"></nav>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ============================================================
+   가짜 백엔드 — GAS /exec 응답을 흉내 낸다.
+   실제 배포에서는 이 블록이 없고 진짜 서버가 같은 모양으로 응답한다.
+   ============================================================ */
+(function () {
+  'use strict';
+
+  var API = 'https://demo.invalid/exec';
+  window.__DEMO_API = API;
+  window.__DEMO_APPS = {};
+
+  var LABELS = {
+    audience: '캠프 대상', session: '참여 일자', name: '이름',
+    gender: '성별', age: '나이', phone: '연락처',
+    feeAmount: '회비 대상(2만/3만)', feeStatus: '입금 여부',
+    group: '조 배정', role: '역할', insurance: '여행자 보험 가입',
+    course: '배정 코스', note: '비고'
+  };
+
+  var CONFIG = {
+    CAMP_NAME: '정동, 신앙탐험대',
+    CAMP_SUBTITLE: 'PLC 성경적세계관 캠프',
+    GALLERY_SCOPE: 'ALL',
+    JOURNAL_REQUIRE_APPROVAL: true,
+    JOURNAL_OPEN: true,
+    PROGRESS_OPEN: true,
+    SHOW_FEE: true,
+    NOTICE_TICKER: '09:30까지 PL교회 본당 앞으로 모여 주세요'
+  };
+
+  var SESSIONS = [
+    { label: '10/31(토)', date: '2026-10-31' },
+    { label: '11/07(토)', date: '2026-11-07' }
+  ];
+
+  var CHECKPOINTS = [
+    { code: 'CP1', order: 1, name: '배재학당역사박물관',
+      summary: '아펜젤러가 세운 한국 최초의 근대식 중등교육기관',
+      description: '1885년 아펜젤러가 시작한 배재학당의 자리입니다. 근대 교육과 선교가 어떻게 함께 시작되었는지 확인합니다.',
+      mission: '배재학당의 설립 연도와 교훈을 찾아 적어 보세요.',
+      quizUrl: 'https://smore.im/', photoUrl: '', openHours: '10:00–17:00, 월요일 휴관',
+      lat: null, lng: null },
+    { code: 'CP2', order: 2, name: '러시아 공사관과 킹스로드',
+      summary: '아관파천의 현장과 고종이 걸었던 길',
+      description: '구 러시아공사관 탑과 덕수궁으로 이어지는 길입니다. 격동기 조선의 정세와 그 속의 신앙 공동체를 봅니다.',
+      mission: '공사관 건물에서 지금 남아 있는 부분은 어디까지인지 확인해 보세요.',
+      quizUrl: '', photoUrl: '', openHours: '상시 개방', lat: null, lng: null },
+    { code: 'CP3', order: 3, name: '보구여관 터',
+      summary: '한국 최초의 여성 전용 병원이 있던 자리',
+      description: '1887년 스크랜턴이 세운 여성 전용 병원입니다. 의료 선교가 여성의 삶을 어떻게 바꾸었는지 살펴봅니다.',
+      mission: '보구여관이라는 이름의 뜻을 찾아보세요.',
+      quizUrl: '', photoUrl: '', openHours: '', lat: null, lng: null },
+    { code: 'CP4', order: 4, name: '이화여고 박물관',
+      summary: '이화학당에서 시작된 한국 여성 교육의 출발점',
+      description: '메리 스크랜턴이 학생 한 명으로 시작한 이화학당입니다. 심슨기념관에 남은 흔적을 따라갑니다.',
+      mission: '이화학당의 첫 학생 이름을 찾아보세요.',
+      quizUrl: 'https://smore.im/', photoUrl: '', openHours: '10:00–16:00', lat: null, lng: null }
+  ];
+
+  var TIMELINE = {
+    '10/31(토)': [
+      { start: '09:30', end: '09:50', title: '도착 · 등록 · 조편성 확인', place: 'PL교회', note: '명찰/조 배정표 배부' },
+      { start: '09:50', end: '10:20', title: '오프닝 (OT + 찬양)', place: 'PL교회', note: '전체 모임' },
+      { start: '10:20', end: '11:10', title: '강의 1챕터', place: 'PL교회', note: '' },
+      { start: '11:10', end: '11:20', title: '쉬는 시간', place: '', note: '' },
+      { start: '11:20', end: '12:10', title: '강의 2챕터', place: 'PL교회', note: '' },
+      { start: '12:10', end: '12:40', title: '조별 나눔', place: 'PL교회', note: '나눔 질문지 활용' },
+      { start: '12:40', end: '13:30', title: '점심식사', place: 'PL교회 인근', note: '조별 이동/식사' },
+      { start: '13:30', end: '14:00', title: '이동 (노량진역 → 시청역)', place: '지하철 1호선', note: '약 30분' },
+      { start: '14:00', end: '16:10', title: '정동 답사', place: '정동 일대', note: '조별 배정 코스 순서대로' },
+      { start: '16:25', end: '17:00', title: '마무리 모임 — 소감 나눔', place: '인근 카페', note: '' }
+    ],
+    '11/07(토)': [
+      { start: '13:00', end: '13:30', title: '당일 세부일정 OT', place: 'PL교회', note: '등록 & 이름표 배부' },
+      { start: '13:30', end: '14:00', title: '이동 (노량진역 → 시청역)', place: '지하철 1호선', note: '약 30분' },
+      { start: '14:00', end: '16:10', title: '정동 답사', place: '정동 일대', note: '조별 배정 코스 순서대로' },
+      { start: '16:25', end: '17:00', title: '마무리 모임 — 소감 나눔', place: '인근 카페', note: '' }
+    ]
+  };
+
+  var NOTICES = [
+    { id: 'N1', target: '전체', title: '점심 도시락 안내', pinned: true,
+      body: '도시락은 조별로 한 번에 받습니다. 조장이 인원수를 확인해 주세요.', publishedAt: '2026-10-20T09:00:00+09:00' },
+    { id: 'N2', target: '10/31(토)', title: '교통카드 지참', pinned: false,
+      body: '지하철 이동이 있습니다. 교통카드를 꼭 챙겨 주세요.', publishedAt: '2026-10-19T09:00:00+09:00' }
+  ];
+
+  // ---- 사람 / 조 -------------------------------------------------------
+  var PEOPLE = {
+    leader: {
+      participant: { id: 'P0002', name: '김캠티', audience: '청년부', session: '10/31(토)',
+                     role: '조장', group: '1조', feeStatus: '완납', insurance: '가입완료' },
+      team: { session: '10/31(토)', group: '1조', name: '1조 배재', color: '#984534',
+              leaderName: '김캠티', meetingPoint: 'PL교회 본당 앞',
+              course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'] },
+      isLeader: true, isAdmin: false,
+      members: [
+        { id: 'P0002', name: '김캠티', role: '조장', feeStatus: '완납', insurance: '가입완료' },
+        { id: 'P0001', name: '이승천', role: '일반', feeStatus: '미납', insurance: '미가입' },
+        { id: 'P0007', name: '한지민', role: '일반', feeStatus: '완납', insurance: '가입완료' },
+        { id: 'P0008', name: '오세훈', role: '일반', feeStatus: '완납', insurance: '가입완료' }
+      ]
+    },
+    member: {
+      participant: { id: 'P0001', name: '이승천', audience: '청년부', session: '10/31(토)',
+                     role: '일반', group: '1조', feeStatus: '미납', insurance: '미가입' },
+      team: { session: '10/31(토)', group: '1조', name: '1조 배재', color: '#984534',
+              leaderName: '김캠티', meetingPoint: 'PL교회 본당 앞',
+              course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'] },
+      isLeader: false, isAdmin: false,
+      members: []
+    }
+  };
+
+  function persona() {
+    try { return sessionStorage.getItem('demo_persona') || 'leader'; } catch (e) { return 'leader'; }
+  }
+  function me() { return PEOPLE[persona()] || PEOPLE.leader; }
+
+  // ---- 가변 상태 -------------------------------------------------------
+  var progress = [
+    { checkpoint: 'CP3', visitOrder: 1, status: '완료', arrivedAt: '2026-10-31T14:00:00+09:00',
+      completedAt: '2026-10-31T14:24:00+09:00', score: 9, memo: '' },
+    { checkpoint: 'CP4', visitOrder: 2, status: '도착', arrivedAt: '2026-10-31T14:36:00+09:00',
+      completedAt: '', score: null, memo: '' },
+    { checkpoint: 'CP1', visitOrder: 3, status: '대기', arrivedAt: '', completedAt: '', score: null, memo: '' },
+    { checkpoint: 'CP2', visitOrder: 4, status: '대기', arrivedAt: '', completedAt: '', score: null, memo: '' }
+  ];
+
+  var seq = 100;
+  var journals = [
+    { id: 'J0001', session: '10/31(토)', group: '1조', authorId: 'P0007', authorName: '한지민',
+      checkpoint: 'CP3', text: '보구여관 터 표석 앞에서. 병원이 있던 자리라는 걸 안내판을 보고서야 알았다.\n이름의 뜻이 "여성을 널리 구제한다"라는 게 오래 남는다.',
+      photoUrl: '', status: '승인', rejectReason: '',
+      createdAt: '2026-10-31T14:20:00+09:00', updatedAt: '' },
+    { id: 'J0002', session: '10/31(토)', group: '1조', authorId: 'P0008', authorName: '오세훈',
+      checkpoint: 'CP4', text: '심슨기념관 계단. 학생 한 명으로 시작했다는 이야기가 계속 맴돈다.',
+      photoUrl: '', status: '승인', rejectReason: '',
+      createdAt: '2026-10-31T14:52:00+09:00', updatedAt: '' },
+    { id: 'J0003', session: '10/31(토)', group: '2조', authorId: 'P0011', authorName: '박서준',
+      checkpoint: 'CP1', text: '배재학당 교훈을 찾았다. 欲爲大者 當爲人役 — 크고자 하거든 남을 섬기라.',
+      photoUrl: '', status: '승인', rejectReason: '',
+      createdAt: '2026-10-31T14:05:00+09:00', updatedAt: '' },
+    { id: 'J0004', session: '10/31(토)', group: '3조', authorId: 'P0015', authorName: '최유나',
+      checkpoint: 'CP2', text: '킹스로드를 걸으며. 고종이 걸었던 길이라는 게 실감이 안 난다.',
+      photoUrl: '', status: '대기', rejectReason: '',
+      createdAt: '2026-10-31T15:10:00+09:00', updatedAt: '' }
+  ];
+
+  function decorate(j) {
+    var m = me();
+    var mine = j.authorId === m.participant.id;
+    var sameTeam = j.session === m.participant.session && j.group === m.participant.group;
+    return Object.assign({}, j, {
+      isMine: mine,
+      canEdit: mine || (m.isLeader && sameTeam)
+    });
+  }
+
+  function galleryList() {
+    var m = me();
+    return journals
+      .filter(function (j) { return j.status !== '삭제'; })
+      .filter(function (j) { return j.status === '승인' || j.authorId === m.participant.id; })
+      .filter(function (j) { return j.session === m.participant.session; })
+      .map(decorate);
+  }
+
+  // ---- 라우팅 ----------------------------------------------------------
+  function handle(body) {
+    switch (body.action) {
+      case 'bootstrap':
+        return { config: CONFIG, labels: LABELS, sessions: SESSIONS, checkpoints: CHECKPOINTS,
+                 notices: NOTICES, timeline: TIMELINE, serverTime: '2026-10-31T14:40:00+09:00' };
+
+      case 'auth.login': {
+        var m = me();
+        if (String(body.phoneLast4 || '').length !== 4) {
+          return { __error: { code: 'BAD_REQUEST', message: '연락처 뒷 4자리를 입력해 주세요.' } };
+        }
+        return { token: 'demo-token', expiresAt: '',
+                 me: Object.assign({}, m, { sessionCorrected: false }) };
+      }
+
+      case 'me': return Object.assign({}, me(), { isAdmin: false });
+
+      case 'progress.list': return progress;
+
+      case 'progress.set':
+        if (!me().isLeader) return { __error: { code: 'FORBIDDEN', message: '조장만 기록할 수 있습니다.' } };
+        progress = progress.map(function (p) {
+          if (p.checkpoint !== body.checkpoint) return p;
+          var now = '2026-10-31T15:0' + (seq++ % 10) + ':00+09:00';
+          return Object.assign({}, p, {
+            status: body.status,
+            arrivedAt: body.status === '대기' ? '' : (p.arrivedAt || now),
+            completedAt: body.status === '완료' ? (p.completedAt || now) : (body.status === '대기' ? '' : p.completedAt)
+          });
+        });
+        return progress;
+
+      case 'journal.list': {
+        var m2 = me();
+        var items;
+        if (body.scope === 'mine') {
+          items = journals.filter(function (j) { return j.authorId === m2.participant.id && j.status !== '삭제'; }).map(decorate);
+        } else if (body.scope === 'team') {
+          if (!m2.isLeader) return { __error: { code: 'FORBIDDEN', message: '조장만 볼 수 있습니다.' } };
+          items = journals.filter(function (j) {
+            return j.group === m2.participant.group && j.session === m2.participant.session && j.status !== '삭제';
+          }).map(decorate);
+        } else {
+          items = galleryList();
+        }
+        return { items: items, total: items.length, nextCursor: null,
+                 galleryScope: CONFIG.GALLERY_SCOPE, requiresApproval: CONFIG.JOURNAL_REQUIRE_APPROVAL };
+      }
+
+      case 'journal.create': {
+        var m3 = me();
+        if (!body.text && !body.photo) {
+          return { __error: { code: 'BAD_REQUEST', message: '소감이나 사진 중 하나는 있어야 합니다.' } };
+        }
+        var created = {
+          id: 'J' + (++seq), session: m3.participant.session, group: m3.participant.group,
+          authorId: m3.participant.id, authorName: m3.participant.name,
+          checkpoint: body.checkpoint || '', text: body.text || '',
+          photoUrl: body.photo ? ('data:' + body.photo.mimeType + ';base64,' + body.photo.dataBase64) : '',
+          status: CONFIG.JOURNAL_REQUIRE_APPROVAL ? '대기' : '승인', rejectReason: '',
+          createdAt: '2026-10-31T15:30:00+09:00', updatedAt: ''
+        };
+        journals = [created].concat(journals);
+        return decorate(created);
+      }
+
+      case 'journal.update': {
+        var target = journals.filter(function (j) { return j.id === body.id; })[0];
+        if (!target) return { __error: { code: 'NOT_FOUND', message: '해당 일지를 찾을 수 없습니다.' } };
+        if (!decorate(target).canEdit) {
+          return { __error: { code: 'FORBIDDEN', message: '본인 또는 조장, 관리자만 수정할 수 있습니다.' } };
+        }
+        if (body.text !== undefined) target.text = body.text;
+        if (body.checkpoint !== undefined) target.checkpoint = body.checkpoint;
+        if (body.removePhoto) target.photoUrl = '';
+        if (body.photo) target.photoUrl = 'data:' + body.photo.mimeType + ';base64,' + body.photo.dataBase64;
+        if (!target.text && !target.photoUrl) {
+          return { __error: { code: 'BAD_REQUEST', message: '소감이나 사진 중 하나는 남겨야 합니다.' } };
+        }
+        if (CONFIG.JOURNAL_REQUIRE_APPROVAL && target.status === '승인') target.status = '대기';
+        return decorate(target);
+      }
+
+      case 'journal.delete':
+        journals = journals.filter(function (j) { return j.id !== body.id; });
+        return { id: body.id, status: '삭제' };
+
+      case 'fee.status': {
+        var m4 = me();
+        return { me: { status: m4.participant.feeStatus }, members: m4.isLeader
+          ? m4.members.map(function (x) { return { id: x.id, name: x.name, status: x.feeStatus }; })
+          : [] };
+      }
+
+      // ---- 관리자 --------------------------------------------------------
+      case 'admin.login':
+        if (String(body.pin) !== '000000') {
+          return { __error: { code: 'UNAUTHORIZED', message: 'PIN 이 올바르지 않습니다. (데모 PIN: 000000)' } };
+        }
+        return { token: 'demo-admin-token', expiresAt: '', isAdmin: true };
+
+      case 'admin.journal.pending': {
+        var pending = journals.filter(function (j) { return j.status === '대기'; })
+          .map(function (j) { return Object.assign({}, j, { isMine: false, canEdit: true }); });
+        return { items: pending, total: pending.length };
+      }
+
+      case 'admin.journal.review': {
+        var t2 = journals.filter(function (j) { return j.id === body.id; })[0];
+        if (!t2) return { __error: { code: 'NOT_FOUND', message: '찾을 수 없습니다.' } };
+        t2.status = body.decision;
+        t2.rejectReason = body.decision === '반려' ? (body.reason || '') : '';
+        return Object.assign({}, t2, { isMine: false, canEdit: true });
+      }
+
+      case 'admin.journal.delete':
+        journals = journals.filter(function (j) { return j.id !== body.id; });
+        return { id: body.id, status: '삭제' };
+
+      case 'admin.progress.board':
+        return {
+          checkpoints: CHECKPOINTS.map(function (c) { return { code: c.code, name: c.name }; }),
+          teams: [
+            { session: '10/31(토)', group: '1조', audience: '청년부', name: '1조 배재', leaderName: '김캠티', memberCount: 4,
+              course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'],
+              cells: {
+                CP3: { status: '완료', arrivedAt: '2026-10-31T14:00:00+09:00', completedAt: '2026-10-31T14:24:00+09:00', score: 9 },
+                CP4: { status: '도착', arrivedAt: '2026-10-31T14:36:00+09:00', completedAt: '', score: null }
+              } },
+            { session: '10/31(토)', group: '2조', audience: '청년부', name: '2조 정동', leaderName: '윤지한', memberCount: 5,
+              course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'],
+              cells: {
+                CP1: { status: '완료', arrivedAt: '2026-10-31T14:02:00+09:00', completedAt: '2026-10-31T14:26:00+09:00', score: 10 },
+                CP2: { status: '완료', arrivedAt: '2026-10-31T14:38:00+09:00', completedAt: '2026-10-31T15:00:00+09:00', score: 8 },
+                CP3: { status: '도착', arrivedAt: '2026-10-31T15:12:00+09:00', completedAt: '', score: null }
+              } },
+            { session: '10/31(토)', group: '3조', audience: '청년부', name: '3조 이화', leaderName: '박민수', memberCount: 5,
+              course: 'B코스(러시아 시작)', route: ['CP2', 'CP3', 'CP4', 'CP1'], cells: {} },
+            { session: '11/07(토)', group: '1조', audience: '장년부', name: '1조', leaderName: '이휘영', memberCount: 6,
+              course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'], cells: {} }
+          ]
+        };
+
+      case 'admin.fee.board':
+        return {
+          summary: { 완납: 14, 미납: 4, 면제: 1, 합계: 19, 예상수입: 460000, 수납액: 340000 },
+          teams: [
+            { label: '10/31(토) 1조', session: '10/31(토)', group: '1조', audience: '청년부', 완납: 3, 미납: 1, 면제: 0, 미가입: 1, unpaid: ['이승천'] },
+            { label: '10/31(토) 2조', session: '10/31(토)', group: '2조', audience: '청년부', 완납: 4, 미납: 1, 면제: 0, 미가입: 0, unpaid: ['정하늘'] },
+            { label: '10/31(토) 3조', session: '10/31(토)', group: '3조', audience: '청년부', 완납: 4, 미납: 1, 면제: 0, 미가입: 2, unpaid: ['강도현'] },
+            { label: '11/07(토) 1조', session: '11/07(토)', group: '1조', audience: '장년부', 완납: 3, 미납: 1, 면제: 1, 미가입: 0, unpaid: ['서지우'] }
+          ]
+        };
+
+      case 'admin.config.set':
+        CONFIG[body.key] = body.value === 'TRUE' ? true : (body.value === 'FALSE' ? false : body.value);
+        return {
+          CAMP_NAME: CONFIG.CAMP_NAME, CAMP_SUBTITLE: CONFIG.CAMP_SUBTITLE,
+          GALLERY_SCOPE: CONFIG.GALLERY_SCOPE, JOURNAL_REQUIRE_APPROVAL: CONFIG.JOURNAL_REQUIRE_APPROVAL,
+          JOURNAL_OPEN: CONFIG.JOURNAL_OPEN, PROGRESS_OPEN: CONFIG.PROGRESS_OPEN,
+          SHOW_FEE: CONFIG.SHOW_FEE, NOTICE_TICKER: CONFIG.NOTICE_TICKER
+        };
+
+      default:
+        return { __error: { code: 'BAD_REQUEST', message: '알 수 없는 요청: ' + body.action } };
+    }
+  }
+
+  // fetch 만 가로챈다. 앱 코드는 손대지 않는다.
+  var realFetch = window.fetch ? window.fetch.bind(window) : null;
+  window.fetch = function (url, options) {
+    if (String(url) !== API) {
+      return realFetch ? realFetch(url, options) : Promise.reject(new Error('offline'));
+    }
+    var body = {};
+    try { body = JSON.parse((options && options.body) || '{}'); } catch (e) { /* 무시 */ }
+    var data = handle(body);
+    var payload = (data && data.__error) ? { ok: false, error: data.__error } : { ok: true, data: data };
+    return new Promise(function (resolve) {
+      setTimeout(function () {
+        resolve({ ok: true, text: function () { return Promise.resolve(JSON.stringify(payload)); } });
+      }, 160); // 실제 GAS 왕복 느낌을 살짝 흉내
+    });
+  };
+})();
+</script>
+
+<script>
+window.APP_CONFIG = {
+  API_BASE: window.__DEMO_API,
+  TOKEN_KEY: 'plc_jd_token',
+  SESSION_KEY: 'plc_jd_session',
+  PHOTO_MAX_EDGE: 1600,
+  PHOTO_QUALITY: 0.8,
+  BOOTSTRAP_TTL: 1
+};
+</script>
+
+<script>
+/**
+ * api.js — GAS 웹앱 통신 계층
+ *
+ * CORS: GAS 는 응답 헤더를 지정할 수 없어 preflight 를 통과시키지 못한다.
+ * Content-Type 을 text/plain 으로 보내 "단순 요청"으로 만들면 preflight 없이 통과한다.
+ * application/json 으로 바꾸면 즉시 깨진다.
+ */
+(function (global) {
+  'use strict';
+
+  var CFG = global.APP_CONFIG;
+
+  function getToken() {
+    try { return localStorage.getItem(CFG.TOKEN_KEY) || ''; } catch (e) { return ''; }
+  }
+  function setToken(token) {
+    try {
+      if (token) localStorage.setItem(CFG.TOKEN_KEY, token);
+      else localStorage.removeItem(CFG.TOKEN_KEY);
+    } catch (e) { /* 시크릿 모드 등 */ }
+  }
+
+  function ApiError(code, message) {
+    this.name = 'ApiError';
+    this.code = code;
+    this.message = message;
+  }
+  ApiError.prototype = Object.create(Error.prototype);
+
+  /** 액션 호출. 인증이 필요한 액션은 토큰을 자동으로 실어 보낸다. */
+  function call(action, payload, options) {
+    var opts = options || {};
+    var body = Object.assign({ action: action }, payload || {});
+    if (!opts.anonymous && !body.token) {
+      var t = getToken();
+      if (t) body.token = t;
+    }
+
+    if (!CFG.API_BASE || CFG.API_BASE.indexOf('REPLACE_WITH') >= 0) {
+      return Promise.reject(new ApiError(
+        'SERVER_ERROR',
+        '아직 서버 주소가 설정되지 않았습니다. (docs/assets/js/config.js 의 API_BASE)'
+      ));
+    }
+
+    return fetch(CFG.API_BASE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body),
+      redirect: 'follow'
+    })
+      .then(function (res) { return res.text(); })
+      .then(function (text) {
+        var json;
+        try {
+          json = JSON.parse(text);
+        } catch (e) {
+          // GAS 가 오류 HTML 을 돌려주는 경우(권한/배포 문제)
+          throw new ApiError('SERVER_ERROR', '서버 응답을 읽지 못했습니다. 배포 설정을 확인해 주세요.');
+        }
+        if (!json.ok) {
+          var err = json.error || {};
+          if (err.code === 'UNAUTHORIZED') setToken('');
+          throw new ApiError(err.code || 'SERVER_ERROR', err.message || '오류가 발생했습니다.');
+        }
+        return json.data;
+      })
+      .catch(function (e) {
+        if (e instanceof ApiError) throw e;
+        throw new ApiError('SERVER_ERROR', '네트워크 연결을 확인해 주세요.');
+      });
+  }
+
+  /** bootstrap 은 공개 데이터라 sessionStorage 에 잠깐 캐시한다. */
+  function bootstrap(force) {
+    var KEY = 'plc_jd_bootstrap';
+    if (!force) {
+      try {
+        var raw = sessionStorage.getItem(KEY);
+        if (raw) {
+          var cached = JSON.parse(raw);
+          if (Date.now() - cached.at < CFG.BOOTSTRAP_TTL) return Promise.resolve(cached.data);
+        }
+      } catch (e) { /* 캐시 없음 */ }
+    }
+    return call('bootstrap', {}, { anonymous: true }).then(function (data) {
+      try { sessionStorage.setItem(KEY, JSON.stringify({ at: Date.now(), data: data })); } catch (e) { /* 무시 */ }
+      return data;
+    });
+  }
+
+  global.API = {
+    call: call,
+    bootstrap: bootstrap,
+    getToken: getToken,
+    setToken: setToken,
+    ApiError: ApiError,
+
+    login: function (session, name, phoneLast4) {
+      return call('auth.login', { session: session, name: name, phoneLast4: phoneLast4 }, { anonymous: true })
+        .then(function (data) { setToken(data.token); return data; });
+    },
+    logout: function () {
+      setToken('');
+      try { sessionStorage.clear(); } catch (e) { /* 무시 */ }
+    },
+    me: function () { return call('me'); },
+    progressList: function () { return call('progress.list'); },
+    progressSet: function (checkpoint, status, score, memo) {
+      return call('progress.set', { checkpoint: checkpoint, status: status, score: score, memo: memo });
+    },
+    journalList: function (scope, cursor, limit) {
+      return call('journal.list', { scope: scope, cursor: cursor || 0, limit: limit || 30 });
+    },
+    journalCreate: function (payload) { return call('journal.create', payload); },
+    journalUpdate: function (payload) { return call('journal.update', payload); },
+    journalDelete: function (id) { return call('journal.delete', { id: id }); },
+    feeStatus: function () { return call('fee.status'); }
+  };
+})(window);
+
+</script>
+<script>
+/**
+ * ui.js — DOM / 토스트 / 다이얼로그 / 사진 리사이즈 유틸
+ */
+(function (global) {
+  'use strict';
+
+  var CFG = global.APP_CONFIG;
+
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+
+  /** 문자열을 HTML 에 안전하게 넣기 위한 이스케이프. 사용자 입력은 전부 이걸 통과시킨다. */
+  function esc(value) {
+    return String(value === null || value === undefined ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+    }
+
+  /** 줄바꿈을 <br> 로. 반드시 esc() 이후에 쓴다. */
+  function nl2br(escaped) {
+    return String(escaped).replace(/\n/g, '<br>');
+  }
+
+  var toastTimer = null;
+  function toast(message, kind) {
+    var el = $('#toast');
+    if (!el) return;
+    el.textContent = message;
+    el.className = 'toast show' + (kind ? ' toast--' + kind : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.className = 'toast'; }, 3200);
+  }
+
+  /** window.confirm 대체. Promise<boolean> */
+  function confirmDialog(message, confirmLabel) {
+    return new Promise(function (resolve) {
+      var wrap = document.createElement('div');
+      wrap.className = 'modal';
+      wrap.innerHTML =
+        '<div class="modal__panel" role="dialog" aria-modal="true">' +
+        '<p class="modal__msg">' + nl2br(esc(message)) + '</p>' +
+        '<div class="modal__actions">' +
+        '<button type="button" class="btn btn--ghost" data-act="cancel">취소</button>' +
+        '<button type="button" class="btn btn--danger" data-act="ok">' + esc(confirmLabel || '확인') + '</button>' +
+        '</div></div>';
+      document.body.appendChild(wrap);
+
+      function close(result) {
+        wrap.remove();
+        document.removeEventListener('keydown', onKey);
+        resolve(result);
+      }
+      function onKey(e) { if (e.key === 'Escape') close(false); }
+
+      wrap.addEventListener('click', function (e) {
+        var act = e.target.getAttribute('data-act');
+        if (act === 'ok') close(true);
+        else if (act === 'cancel' || e.target === wrap) close(false);
+      });
+      document.addEventListener('keydown', onKey);
+      wrap.querySelector('[data-act="ok"]').focus();
+    });
+  }
+
+  function setBusy(button, busy, busyLabel) {
+    if (!button) return;
+    if (busy) {
+      button.dataset.label = button.textContent;
+      button.textContent = busyLabel || '처리 중…';
+      button.disabled = true;
+    } else {
+      if (button.dataset.label) button.textContent = button.dataset.label;
+      button.disabled = false;
+    }
+  }
+
+  /**
+   * 사진을 업로드 전에 줄인다.
+   * 원본 그대로 보내면 GAS 요청 한도와 Drive 용량을 금방 먹고, 현장 LTE 에서 업로드가 느리다.
+   * 긴 변 PHOTO_MAX_EDGE px, JPEG 품질 PHOTO_QUALITY 로 맞춘다.
+   */
+  function resizePhoto(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file || !/^image\//.test(file.type)) {
+        reject(new Error('이미지 파일만 올릴 수 있습니다.'));
+        return;
+      }
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+
+      img.onload = function () {
+        var maxEdge = CFG.PHOTO_MAX_EDGE;
+        var scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+        var w = Math.round(img.width * scale);
+        var h = Math.round(img.height * scale);
+
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+
+        var dataUrl = canvas.toDataURL('image/jpeg', CFG.PHOTO_QUALITY);
+        var base64 = dataUrl.split(',')[1];
+        resolve({
+          name: file.name || 'photo.jpg',
+          mimeType: 'image/jpeg',
+          dataBase64: base64,
+          previewUrl: dataUrl,
+          approxBytes: Math.round(base64.length * 0.75)
+        });
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        reject(new Error('사진을 읽지 못했습니다. 다른 사진으로 시도해 주세요.'));
+      };
+      img.src = url;
+    });
+  }
+
+  /** '2026-10-31T14:05:00+09:00' → '14:05' */
+  function hhmm(iso) {
+    if (!iso) return '';
+    var m = String(iso).match(/T(\d{2}):(\d{2})/);
+    return m ? m[1] + ':' + m[2] : '';
+  }
+
+  /** '2026-10-31T14:05:00+09:00' → '10월 31일 14:05' */
+  function prettyDateTime(iso) {
+    if (!iso) return '';
+    var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    if (!m) return String(iso);
+    return Number(m[2]) + '월 ' + Number(m[3]) + '일 ' + m[4] + ':' + m[5];
+  }
+
+  global.UI = {
+    $: $, $$: $$, esc: esc, nl2br: nl2br,
+    toast: toast, confirmDialog: confirmDialog, setBusy: setBusy,
+    resizePhoto: resizePhoto, hhmm: hhmm, prettyDateTime: prettyDateTime
+  };
+})(window);
+
+</script>
+<script>
+/**
+ * app.js — 참가자 앱 화면 로직
+ *
+ * 화면: 로그인 / 홈 / 코스 / 탐험일지 / 내정보
+ * 서버 통신은 전부 API.* 를 거친다. 권한 판단은 서버가 최종이며,
+ * 여기서 버튼을 숨기는 건 편의일 뿐 보안 경계가 아니다.
+ */
+(function () {
+  'use strict';
+
+  var $ = UI.$, esc = UI.esc, nl2br = UI.nl2br, toast = UI.toast;
+
+  /**
+   * 항목 이름은 서버가 내려주는 마스터시트 헤더를 그대로 쓴다.
+   * 행정팀이 시트에서 부르는 이름과 앱 문구를 일치시키기 위해서다(bootstrap.labels).
+   */
+  function L(key, fallback) {
+    var labels = (state.boot && state.boot.labels) || {};
+    return labels[key] || fallback;
+  }
+
+  var state = {
+    boot: null,          // bootstrap 응답 (config / checkpoints / notices / timeline)
+    me: null,            // me 응답
+    view: 'home',
+    progress: [],
+    journal: { items: [], total: 0, nextCursor: null, scope: 'gallery' },
+    fee: null,
+    pendingPhoto: null,  // 작성 폼에 붙인 사진
+    editing: null        // 수정 중인 일지 id
+  };
+
+  // ------------------------------------------------------------ 부팅
+
+  function init() {
+    bindChrome();
+    API.bootstrap()
+      .then(function (boot) {
+        state.boot = boot;
+        applyBrand(boot.config);
+        return API.getToken() ? API.me() : null;
+      })
+      .then(function (me) {
+        state.me = me;
+        render();
+      })
+      .catch(function (err) {
+        state.me = null;
+        render();
+        if (err.code !== 'UNAUTHORIZED') toast(err.message, 'error');
+      });
+  }
+
+  function applyBrand(config) {
+    if (!config) return;
+    document.title = config.CAMP_NAME + ' · ' + config.CAMP_SUBTITLE;
+    $('#brandTitle').textContent = config.CAMP_NAME;
+    $('#brandSub').textContent = config.CAMP_SUBTITLE;
+
+    var ticker = $('#ticker');
+    if (config.NOTICE_TICKER) {
+      ticker.textContent = config.NOTICE_TICKER;
+      ticker.hidden = false;
+    } else {
+      ticker.hidden = true;
+    }
+  }
+
+  function bindChrome() {
+    $('#tabbar').addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-view]');
+      if (!btn) return;
+      go(btn.getAttribute('data-view'));
+    });
+  }
+
+  function go(view) {
+    state.view = view;
+    state.editing = null;
+    render();
+  }
+
+  // ------------------------------------------------------------ 렌더 진입점
+
+  function render() {
+    var loggedIn = !!state.me;
+    $('#tabbar').hidden = !loggedIn;
+    document.body.classList.toggle('is-auth', loggedIn);
+
+    if (!loggedIn) {
+      renderLogin();
+      return;
+    }
+    UI.$$('#tabbar [data-view]').forEach(function (b) {
+      b.classList.toggle('is-active', b.getAttribute('data-view') === state.view);
+    });
+
+    if (state.view === 'home') renderHome();
+    else if (state.view === 'course') renderCourse();
+    else if (state.view === 'journal') renderJournal();
+    else if (state.view === 'me') renderMe();
+  }
+
+  function setView(html) {
+    $('#view').innerHTML = html;
+    $('#view').scrollTop = 0;
+  }
+
+  // ------------------------------------------------------------ 로그인
+
+  function renderLogin() {
+    var c = (state.boot && state.boot.config) || {};
+    var sessions = (state.boot && state.boot.sessions) || [];
+    setView(
+      '<section class="hero">' +
+        '<p class="hero__eyebrow">역사와 신앙의 현장을 직접 걸으며 배우는</p>' +
+        '<h1 class="hero__title">' + esc(c.CAMP_NAME || '정동, 신앙탐험대') + '</h1>' +
+        '<p class="hero__sub">' + esc(c.CAMP_SUBTITLE || 'PLC 성경적세계관 캠프') + '</p>' +
+      '</section>' +
+      '<form id="loginForm" class="card card--form" autocomplete="off">' +
+        '<h2 class="card__title">참가자 확인</h2>' +
+        '<p class="hint">신청하신 ' + esc(L('name', '이름')) + '과(와) ' +
+          esc(L('phone', '연락처')) + ' 뒷 4자리로 들어갑니다.</p>' +
+        (sessions.length
+          ? '<label class="field"><span class="field__label">' + esc(L('session', '참여 일자')) + '</span>' +
+              '<div class="seg" role="radiogroup">' +
+                sessions.map(function (s, i) {
+                  return '<label class="seg__item"><input type="radio" name="session" value="' +
+                    esc(s.label) + '"' + (i === 0 ? ' checked' : '') + '>' +
+                    '<span>' + esc(s.label) + '</span></label>';
+                }).join('') +
+              '</div>' +
+              '<p class="hint">날짜를 잘못 골라도 명단이 맞으면 들어갈 수 있습니다.</p>' +
+            '</label>'
+          : '') +
+        '<label class="field"><span class="field__label">' + esc(L('name', '이름')) + '</span>' +
+          '<input class="input" type="text" name="name" placeholder="홍길동" required></label>' +
+        '<label class="field"><span class="field__label">' + esc(L('phone', '연락처')) + ' 뒷 4자리</span>' +
+          '<input class="input" type="tel" name="last4" inputmode="numeric" pattern="[0-9]{4}" ' +
+          'maxlength="4" placeholder="5678" required></label>' +
+        '<button class="btn btn--primary btn--block" type="submit">입장하기</button>' +
+        '<p class="hint hint--center">명단에서 찾지 못하면 운영진에게 문의해 주세요.</p>' +
+      '</form>'
+    );
+
+    $('#loginForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var form = e.target;
+      var btn = form.querySelector('button[type="submit"]');
+      UI.setBusy(btn, true, '확인 중…');
+
+      API.login(
+        form.session ? form.session.value : '',
+        form.name.value.trim(),
+        form.last4.value.trim()
+      )
+        .then(function (data) {
+          state.me = data.me;
+          state.view = 'home';
+          try { localStorage.setItem(APP_CONFIG.SESSION_KEY, data.me.participant.session); } catch (err) { /* 무시 */ }
+          render();
+          toast(data.me.sessionCorrected
+            ? data.me.participant.name + '님은 ' + data.me.participant.session + ' 참여로 배정되어 있습니다.'
+            : data.me.participant.name + '님 환영합니다.');
+        })
+        .catch(function (err) {
+          UI.setBusy(btn, false);
+          toast(err.message, 'error');
+        });
+    });
+  }
+
+  // ------------------------------------------------------------ 홈
+
+  function renderHome() {
+    var me = state.me;
+    var team = me.team;
+    var notices = (state.boot.notices || []).filter(function (n) {
+      return n.target === '전체' ||
+        n.target === me.participant.session ||
+        n.target === me.participant.audience;
+    });
+    var rows = (state.boot.timeline && state.boot.timeline[me.participant.session]) || [];
+
+    setView(
+      '<section class="card card--team" style="--team-color:' + esc(team ? team.color : '#984534') + '">' +
+        '<p class="card__eyebrow">' + esc(me.participant.audience || '') +
+          (me.participant.audience ? ' · ' : '') + esc(me.participant.session) + '</p>' +
+        '<h2 class="card__title">' + esc(team ? team.name : '조 미배정') + '</h2>' +
+        '<dl class="kv">' +
+          '<div><dt>' + esc(L('name', '이름')) + '</dt><dd>' + esc(me.participant.name) +
+            (me.isLeader ? ' <span class="badge">조장</span>' : '') + '</dd></div>' +
+          (team && team.leaderName ? '<div><dt>조장</dt><dd>' + esc(team.leaderName) + '</dd></div>' : '') +
+          (team && team.meetingPoint ? '<div><dt>집결</dt><dd>' + esc(team.meetingPoint) + '</dd></div>' : '') +
+        '</dl>' +
+        (team
+          ? '<p class="card__foot">' + (team.course ? esc(L('course', '배정 코스')) + ' · ' + esc(team.course) + '<br>' : '') +
+            esc(routeNames(team.route).join(' → ')) + '</p>'
+          : '') +
+      '</section>' +
+
+      (notices.length ? '<section class="card"><h2 class="card__title">공지</h2>' +
+        notices.map(function (n) {
+          return '<article class="notice' + (n.pinned ? ' notice--pinned' : '') + '">' +
+            '<h3>' + esc(n.title) + '</h3>' +
+            '<p>' + nl2br(esc(n.body)) + '</p></article>';
+        }).join('') + '</section>' : '') +
+
+      '<section class="card"><h2 class="card__title">오늘 일정</h2>' +
+        (rows.length
+          ? '<ol class="timeline">' + rows.map(function (r) {
+              return '<li class="timeline__row">' +
+                '<span class="timeline__time">' + esc(r.start) + (r.end ? '–' + esc(r.end) : '') + '</span>' +
+                '<span class="timeline__body"><strong>' + esc(r.title) + '</strong>' +
+                (r.place ? '<em>' + esc(r.place) + '</em>' : '') +
+                (r.note ? '<span class="timeline__note">' + esc(r.note) + '</span>' : '') +
+                '</span></li>';
+            }).join('') + '</ol>'
+          : '<p class="empty">일정이 아직 등록되지 않았습니다.</p>') +
+      '</section>'
+    );
+  }
+
+  function routeNames(route) {
+    var byCode = {};
+    (state.boot.checkpoints || []).forEach(function (c) { byCode[c.code] = c.name; });
+    return (route || []).map(function (code) { return byCode[code] || code; });
+  }
+
+  // ------------------------------------------------------------ 코스
+
+  function renderCourse() {
+    setView('<p class="loading">불러오는 중…</p>');
+    API.progressList()
+      .then(function (list) {
+        state.progress = list;
+        paintCourse();
+      })
+      .catch(function (err) {
+        setView('<p class="empty">' + esc(err.message) + '</p>');
+      });
+  }
+
+  function paintCourse() {
+    var byCode = {};
+    (state.boot.checkpoints || []).forEach(function (c) { byCode[c.code] = c; });
+    var canEdit = state.me.isLeader && state.boot.config.PROGRESS_OPEN;
+
+    var cards = state.progress.map(function (p) {
+      var cp = byCode[p.checkpoint] || { name: p.checkpoint };
+      var mapUrl = cp.lat && cp.lng
+        ? 'https://map.kakao.com/link/map/' + encodeURIComponent(cp.name) + ',' + cp.lat + ',' + cp.lng
+        : 'https://map.kakao.com/link/search/' + encodeURIComponent(cp.name);
+
+      return '<article class="cp cp--' + statusClass(p.status) + '">' +
+        '<header class="cp__head">' +
+          '<span class="cp__no">' + p.visitOrder + '</span>' +
+          '<div><h3 class="cp__name">' + esc(cp.name) + '</h3>' +
+          (cp.summary ? '<p class="cp__sum">' + esc(cp.summary) + '</p>' : '') + '</div>' +
+          '<span class="chip chip--' + statusClass(p.status) + '">' + esc(p.status) + '</span>' +
+        '</header>' +
+        (cp.description ? '<p class="cp__desc">' + nl2br(esc(cp.description)) + '</p>' : '') +
+        (cp.mission ? '<p class="cp__mission"><strong>미션</strong> ' + esc(cp.mission) + '</p>' : '') +
+        (p.arrivedAt || p.completedAt
+          ? '<p class="cp__times">' +
+            (p.arrivedAt ? '도착 ' + esc(UI.hhmm(p.arrivedAt)) : '') +
+            (p.completedAt ? ' · 완료 ' + esc(UI.hhmm(p.completedAt)) : '') + '</p>'
+          : '') +
+        '<div class="cp__links">' +
+          '<a class="btn btn--ghost btn--sm" href="' + esc(mapUrl) + '" target="_blank" rel="noopener">지도</a>' +
+          (cp.quizUrl
+            ? '<a class="btn btn--ghost btn--sm" href="' + esc(cp.quizUrl) + '" target="_blank" rel="noopener">퀴즈 열기</a>'
+            : '') +
+          (cp.openHours ? '<span class="cp__hours">' + esc(cp.openHours) + '</span>' : '') +
+        '</div>' +
+        (canEdit
+          ? '<div class="cp__actions" data-cp="' + esc(p.checkpoint) + '">' +
+            ['대기', '도착', '완료'].map(function (s) {
+              return '<button type="button" class="btn btn--sm' +
+                (p.status === s ? ' btn--primary' : ' btn--ghost') +
+                '" data-status="' + s + '">' + s + '</button>';
+            }).join('') +
+            '</div>'
+          : '') +
+        '</article>';
+    }).join('');
+
+    setView(
+      '<section class="section-head"><h2>답사 코스</h2>' +
+        '<p class="hint">우리 조 순서대로 표시됩니다.' +
+        (state.me.isLeader
+          ? (state.boot.config.PROGRESS_OPEN ? ' 조장은 각 지점 상태를 기록할 수 있습니다.' : ' 진행 기록은 마감되었습니다.')
+          : ' 상태는 조장이 기록합니다.') + '</p></section>' +
+      (cards || '<p class="empty">코스 정보가 없습니다.</p>')
+    );
+
+    if (canEdit) {
+      $('#view').addEventListener('click', onProgressClick);
+    }
+  }
+
+  function onProgressClick(e) {
+    var btn = e.target.closest('[data-status]');
+    if (!btn) return;
+    var wrap = btn.closest('[data-cp]');
+    var code = wrap.getAttribute('data-cp');
+    var status = btn.getAttribute('data-status');
+
+    UI.$$('[data-status]', wrap).forEach(function (b) { b.disabled = true; });
+    API.progressSet(code, status)
+      .then(function (list) {
+        state.progress = list;
+        paintCourse();
+        toast('기록했습니다: ' + status);
+      })
+      .catch(function (err) {
+        UI.$$('[data-status]', wrap).forEach(function (b) { b.disabled = false; });
+        toast(err.message, 'error');
+      });
+  }
+
+  function statusClass(status) {
+    return status === '완료' ? 'done' : status === '도착' ? 'here' : 'wait';
+  }
+
+  // ------------------------------------------------------------ 탐험일지
+
+  function renderJournal() {
+    var scopeTabs = [['gallery', '갤러리'], ['mine', '내 일지']];
+    if (state.me.isLeader) scopeTabs.push(['team', '우리 조']);
+
+    setView(
+      '<section class="section-head"><h2>탐험일지</h2>' +
+        '<p class="hint" id="scopeHint"></p></section>' +
+      (state.boot.config.JOURNAL_OPEN ? journalFormHtml() : '<p class="empty">일지 작성이 마감되었습니다.</p>') +
+      '<div class="tabs" id="scopeTabs">' +
+        scopeTabs.map(function (t) {
+          return '<button type="button" class="tab' + (state.journal.scope === t[0] ? ' is-active' : '') +
+            '" data-scope="' + t[0] + '">' + t[1] + '</button>';
+        }).join('') +
+      '</div>' +
+      '<div id="journalList"><p class="loading">불러오는 중…</p></div>'
+    );
+
+    $('#scopeTabs').addEventListener('click', function (e) {
+      var tab = e.target.closest('[data-scope]');
+      if (!tab) return;
+      state.journal.scope = tab.getAttribute('data-scope');
+      renderJournal();
+    });
+
+    if (state.boot.config.JOURNAL_OPEN) bindJournalForm();
+    loadJournal(0);
+  }
+
+  function journalFormHtml() {
+    var cps = state.boot.checkpoints || [];
+    return '<form id="journalForm" class="card card--form">' +
+      '<h2 class="card__title">오늘의 기록 남기기</h2>' +
+      '<label class="field"><span class="field__label">어느 지점인가요? <em>(선택)</em></span>' +
+        '<select class="input" name="checkpoint">' +
+          '<option value="">지점 없이 자유롭게</option>' +
+          cps.map(function (c) {
+            return '<option value="' + esc(c.code) + '">' + esc(c.name) + '</option>';
+          }).join('') +
+        '</select></label>' +
+      '<label class="field"><span class="field__label">소감</span>' +
+        '<textarea class="input" name="text" rows="4" maxlength="1000" ' +
+        'placeholder="현장에서 보고 느낀 것을 적어 주세요."></textarea></label>' +
+      '<div class="field">' +
+        '<span class="field__label">사진 <em>(선택)</em></span>' +
+        '<label class="filepick"><input type="file" name="photo" accept="image/*" capture="environment" hidden>' +
+          '<span>사진 선택 / 촬영</span></label>' +
+        '<div id="photoPreview" class="photo-preview" hidden>' +
+          '<img alt="선택한 사진 미리보기">' +
+          '<button type="button" class="btn btn--ghost btn--sm" id="photoClear">사진 빼기</button>' +
+        '</div>' +
+      '</div>' +
+      '<button class="btn btn--primary btn--block" type="submit">올리기</button>' +
+      (state.boot.config.JOURNAL_REQUIRE_APPROVAL
+        ? '<p class="hint hint--center">올린 글은 운영진 확인 후 갤러리에 보입니다.</p>' : '') +
+      '</form>';
+  }
+
+  function bindJournalForm() {
+    var form = $('#journalForm');
+    var input = form.querySelector('input[name="photo"]');
+    var preview = $('#photoPreview');
+
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      if (!file) return;
+      UI.resizePhoto(file)
+        .then(function (photo) {
+          state.pendingPhoto = photo;
+          preview.querySelector('img').src = photo.previewUrl;
+          preview.hidden = false;
+        })
+        .catch(function (err) {
+          input.value = '';
+          toast(err.message, 'error');
+        });
+    });
+
+    $('#photoClear').addEventListener('click', function () {
+      state.pendingPhoto = null;
+      input.value = '';
+      preview.hidden = true;
+    });
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var text = form.text.value.trim();
+      if (!text && !state.pendingPhoto) {
+        toast('소감이나 사진 중 하나는 있어야 합니다.', 'error');
+        return;
+      }
+      var btn = form.querySelector('button[type="submit"]');
+      UI.setBusy(btn, true, '올리는 중…');
+
+      API.journalCreate({
+        checkpoint: form.checkpoint.value,
+        text: text,
+        photo: state.pendingPhoto
+          ? {
+              name: state.pendingPhoto.name,
+              mimeType: state.pendingPhoto.mimeType,
+              dataBase64: state.pendingPhoto.dataBase64
+            }
+          : null
+      })
+        .then(function () {
+          form.reset();
+          state.pendingPhoto = null;
+          preview.hidden = true;
+          UI.setBusy(btn, false);
+          toast(state.boot.config.JOURNAL_REQUIRE_APPROVAL ? '올렸습니다. 운영진 확인 후 공개됩니다.' : '올렸습니다.');
+          loadJournal(0);
+        })
+        .catch(function (err) {
+          UI.setBusy(btn, false);
+          toast(err.message, 'error');
+        });
+    });
+  }
+
+  function loadJournal(cursor) {
+    API.journalList(state.journal.scope, cursor)
+      .then(function (data) {
+        state.journal.items = cursor ? state.journal.items.concat(data.items) : data.items;
+        state.journal.total = data.total;
+        state.journal.nextCursor = data.nextCursor;
+        paintJournalList(data);
+      })
+      .catch(function (err) {
+        var list = $('#journalList');
+        if (list) list.innerHTML = '<p class="empty">' + esc(err.message) + '</p>';
+      });
+  }
+
+  function paintJournalList(meta) {
+    var list = $('#journalList');
+    if (!list) return;
+
+    var hint = $('#scopeHint');
+    if (hint && state.journal.scope === 'gallery') {
+      hint.textContent = meta.galleryScope === 'TEAM'
+        ? '같은 조의 기록이 보입니다.'
+        : meta.galleryScope === 'SELF'
+          ? '내가 올린 기록만 보입니다.'
+          : '같은 회차 참가자 전체의 기록이 보입니다.';
+    } else if (hint) {
+      hint.textContent = '';
+    }
+
+    if (!state.journal.items.length) {
+      list.innerHTML = '<p class="empty">아직 올라온 기록이 없습니다. 첫 기록을 남겨 보세요.</p>';
+      return;
+    }
+
+    list.innerHTML =
+      '<div class="grid">' + state.journal.items.map(journalCardHtml).join('') + '</div>' +
+      (state.journal.nextCursor !== null
+        ? '<button type="button" class="btn btn--ghost btn--block" id="moreBtn">더 보기</button>'
+        : '');
+
+    var more = $('#moreBtn');
+    if (more) {
+      more.addEventListener('click', function () {
+        UI.setBusy(more, true, '불러오는 중…');
+        loadJournal(state.journal.nextCursor);
+      });
+    }
+    list.addEventListener('click', onJournalAction);
+  }
+
+  function journalCardHtml(item) {
+    if (state.editing === item.id) return journalEditHtml(item);
+
+    var cpName = '';
+    (state.boot.checkpoints || []).forEach(function (c) { if (c.code === item.checkpoint) cpName = c.name; });
+
+    return '<article class="jcard" data-id="' + esc(item.id) + '">' +
+      (item.photoUrl
+        ? '<a class="jcard__photo" href="' + esc(item.photoUrl) + '" target="_blank" rel="noopener">' +
+          '<img loading="lazy" src="' + esc(item.photoUrl) + '" alt="' + esc(item.authorName) + '님의 탐험일지 사진"></a>'
+        : '') +
+      '<div class="jcard__body">' +
+        '<p class="jcard__meta">' +
+          '<strong>' + esc(item.authorName) + '</strong>' +
+          (cpName ? ' · ' + esc(cpName) : '') +
+          ' · <time>' + esc(UI.prettyDateTime(item.createdAt)) + '</time>' +
+          (item.status !== '승인' ? ' <span class="chip chip--' +
+            (item.status === '반려' ? 'reject' : 'wait') + '">' + esc(item.status) + '</span>' : '') +
+        '</p>' +
+        (item.text ? '<p class="jcard__text">' + nl2br(esc(item.text)) + '</p>' : '') +
+        (item.status === '반려' && item.rejectReason
+          ? '<p class="jcard__reject">반려 사유: ' + esc(item.rejectReason) + '</p>' : '') +
+        (item.canEdit
+          ? '<div class="jcard__actions">' +
+            '<button type="button" class="btn btn--ghost btn--sm" data-act="edit">수정</button>' +
+            '<button type="button" class="btn btn--ghost btn--sm btn--danger-text" data-act="delete">삭제</button>' +
+            (!item.isMine ? '<span class="jcard__role">조장 권한</span>' : '') +
+            '</div>'
+          : '') +
+      '</div>' +
+    '</article>';
+  }
+
+  function journalEditHtml(item) {
+    var cps = state.boot.checkpoints || [];
+    return '<article class="jcard jcard--editing" data-id="' + esc(item.id) + '">' +
+      '<div class="jcard__body">' +
+        '<h3 class="card__title">기록 수정</h3>' +
+        '<label class="field"><span class="field__label">지점</span>' +
+          '<select class="input" data-field="checkpoint">' +
+            '<option value="">지점 없음</option>' +
+            cps.map(function (c) {
+              return '<option value="' + esc(c.code) + '"' +
+                (c.code === item.checkpoint ? ' selected' : '') + '>' + esc(c.name) + '</option>';
+            }).join('') +
+          '</select></label>' +
+        '<label class="field"><span class="field__label">소감</span>' +
+          '<textarea class="input" rows="4" maxlength="1000" data-field="text">' + esc(item.text) + '</textarea></label>' +
+        (item.photoUrl
+          ? '<label class="check"><input type="checkbox" data-field="removePhoto"> 사진 삭제</label>'
+          : '') +
+        '<label class="filepick filepick--sm"><input type="file" accept="image/*" data-field="photo" hidden>' +
+          '<span>사진 교체</span></label>' +
+        '<p class="hint" data-role="photoName"></p>' +
+        (state.boot.config.JOURNAL_REQUIRE_APPROVAL && item.status === '승인'
+          ? '<p class="hint">수정하면 다시 운영진 확인을 거칩니다.</p>' : '') +
+        '<div class="jcard__actions">' +
+          '<button type="button" class="btn btn--primary btn--sm" data-act="save">저장</button>' +
+          '<button type="button" class="btn btn--ghost btn--sm" data-act="cancel">취소</button>' +
+        '</div>' +
+      '</div>' +
+    '</article>';
+  }
+
+  function onJournalAction(e) {
+    var btn = e.target.closest('[data-act]');
+    var card = e.target.closest('[data-id]');
+    if (!card) return;
+    var id = card.getAttribute('data-id');
+
+    // 수정 폼 안의 사진 선택
+    if (e.target.matches('[data-field="photo"]')) return;
+
+    if (!btn) return;
+    var act = btn.getAttribute('data-act');
+
+    if (act === 'edit') {
+      state.editing = id;
+      paintJournalList({ galleryScope: state.boot.config.GALLERY_SCOPE });
+      bindEditPhoto(id);
+      return;
+    }
+    if (act === 'cancel') {
+      state.editing = null;
+      state.pendingPhoto = null;
+      paintJournalList({ galleryScope: state.boot.config.GALLERY_SCOPE });
+      return;
+    }
+    if (act === 'delete') {
+      UI.confirmDialog('이 기록을 삭제할까요?\n사진도 함께 지워집니다.', '삭제').then(function (yes) {
+        if (!yes) return;
+        API.journalDelete(id)
+          .then(function () {
+            state.journal.items = state.journal.items.filter(function (i) { return i.id !== id; });
+            paintJournalList({ galleryScope: state.boot.config.GALLERY_SCOPE });
+            toast('삭제했습니다.');
+          })
+          .catch(function (err) { toast(err.message, 'error'); });
+      });
+      return;
+    }
+    if (act === 'save') {
+      var payload = {
+        id: id,
+        text: card.querySelector('[data-field="text"]').value.trim(),
+        checkpoint: card.querySelector('[data-field="checkpoint"]').value
+      };
+      var removeBox = card.querySelector('[data-field="removePhoto"]');
+      if (removeBox && removeBox.checked) payload.removePhoto = true;
+      if (state.pendingPhoto) {
+        payload.photo = {
+          name: state.pendingPhoto.name,
+          mimeType: state.pendingPhoto.mimeType,
+          dataBase64: state.pendingPhoto.dataBase64
+        };
+      }
+
+      UI.setBusy(btn, true, '저장 중…');
+      API.journalUpdate(payload)
+        .then(function (updated) {
+          state.editing = null;
+          state.pendingPhoto = null;
+          state.journal.items = state.journal.items.map(function (i) { return i.id === id ? updated : i; });
+          paintJournalList({ galleryScope: state.boot.config.GALLERY_SCOPE });
+          toast('수정했습니다.');
+        })
+        .catch(function (err) {
+          UI.setBusy(btn, false);
+          toast(err.message, 'error');
+        });
+    }
+  }
+
+  function bindEditPhoto(id) {
+    var card = document.querySelector('.jcard--editing[data-id="' + CSS.escape(id) + '"]');
+    if (!card) return;
+    var input = card.querySelector('[data-field="photo"]');
+    var label = card.querySelector('[data-role="photoName"]');
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      if (!file) return;
+      UI.resizePhoto(file)
+        .then(function (photo) {
+          state.pendingPhoto = photo;
+          label.textContent = '새 사진 선택됨 · ' + Math.round(photo.approxBytes / 1024) + 'KB';
+        })
+        .catch(function (err) { toast(err.message, 'error'); });
+    });
+  }
+
+  // ------------------------------------------------------------ 내 정보
+
+  function renderMe() {
+    var me = state.me;
+    var showFee = state.boot.config.SHOW_FEE;
+
+    setView(
+      '<section class="card">' +
+        '<h2 class="card__title">내 정보</h2>' +
+        '<dl class="kv">' +
+          '<div><dt>' + esc(L('name', '이름')) + '</dt><dd>' + esc(me.participant.name) + '</dd></div>' +
+          '<div><dt>' + esc(L('audience', '캠프 대상')) + '</dt><dd>' +
+            esc(me.participant.audience || '-') + '</dd></div>' +
+          '<div><dt>' + esc(L('session', '참여 일자')) + '</dt><dd>' +
+            esc(me.participant.session) + '</dd></div>' +
+          '<div><dt>' + esc(L('group', '조 배정')) + '</dt><dd>' +
+            esc(me.team ? me.team.name : '미배정') + '</dd></div>' +
+          '<div><dt>' + esc(L('role', '역할')) + '</dt><dd>' + esc(me.participant.role) + '</dd></div>' +
+          '<div><dt>' + esc(L('insurance', '여행자 보험 가입')) + '</dt><dd>' +
+            esc(me.participant.insurance || '확인 중') + '</dd></div>' +
+        '</dl>' +
+      '</section>' +
+      (showFee ? '<section class="card" id="feeCard"><h2 class="card__title">' +
+        esc(L('feeStatus', '입금 여부')) + '</h2><p class="loading">불러오는 중…</p></section>' : '') +
+      (me.isLeader && me.members.length
+        ? '<section class="card"><h2 class="card__title">우리 조 (' + me.members.length + '명)</h2>' +
+          '<ul class="members">' + me.members.map(function (m) {
+            return '<li><span>' + esc(m.name) + '</span>' +
+              (m.role !== '일반' ? '<span class="badge">' + esc(m.role) + '</span>' : '') +
+              (showFee ? '<span class="chip chip--' + feeClass(m.feeStatus) + '">' + esc(m.feeStatus) + '</span>' : '') +
+              '</li>';
+          }).join('') + '</ul></section>'
+        : '') +
+      '<button type="button" class="btn btn--ghost btn--block" id="logoutBtn">로그아웃</button>'
+    );
+
+    $('#logoutBtn').addEventListener('click', function () {
+      UI.confirmDialog('로그아웃할까요?', '로그아웃').then(function (yes) {
+        if (!yes) return;
+        API.logout();
+        state.me = null;
+        state.view = 'home';
+        render();
+      });
+    });
+
+    if (showFee) {
+      API.feeStatus()
+        .then(function (fee) {
+          var card = $('#feeCard');
+          if (!card) return;
+          card.innerHTML = '<h2 class="card__title">' + esc(L('feeStatus', '입금 여부')) + '</h2>' +
+            '<p class="fee"><span class="chip chip--' + feeClass(fee.me.status) + '">' +
+            esc(fee.me.status) + '</span></p>' +
+            '<p class="hint">회비 수납은 운영진이 관리합니다. 문의는 행정팀으로 부탁드립니다.</p>';
+        })
+        .catch(function (err) {
+          var card = $('#feeCard');
+          if (card) card.innerHTML = '<h2 class="card__title">' + esc(L('feeStatus', '입금 여부')) +
+            '</h2><p class="empty">' + esc(err.message) + '</p>';
+        });
+    }
+  }
+
+  function feeClass(status) {
+    return status === '완납' ? 'done' : status === '면제' ? 'here' : 'wait';
+  }
+
+  // ------------------------------------------------------------
+
+  window.__DEMO_APPS['participant'] = init;
+})();
+
+</script>
+<script>
+/**
+ * admin.js — 운영 콘솔 (관리자 PIN)
+ *
+ * 화면: 일지 검수 / 진행 현황 / 회비 / 설정
+ * 참가자 앱과 같은 브라우저에서 동시에 쓰는 일이 많으므로 토큰 저장 키를 분리한다.
+ * (api.js 가 APP_CONFIG.TOKEN_KEY 를 호출 시점에 읽으므로 여기서 덮어써도 안전하다.)
+ */
+(function () {
+  'use strict';
+
+  APP_CONFIG.TOKEN_KEY = 'plc_jd_admin_token';
+
+  var $ = UI.$, esc = UI.esc, nl2br = UI.nl2br, toast = UI.toast;
+
+  var state = { boot: null, view: 'review', authed: false, audience: '전체' };
+
+  /** 항목 이름은 서버가 내려주는 마스터시트 헤더를 그대로 쓴다(bootstrap.labels). */
+  function L(key, fallback) {
+    var labels = (state.boot && state.boot.labels) || {};
+    return labels[key] || fallback;
+  }
+
+  function init() {
+    $('#tabbar').addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-view]');
+      if (!btn) return;
+      state.view = btn.getAttribute('data-view');
+      render();
+    });
+
+    API.bootstrap(true)
+      .then(function (boot) {
+        state.boot = boot;
+        if (!API.getToken()) return null;
+        // 토큰이 아직 유효한지 가벼운 호출로 확인한다.
+        return API.call('admin.journal.pending').then(function () { state.authed = true; });
+      })
+      .catch(function () { state.authed = false; })
+      .then(render);
+  }
+
+  function render() {
+    $('#tabbar').hidden = !state.authed;
+    if (!state.authed) { renderLogin(); return; }
+
+    UI.$$('#tabbar [data-view]').forEach(function (b) {
+      b.classList.toggle('is-active', b.getAttribute('data-view') === state.view);
+    });
+
+    if (state.view === 'review') renderReview();
+    else if (state.view === 'progress') renderProgress();
+    else if (state.view === 'fee') renderFee();
+    else if (state.view === 'settings') renderSettings();
+  }
+
+  function setView(html) { $('#view').innerHTML = html; }
+
+  /**
+   * 부서 필터.
+   * 원칙은 부서=일자 1:1 이지만 예외 인원이 섞일 수 있어(D-016) 조가 `혼합` 으로
+   * 잡힐 수 있다. `혼합` 조는 어느 부서를 골라도 보이게 해서 누락되지 않도록 한다.
+   */
+  function audienceFilterHtml() {
+    return '<div class="tabs" id="audienceFilter">' +
+      ['전체', '청년부', '장년부'].map(function (a) {
+        return '<button type="button" class="tab' + (state.audience === a ? ' is-active' : '') +
+          '" data-audience="' + esc(a) + '">' + esc(a) + '</button>';
+      }).join('') +
+      '</div>';
+  }
+
+  function bindAudienceFilter(rerender) {
+    var el = $('#audienceFilter');
+    if (!el) return;
+    el.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-audience]');
+      if (!btn) return;
+      state.audience = btn.getAttribute('data-audience');
+      rerender();
+    });
+  }
+
+  function matchesAudience(value) {
+    if (state.audience === '전체') return true;
+    var v = String(value || '');
+    return v === state.audience || v.indexOf('혼합') >= 0 || v.indexOf(state.audience) >= 0;
+  }
+
+  // ------------------------------------------------------------ 로그인
+
+  function renderLogin() {
+    setView(
+      '<form id="pinForm" class="card card--form" autocomplete="off">' +
+        '<h2 class="card__title">관리자 확인</h2>' +
+        '<p class="hint">운영진에게 공유된 PIN 을 입력해 주세요.</p>' +
+        '<label class="field"><span class="field__label">PIN</span>' +
+          '<input class="input" type="password" name="pin" inputmode="numeric" autocomplete="off" required></label>' +
+        '<button class="btn btn--primary btn--block" type="submit">들어가기</button>' +
+      '</form>'
+    );
+
+    $('#pinForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var btn = e.target.querySelector('button');
+      UI.setBusy(btn, true, '확인 중…');
+      API.call('admin.login', { pin: e.target.pin.value }, { anonymous: true })
+        .then(function (data) {
+          API.setToken(data.token);
+          state.authed = true;
+          render();
+        })
+        .catch(function (err) {
+          UI.setBusy(btn, false);
+          toast(err.message, 'error');
+        });
+    });
+  }
+
+  // ------------------------------------------------------------ 일지 검수
+
+  function renderReview() {
+    setView('<p class="loading">불러오는 중…</p>');
+    API.call('admin.journal.pending')
+      .then(function (data) {
+        setView(
+          '<section class="section-head"><h2>승인 대기 ' + data.total + '건</h2>' +
+            '<p class="hint">승인해야 갤러리에 보입니다. 초상권·개인정보가 드러나는 사진은 반려해 주세요.</p></section>' +
+          (data.items.length
+            ? '<div class="grid">' + data.items.map(reviewCard).join('') + '</div>'
+            : '<p class="empty">대기 중인 일지가 없습니다.</p>')
+        );
+        $('#view').addEventListener('click', onReviewClick);
+      })
+      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+  }
+
+  function reviewCard(item) {
+    return '<article class="jcard" data-id="' + esc(item.id) + '">' +
+      (item.photoUrl
+        ? '<a class="jcard__photo" href="' + esc(item.photoUrl) + '" target="_blank" rel="noopener">' +
+          '<img loading="lazy" src="' + esc(item.photoUrl) + '" alt="검수 대기 사진"></a>'
+        : '') +
+      '<div class="jcard__body">' +
+        '<p class="jcard__meta"><strong>' + esc(item.authorName) + '</strong> · ' +
+          esc(item.session) + ' ' + esc(item.group) + ' · ' +
+          '<time>' + esc(UI.prettyDateTime(item.createdAt)) + '</time></p>' +
+        (item.text ? '<p class="jcard__text">' + nl2br(esc(item.text)) + '</p>' : '') +
+        '<div class="jcard__actions">' +
+          '<button type="button" class="btn btn--primary btn--sm" data-act="approve">승인</button>' +
+          '<button type="button" class="btn btn--ghost btn--sm btn--danger-text" data-act="reject">반려</button>' +
+          '<button type="button" class="btn btn--ghost btn--sm btn--danger-text" data-act="delete">삭제</button>' +
+        '</div>' +
+      '</div>' +
+    '</article>';
+  }
+
+  function onReviewClick(e) {
+    var btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    var card = btn.closest('[data-id]');
+    var id = card.getAttribute('data-id');
+    var act = btn.getAttribute('data-act');
+
+    if (act === 'approve') {
+      submitReview(card, btn, { id: id, decision: '승인' });
+    } else if (act === 'reject') {
+      var reason = prompt('반려 사유를 적어 주세요. (작성자에게 보입니다)');
+      if (reason === null) return;
+      submitReview(card, btn, { id: id, decision: '반려', reason: reason });
+    } else if (act === 'delete') {
+      UI.confirmDialog('이 일지를 삭제할까요?\n사진도 함께 휴지통으로 갑니다.', '삭제').then(function (yes) {
+        if (!yes) return;
+        API.call('admin.journal.delete', { id: id })
+          .then(function () { card.remove(); toast('삭제했습니다.'); })
+          .catch(function (err) { toast(err.message, 'error'); });
+      });
+    }
+  }
+
+  function submitReview(card, btn, payload) {
+    UI.setBusy(btn, true, '처리 중…');
+    API.call('admin.journal.review', payload)
+      .then(function () { card.remove(); toast(payload.decision + ' 처리했습니다.'); })
+      .catch(function (err) { UI.setBusy(btn, false); toast(err.message, 'error'); });
+  }
+
+  // ------------------------------------------------------------ 진행 현황
+
+  function renderProgress() {
+    setView('<p class="loading">불러오는 중…</p>');
+    API.call('admin.progress.board')
+      .then(function (board) {
+        var teams = board.teams.filter(function (t) { return matchesAudience(t.audience); });
+
+        setView(
+          '<section class="section-head"><h2>' + esc(L('group', '조 배정')) + '별 진행 현황</h2>' +
+            '<p class="hint">조장이 기록한 도착·완료 상태입니다. 조마다 배정 코스가 달라 방문 순서가 다릅니다.</p></section>' +
+          audienceFilterHtml() +
+          (teams.length
+            ? '<div class="card"><div class="table-scroll"><table class="admin-table">' +
+                '<thead><tr><th>' + esc(L('session', '참여 일자')) + '</th>' +
+                '<th>' + esc(L('audience', '캠프 대상')) + '</th>' +
+                '<th>' + esc(L('group', '조 배정')) + '</th><th>조장</th><th>인원</th>' +
+                board.checkpoints.map(function (c) { return '<th>' + esc(c.name) + '</th>'; }).join('') +
+                '</tr></thead><tbody>' +
+                teams.map(function (t) {
+                  return '<tr>' +
+                    '<td>' + esc(t.session) + '</td>' +
+                    '<td>' + esc(t.audience || '—') + '</td>' +
+                    '<td>' + esc(t.name) + '</td>' +
+                    '<td>' + esc(t.leaderName || '—') + '</td>' +
+                    '<td>' + t.memberCount + '</td>' +
+                    board.checkpoints.map(function (c) {
+                      var cell = t.cells[c.code];
+                      var visit = t.route.indexOf(c.code);
+                      var order = visit >= 0 ? '<small>' + (visit + 1) + '번째</small><br>' : '';
+                      if (!cell) return '<td>' + order + '<span class="chip chip--wait">대기</span></td>';
+                      var cls = cell.status === '완료' ? 'done' : cell.status === '도착' ? 'here' : 'wait';
+                      var time = UI.hhmm(cell.completedAt || cell.arrivedAt);
+                      return '<td>' + order + '<span class="chip chip--' + cls + '">' + esc(cell.status) + '</span>' +
+                        (time ? ' <small>' + esc(time) + '</small>' : '') + '</td>';
+                    }).join('') +
+                  '</tr>';
+                }).join('') +
+              '</tbody></table></div></div>'
+            : '<p class="empty">' + (state.audience === '전체'
+                ? '명단에 조가 배정된 참가자가 아직 없습니다.'
+                : esc(state.audience) + '에 배정된 조가 없습니다.') + '</p>')
+        );
+        bindAudienceFilter(renderProgress);
+      })
+      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+  }
+
+  // ------------------------------------------------------------ 회비
+
+  function renderFee() {
+    setView('<p class="loading">불러오는 중…</p>');
+    API.call('admin.fee.board')
+      .then(function (data) {
+        var sum = data.summary;
+        var teams = data.teams.filter(function (t) { return matchesAudience(t.audience); });
+
+        setView(
+          '<section class="section-head"><h2>' + esc(L('feeStatus', '입금 여부')) + ' 현황</h2>' +
+            '<p class="hint">수납 입력은 시트에서 합니다. 이 화면은 조회 전용입니다.</p></section>' +
+          '<section class="card"><h2 class="card__title">전체</h2><dl class="kv">' +
+            '<div><dt>완납</dt><dd>' + (sum['완납'] || 0) + '명</dd></div>' +
+            '<div><dt>미납</dt><dd>' + (sum['미납'] || 0) + '명</dd></div>' +
+            '<div><dt>면제</dt><dd>' + (sum['면제'] || 0) + '명</dd></div>' +
+            '<div><dt>합계</dt><dd>' + (sum['합계'] || 0) + '명</dd></div>' +
+            '<div><dt>수납액</dt><dd>' + won(sum['수납액']) + ' / ' + won(sum['예상수입']) + '</dd></div>' +
+          '</dl><p class="hint">전체 합계는 부서 필터와 무관하게 전원 기준입니다.</p></section>' +
+          audienceFilterHtml() +
+          '<div class="card"><div class="table-scroll"><table class="admin-table">' +
+            '<thead><tr><th>' + esc(L('session', '참여 일자')) + ' · ' + esc(L('group', '조 배정')) + '</th>' +
+            '<th>' + esc(L('audience', '캠프 대상')) + '</th>' +
+            '<th>완납</th><th>미납</th><th>면제</th>' +
+            '<th>' + esc(L('insurance', '여행자 보험 가입')) + ' 미가입</th><th>미납자</th></tr></thead><tbody>' +
+            teams.map(function (t) {
+              return '<tr><td>' + esc(t.label) + '</td>' +
+                '<td>' + esc(t.audience || '—') + '</td>' +
+                '<td>' + (t['완납'] || 0) + '</td>' +
+                '<td>' + (t['미납'] || 0) + '</td>' +
+                '<td>' + (t['면제'] || 0) + '</td>' +
+                '<td>' + (t['미가입'] || 0) + '</td>' +
+                '<td>' + esc(t.unpaid.join(', ')) + '</td></tr>';
+            }).join('') +
+          '</tbody></table></div></div>'
+        );
+        bindAudienceFilter(renderFee);
+      })
+      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+  }
+
+  function won(n) {
+    return (Number(n) || 0).toLocaleString('ko-KR') + '원';
+  }
+
+  // ------------------------------------------------------------ 설정
+
+  var TOGGLES = [
+    ['JOURNAL_OPEN', '탐험일지 작성 열기'],
+    ['PROGRESS_OPEN', '조장 진행 기록 열기'],
+    ['JOURNAL_REQUIRE_APPROVAL', '일지 승인 필요'],
+    ['SHOW_FEE', '회비 상태 노출']
+  ];
+
+  function renderSettings() {
+    var c = state.boot.config;
+    setView(
+      '<section class="section-head"><h2>운영 설정</h2>' +
+        '<p class="hint">배포 없이 바로 반영됩니다. 시트의 Config 탭과 같은 값입니다.</p></section>' +
+
+      '<section class="card"><h2 class="card__title">탐험일지 공개 범위</h2>' +
+        '<p class="hint">현재: <strong>' + esc(scopeLabel(c.GALLERY_SCOPE)) + '</strong></p>' +
+        '<div class="seg" id="scopeSeg">' +
+          [['ALL', '전체 공개'], ['TEAM', '같은 조만'], ['SELF', '본인만']].map(function (s) {
+            return '<label class="seg__item"><input type="radio" name="scope" value="' + s[0] + '"' +
+              (c.GALLERY_SCOPE === s[0] ? ' checked' : '') + '><span>' + s[1] + '</span></label>';
+          }).join('') +
+        '</div>' +
+        '<p class="hint">전체 공개는 같은 ' + esc(L('session', '참여 일자')) + ' 안에서만 보입니다. ' +
+          esc(L('audience', '캠프 대상')) + '이 달라도 같은 날 참여했다면 서로 보입니다.</p>' +
+      '</section>' +
+
+      '<section class="card"><h2 class="card__title">기능 열기 / 닫기</h2>' +
+        '<ul class="members">' + TOGGLES.map(function (t) {
+          return '<li><span>' + esc(t[1]) + '</span>' +
+            '<button type="button" class="btn btn--sm ' + (c[t[0]] ? 'btn--primary' : 'btn--ghost') +
+            '" data-toggle="' + t[0] + '">' + (c[t[0]] ? '켜짐' : '꺼짐') + '</button></li>';
+        }).join('') + '</ul></section>' +
+
+      '<section class="card"><h2 class="card__title">상단 한 줄 공지</h2>' +
+        '<label class="field"><input class="input" id="tickerInput" type="text" maxlength="120" ' +
+          'value="' + esc(c.NOTICE_TICKER || '') + '" placeholder="비우면 숨겨집니다"></label>' +
+        '<button type="button" class="btn btn--primary btn--block" id="tickerSave">저장</button>' +
+      '</section>' +
+
+      '<button type="button" class="btn btn--ghost btn--block" id="logoutBtn">로그아웃</button>'
+    );
+
+    $('#scopeSeg').addEventListener('change', function (e) {
+      if (e.target.name !== 'scope') return;
+      setConfig('GALLERY_SCOPE', e.target.value, '공개 범위를 바꿨습니다: ' + scopeLabel(e.target.value));
+    });
+
+    UI.$$('[data-toggle]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var key = btn.getAttribute('data-toggle');
+        var next = !state.boot.config[key];
+        setConfig(key, next ? 'TRUE' : 'FALSE', null, btn);
+      });
+    });
+
+    $('#tickerSave').addEventListener('click', function () {
+      setConfig('NOTICE_TICKER', $('#tickerInput').value.trim(), '공지를 저장했습니다.', $('#tickerSave'));
+    });
+
+    $('#logoutBtn').addEventListener('click', function () {
+      API.logout();
+      state.authed = false;
+      render();
+    });
+  }
+
+  function scopeLabel(scope) {
+    return scope === 'TEAM' ? '같은 조만' : scope === 'SELF' ? '본인만' : '전체 공개';
+  }
+
+  function setConfig(key, value, message, btn) {
+    if (btn) UI.setBusy(btn, true, '…');
+    API.call('admin.config.set', { key: key, value: value })
+      .then(function (config) {
+        state.boot.config = config;
+        try { sessionStorage.removeItem('plc_jd_bootstrap'); } catch (e) { /* 무시 */ }
+        renderSettings();
+        toast(message || '저장했습니다.');
+      })
+      .catch(function (err) {
+        if (btn) UI.setBusy(btn, false);
+        toast(err.message, 'error');
+      });
+  }
+
+  window.__DEMO_APPS['admin'] = init;
+})();
+
+</script>
+
+<script>
+/* ---- 데모 셸: 모드/계정 전환 ---- */
+(function () {
+  'use strict';
+
+  function get(key, fallback) {
+    try { return sessionStorage.getItem(key) || fallback; } catch (e) { return fallback; }
+  }
+  function set(key, value) {
+    try { sessionStorage.setItem(key, value); } catch (e) { /* 무시 */ }
+  }
+
+  var mode = get('demo_mode', 'participant');
+  var who = get('demo_persona', 'leader');
+
+  // 참가자 앱과 운영 콘솔은 토큰 저장 키가 다르다. 실제 앱과 동일하게 맞춘다.
+  window.APP_CONFIG.TOKEN_KEY = (mode === 'admin') ? 'plc_jd_admin_token' : 'plc_jd_token';
+
+  var bar = document.getElementById('demobar');
+  var note = document.getElementById('demoNote');
+
+  Array.prototype.forEach.call(bar.querySelectorAll('[data-mode]'), function (b) {
+    b.classList.toggle('is-on', b.getAttribute('data-mode') === mode);
+    b.addEventListener('click', function () {
+      set('demo_mode', b.getAttribute('data-mode'));
+      location.reload();
+    });
+  });
+
+  Array.prototype.forEach.call(bar.querySelectorAll('[data-persona]'), function (b) {
+    b.classList.toggle('is-on', b.getAttribute('data-persona') === who);
+    b.addEventListener('click', function () {
+      set('demo_persona', b.getAttribute('data-persona'));
+      try { localStorage.removeItem('plc_jd_token'); } catch (e) { /* 무시 */ }
+      location.reload();
+    });
+  });
+
+  document.getElementById('personaGroup').hidden = (mode === 'admin');
+  bar.querySelector('.demobar__label').hidden = (mode === 'admin');
+
+  note.textContent = (mode === 'admin')
+    ? '운영 콘솔 데모입니다. PIN 은 000000. 실제 데이터는 저장되지 않고 새로고침하면 초기화됩니다.'
+    : '이름·연락처는 아무 값이나 넣어도 들어갑니다(뒷자리는 숫자 4자리). 실제 데이터는 저장되지 않습니다.';
+
+  // 데모바 높이만큼 본문을 내린다(줄바꿈되는 경우까지 맞춘다).
+  function syncBarHeight() {
+    document.documentElement.style.setProperty('--demobar-h', bar.offsetHeight + 'px');
+  }
+  syncBarHeight();
+  window.addEventListener('resize', syncBarHeight);
+
+  // 탭바 구성은 모드마다 다르다.
+  var tabs = (mode === 'admin')
+    ? [['review', '✅', '일지 검수'], ['progress', '🧭', '진행 현황'], ['fee', '💳', '회비'], ['settings', '⚙️', '설정']]
+    : [['home', '🏛', '홈'], ['course', '🧭', '코스'], ['journal', '📓', '탐험일지'], ['me', '👤', '내 정보']];
+
+  document.getElementById('tabbar').innerHTML = tabs.map(function (t, i) {
+    return '<button type="button" data-view="' + t[0] + '" class="tabbar__btn' + (i === 0 ? ' is-active' : '') + '">' +
+      '<span class="tabbar__icon" aria-hidden="true">' + t[1] + '</span><span>' + t[2] + '</span></button>';
+  }).join('');
+
+  var init = window.__DEMO_APPS[mode];
+  if (init) init();
+})();
+</script>
+
+</body>
+</html>
