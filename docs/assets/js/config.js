@@ -8,7 +8,7 @@
  *   코드를 고칠 때마다 "배포 관리 → 편집 → 버전: 새 버전" 을 해야 반영된다.
  */
 window.APP_CONFIG = {
-  API_BASE: 'https://script.google.com/macros/s/REPLACE_WITH_DEPLOYMENT_ID/exec',
+  API_BASE: 'https://script.google.com/macros/s/AKfycbyLVkTS5tqMAY_2XXKINFkO_7ecBrWryUFMqOLmAV0EMKUhLsjzvgvX3bE_qQYFu3Ha0A/exec',
 
   // 로그인 토큰을 담아 둘 localStorage 키
   TOKEN_KEY: 'plc_jd_token',
