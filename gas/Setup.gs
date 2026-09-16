@@ -29,6 +29,11 @@ function setupSpreadsheet() {
   getTokenSecret_();
 
   var pin = PropertiesService.getScriptProperties().getProperty('ADMIN_PIN');
+  var skipped = __validationSkipped.length
+    ? ['', '⚠ 드롭다운을 못 넣은 열 ' + __validationSkipped.length + '개:',
+       '  ' + __validationSkipped.join(', '),
+       '  (이미 시트에 드롭다운이 걸려 있는 열입니다. 앱 동작에는 지장 없습니다)']
+    : [];
   var msg = [
     '✅ 시트 준비 완료.',
     '',
@@ -39,7 +44,7 @@ function setupSpreadsheet() {
     '  · 참가자ID 채우기 → 조 목록 동기화 → 명단 점검 순으로 실행',
     '  · Checkpoints 의 주소·위도·경도는 1차 사전답사 결과로 검증 후 채울 것',
     '  · 배포 → 웹 앱 → 실행: 나 / 액세스: 모든 사용자'
-  ].join('\n');
+  ].concat(skipped).join('\n');
   console.log(msg);
   alert_(msg);
 }
@@ -227,7 +232,19 @@ function writeTimeline_(session, rows) {
 // ---------------------------------------------------------------- 데이터 검증
 
 /** 행정가가 오타로 잘못된 값을 넣지 않도록 드롭다운을 건다. */
+/**
+ * 드롭다운(데이터 검증)을 넣는다. **실패해도 세팅을 멈추지 않는다.**
+ *
+ * 행정팀이 이미 시트에서 드롭다운을 걸어 둔 열에는 구글시트가 **'열 유형'** 을 적용하는데,
+ * 그런 열에는 스크립트가 데이터 검증을 덮어쓸 수 없다
+ * ("이 작업은 유형이 적용된 열의 셀에서 사용할 수 없습니다").
+ * 드롭다운은 입력 실수를 줄이는 편의 기능일 뿐 앱 동작에는 필요 없으므로,
+ * 막힌 열은 건너뛰고 어디가 막혔는지만 알려 준다.
+ */
+var __validationSkipped = [];
+
 function applyValidation_() {
+  __validationSkipped = [];
   var sessionList = sessionLabels_();
   var courseList = readTable_(SHEETS.COURSES).map(function (r) { return str_(r['코스명']); }).filter(String);
 
@@ -250,7 +267,16 @@ function dropdown_(sheetName, header, values) {
   var col = headerIndex_(sheetName)[header];
   if (!col) return;
   var rule = SpreadsheetApp.newDataValidation().requireValueInList(values, true).setAllowInvalid(false).build();
-  sh.getRange(2, col, Math.max(sh.getMaxRows() - 1, 1)).setDataValidation(rule);
+
+  try {
+    sh.getRange(2, col, Math.max(sh.getMaxRows() - 1, 1)).setDataValidation(rule);
+    // GAS 는 쓰기를 모아 뒀다가 다음 읽기 때 내보낸다. flush 를 안 하면 예외가
+    // **다음 함수의 읽기 지점**에서 터져 이 try 가 못 잡고 세팅 전체가 죽는다.
+    // (실제로 headerIndex_ 안에서 터지는 것처럼 보고돼 원인을 찾기 어려웠다.)
+    SpreadsheetApp.flush();
+  } catch (e) {
+    __validationSkipped.push(sheetName + ' → ' + header);
+  }
 }
 
 function autoResize_() {
