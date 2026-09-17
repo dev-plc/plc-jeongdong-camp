@@ -479,7 +479,6 @@ body { padding-top: var(--demobar-h, 76px); }
 window.APP_CONFIG = {
   API_BASE: window.__DEMO_API,
   TOKEN_KEY: 'plc_jd_token',
-  SESSION_KEY: 'plc_jd_session',
   PHOTO_MAX_EDGE: 1600,
   PHOTO_QUALITY: 0.8,
   BOOTSTRAP_TTL: 1

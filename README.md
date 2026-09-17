@@ -84,7 +84,7 @@ python3 -m http.server 8080 --directory docs   # → http://localhost:8080/demo.
 | [API 명세](docs-dev/spec/API.md) | 액션 목록, 요청/응답, 에러 코드 |
 | [결정사항 (ADR)](docs-dev/spec/DECISIONS.md) | 인증 방식·공개 범위·회비 처리 등 확정된 판단과 그 이유 |
 | [추가 작업 예정](docs-dev/spec/BACKLOG.md) | 아직 안 만든 것 — 진행 현황 실시간 파악, 버전 기반 자동 새로고침 |
-| [Firebase 설계](docs-dev/spec/FIREBASE.md) | 읽기 미러 구조와 **이번엔 안 넣는 이유**, 넘어갈 기준 수치 |
+| [DB 도입 설계](docs-dev/spec/DATABASE.md) | 읽기 미러 구조, **Firebase vs Supabase 비교**, 이번엔 안 넣는 이유, 넘어갈 기준 수치 |
 | [브랜드 가이드](docs-dev/brand/BRAND.md) | 붉은벽돌 `#984534` / 회색담벼락 `#c2c2c2`, 서체, 그래픽 |
 | [배포 가이드](docs-dev/ops/DEPLOY.md) | GAS · Pages · Cloudflare 설정과 당일 운영 메모 |
 
@@ -116,7 +116,8 @@ python3 -m http.server 8080 --directory docs   # → http://localhost:8080/demo.
 
 배포 없이 `Config` 시트(또는 `/admin.html` → 설정)에서 즉시 바뀝니다.
 
-- 참여 일자(`SESSION_1` / `SESSION_2`) — 날짜가 바뀌어도 배포 불필요
+- 참여 일자(`SESSION_1` / `SESSION_2` / …) — 날짜가 바뀌어도 배포 불필요.
+  회차를 더 늘리는 것도 시트 메뉴 `회차 추가` 로 가능합니다(사전답사 리허설 등)
 - 탐험일지 공개 범위 (`전체 / 같은 조 / 본인만`)
 - 일지 작성·조장 진행 기록 열고 닫기
 - 일지 승인 필요 여부

@@ -200,8 +200,10 @@ body.is-auth .view { padding-bottom: calc(var(--tabbar-h) + 28px + env(safe-area
 }
 textarea.input { resize: vertical; min-height: 96px; }
 
-.seg { display: flex; gap: 8px; }
-.seg__item { flex: 1; position: relative; }
+/* 회차는 2개로 정해져 있지 않다 (사전답사 등). 3개부터는 다음 줄로 넘긴다 —
+   좁은 화면에서 셋을 한 줄에 욱여넣으면 라벨이 칸 안에서 눌린다. */
+.seg { display: flex; flex-wrap: wrap; gap: 8px; }
+.seg__item { flex: 1 1 140px; position: relative; }
 .seg__item input { position: absolute; opacity: 0; pointer-events: none; }
 .seg__item span {
   display: block;
@@ -236,6 +238,10 @@ textarea.input { resize: vertical; min-height: 96px; }
   cursor: pointer;
 }
 .filepick--sm { padding: 9px; font-size: 13px; margin-bottom: 8px; }
+
+/* 촬영 / 갤러리 두 버튼. 좁은 화면에서 라벨이 길면 아래로 넘긴다. */
+.filepick-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.filepick-row .filepick { flex: 1 1 140px; }
 
 .photo-preview { margin-top: 10px; }
 .photo-preview img {
@@ -529,6 +535,36 @@ textarea.input { resize: vertical; min-height: 96px; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ---- 실측 패널 (?perf=1). 참가자에게는 렌더되지 않는다 — D-030 ---- */
+.perf {
+  /* 탭바(z-index 20, 화면 맨 아래) **위에** 앉는다.
+     그리고 body 에 그만큼 아래 여백을 줘 화면 요소를 가리지 않게 한다 —
+     안 그러면 로그인 버튼이 패널에 덮여 **눌리지 않는다**(실제로 테스트가 잡았다). */
+  position: fixed; left: 8px; right: 8px;
+  bottom: calc(var(--perf-bottom, 8px)); z-index: 120;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(30, 24, 22, .94); color: #fff;
+  font-size: 12px; line-height: 1.5;
+  box-shadow: 0 6px 24px rgba(0,0,0,.28);
+}
+.perf[hidden] { display: none; }
+.perf__head { margin: 0 0 6px; font-weight: 700; letter-spacing: .02em; }
+.perf__empty { margin: 0; opacity: .7; }
+.perf__table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.perf__table th,
+.perf__table td { padding: 2px 0; text-align: right; font-weight: 400; white-space: nowrap; }
+.perf__table th { text-align: left; font-weight: 700; padding-right: 8px; }
+.perf__table tr.is-over { color: #ffb4a2; }
+.perf__actions { display: flex; gap: 6px; margin-top: 8px; }
+.perf__actions button {
+  flex: 1; padding: 6px 8px;
+  border: 1px solid rgba(255,255,255,.3); border-radius: 999px;
+  background: none; color: #fff; font-family: inherit; font-size: 12px; cursor: pointer;
+}
+/* 클립보드가 없을 때 쓰는 복사용 임시 요소. 화면에 보이면 안 된다. */
+.perf__copy { position: fixed; left: -9999px; top: 0; opacity: 0; }
 
 </style>
 
@@ -954,7 +990,6 @@ body { padding-top: var(--demobar-h, 76px); }
 window.APP_CONFIG = {
   API_BASE: window.__DEMO_API,
   TOKEN_KEY: 'plc_jd_token',
-  SESSION_KEY: 'plc_jd_session',
   PHOTO_MAX_EDGE: 1600,
   PHOTO_QUALITY: 0.8,
   BOOTSTRAP_TTL: 1
@@ -973,6 +1008,109 @@ window.APP_CONFIG = {
   'use strict';
 
   var CFG = global.APP_CONFIG;
+
+  // ---------------------------------------------------------------- 응답 시간 측정
+  //
+  // `DATABASE.md` 에 넘어갈 기준을 수치로 적어 뒀는데(부트스트랩 3초, me·progress.list
+  // 2초) **재는 방법이 없었다.** 기준을 적어 두고 재지 않으면 기준이 없는 것과 같다.
+  //
+  // **항상 기록한다.** 비용은 타임스탬프 하나와 배열 push 다. 캠프 당일 느리면
+  // 그때 이미 데이터가 쌓여 있어야 한다 — 그제서야 켜면 늦다 (D-030).
+  // 보여 주는 것만 ?perf=1 로 토글한다(UI.perfPanel).
+
+  var PERF_KEY = 'plc_jd_perf';
+  var PERF_MAX = 200;          // 최근 N건만. 메모리·localStorage 폭주 방지
+  var perfLog = [];
+
+  /** 기준선. DATABASE.md 의 '넘어갈 기준' 과 같은 값이어야 한다. */
+  var PERF_BUDGET = { 'bootstrap': 3000, 'me': 2000, 'progress.list': 2000 };
+
+  (function loadPerf() {
+    try {
+      var raw = localStorage.getItem(PERF_KEY);
+      if (raw) perfLog = JSON.parse(raw) || [];
+    } catch (e) { perfLog = []; }
+  })();
+
+  function perfSave() {
+    try { localStorage.setItem(PERF_KEY, JSON.stringify(perfLog)); } catch (e) { /* 시크릿 모드 등 */ }
+  }
+
+  function now() {
+    return (global.performance && global.performance.now)
+      ? global.performance.now() : Date.now();
+  }
+
+  /**
+   * 한 건 기록. 실패도 남긴다 — **느린 실패가 오히려 중요한 신호**다.
+   * cached=true 인 건은 표본에서 빠진다(perfSummary 참고).
+   */
+  function perfRecord(action, ms, ok, cached) {
+    perfLog.push({ a: action, ms: Math.round(ms), ok: !!ok, c: !!cached, t: Date.now() });
+    if (perfLog.length > PERF_MAX) perfLog = perfLog.slice(-PERF_MAX);
+    perfSave();
+  }
+
+  function median(nums) {
+    if (!nums.length) return 0;
+    var s = nums.slice().sort(function (a, b) { return a - b; });
+    var mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+  }
+
+  /**
+   * 액션별 요약.
+   *
+   * 🔴 **캐시 히트는 표본에서 뺀다.** bootstrap 은 sessionStorage 에 담아 두므로
+   * 그대로 세면 0ms 가 섞여 **중앙값이 거짓이 된다.** 캐시 건수는 따로만 보여 준다.
+   */
+  function perfSummary() {
+    var by = {};
+    perfLog.forEach(function (e) {
+      if (!by[e.a]) by[e.a] = { action: e.a, samples: [], cached: 0, failed: 0 };
+      if (e.c) { by[e.a].cached++; return; }      // ← 표본에 넣지 않는다
+      by[e.a].samples.push(e.ms);
+      if (!e.ok) by[e.a].failed++;
+    });
+
+    return Object.keys(by).map(function (k) {
+      var r = by[k];
+      var budget = PERF_BUDGET[r.action] || null;
+      var max = r.samples.length ? Math.max.apply(null, r.samples) : 0;
+      return {
+        action: r.action,
+        count: r.samples.length,
+        cached: r.cached,
+        failed: r.failed,
+        median: median(r.samples),
+        max: max,
+        budget: budget,
+        // 기준이 있는 액션만 판정한다. 표본이 없으면 판정하지 않는다(null).
+        within: (budget && r.samples.length) ? (max <= budget) : null
+      };
+    }).sort(function (a, b) { return a.action < b.action ? -1 : 1; });
+  }
+
+  /** 현장에서 폰으로 복사해 갈 수 있는 텍스트. 이게 없으면 실측이 안 남는다. */
+  function perfText() {
+    var rows = perfSummary();
+    var net = (global.navigator && global.navigator.connection &&
+               global.navigator.connection.effectiveType) || '';
+    var out = ['[정동캠프 응답 시간 실측]',
+               new Date().toLocaleString('ko-KR') + (net ? ' · ' + net : ''), ''];
+    if (!rows.length) {
+      out.push('(측정된 요청이 없습니다)');
+      return out.join('\n');
+    }
+    rows.forEach(function (r) {
+      var line = r.action + ' — ' + r.count + '건 · 중앙 ' + r.median + 'ms · 최대 ' + r.max + 'ms';
+      if (r.budget) line += ' · 기준 ' + r.budget + 'ms ' + (r.within ? 'OK' : '초과');
+      if (r.failed) line += ' · 실패 ' + r.failed + '건';
+      if (r.cached) line += ' · 캐시 ' + r.cached + '건(표본 제외)';
+      out.push(line);
+    });
+    return out.join('\n');
+  }
 
   function getToken() {
     try { return localStorage.getItem(CFG.TOKEN_KEY) || ''; } catch (e) { return ''; }
@@ -1007,6 +1145,9 @@ window.APP_CONFIG = {
       ));
     }
 
+    var started = now();
+    var mark = function (ok) { perfRecord(action, now() - started, ok, false); };
+
     return fetch(CFG.API_BASE, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -1027,9 +1168,11 @@ window.APP_CONFIG = {
           if (err.code === 'UNAUTHORIZED') setToken('');
           throw new ApiError(err.code || 'SERVER_ERROR', err.message || '오류가 발생했습니다.');
         }
+        mark(true);
         return json.data;
       })
       .catch(function (e) {
+        mark(false);
         if (e instanceof ApiError) throw e;
         throw new ApiError('SERVER_ERROR', '네트워크 연결을 확인해 주세요.');
       });
@@ -1043,7 +1186,11 @@ window.APP_CONFIG = {
         var raw = sessionStorage.getItem(KEY);
         if (raw) {
           var cached = JSON.parse(raw);
-          if (Date.now() - cached.at < CFG.BOOTSTRAP_TTL) return Promise.resolve(cached.data);
+          if (Date.now() - cached.at < CFG.BOOTSTRAP_TTL) {
+            // 캐시 히트도 남기되 **표본에서는 뺀다.** 0ms 를 같이 세면 중앙값이 거짓이 된다.
+            perfRecord('bootstrap', 0, true, true);
+            return Promise.resolve(cached.data);
+          }
         }
       } catch (e) { /* 캐시 없음 */ }
     }
@@ -1056,6 +1203,13 @@ window.APP_CONFIG = {
   global.API = {
     call: call,
     bootstrap: bootstrap,
+    perf: {
+      list: function () { return perfLog.slice(); },
+      summary: perfSummary,
+      text: perfText,
+      budgets: PERF_BUDGET,
+      clear: function () { perfLog = []; perfSave(); }
+    },
     getToken: getToken,
     setToken: setToken,
     ApiError: ApiError,
@@ -1171,10 +1325,20 @@ window.APP_CONFIG = {
    */
   function resizePhoto(file) {
     return new Promise(function (resolve, reject) {
-      if (!file || !/^image\//.test(file.type)) {
-        reject(new Error('이미지 파일만 올릴 수 있습니다.'));
+      if (!file) {
+        reject(new Error('사진을 선택해 주세요.'));
         return;
       }
+      // 🔴 file.type 으로 미리 거르지 않는다.
+      //
+      // 예전 코드는 `!/^image\//.test(file.type)` 로 막았다. 그런데 안드로이드
+      // 갤러리·클라우드 피커는 타입을 **빈 값이나 application/octet-stream** 으로
+      // 넘긴다. 그러면 사진을 골랐는데도 "이미지 파일만 올릴 수 있습니다" 가 떴다.
+      // 카메라 촬영은 항상 image/jpeg 라 이 구멍이 드러나지 않았다 (D-027).
+      //
+      // 브라우저는 blob 을 **바이트로 판별해** 디코드한다(확인함 — 타입이
+      // application/octet-stream 인 PNG 도 그대로 열린다). 판단의 주인은 디코더다.
+      // 이미지가 아니면 아래 img.onerror 가 받는다.
       var url = URL.createObjectURL(file);
       var img = new Image();
 
@@ -1202,7 +1366,7 @@ window.APP_CONFIG = {
       };
       img.onerror = function () {
         URL.revokeObjectURL(url);
-        reject(new Error('사진을 읽지 못했습니다. 다른 사진으로 시도해 주세요.'));
+        reject(new Error('사진을 읽지 못했습니다. 이미지 파일인지 확인하고 다시 시도해 주세요.'));
       };
       img.src = url;
     });
@@ -1223,10 +1387,150 @@ window.APP_CONFIG = {
     return Number(m[2]) + '월 ' + Number(m[3]) + '일 ' + m[4] + ':' + m[5];
   }
 
+  // ---------------------------------------------------------------- 실측 패널
+  //
+  // `?perf=1` 일 때만 뜬다. 쿼리가 없으면 **DOM 에 아예 만들지 않는다** —
+  // 참가자에게는 흔적도 보이지 않는다.
+  // 기록 자체는 api.js 가 항상 하고 있다. 여기는 보여 주기만 한다 (D-030).
+
+  var PERF_ON_KEY = 'plc_jd_perf_on';
+
+  /** ?perf=1 로 켜고 ?perf=0 으로 끈다. 한 번 켜면 화면을 옮겨도 유지된다. */
+  function perfEnabled() {
+    var q = null;
+    try {
+      q = new URLSearchParams(global.location.search).get('perf');
+    } catch (e) { /* 아주 오래된 브라우저 */ }
+
+    if (q === '1' || q === 'on') {
+      try { localStorage.setItem(PERF_ON_KEY, '1'); } catch (e) { /* 무시 */ }
+      return true;
+    }
+    if (q === '0' || q === 'off') {
+      try { localStorage.removeItem(PERF_ON_KEY); } catch (e) { /* 무시 */ }
+      return false;
+    }
+    try { return localStorage.getItem(PERF_ON_KEY) === '1'; } catch (e) { return false; }
+  }
+
+  function perfRows() {
+    return (global.API && global.API.perf) ? global.API.perf.summary() : [];
+  }
+
+  function perfRender(box) {
+    var rows = perfRows();
+    var net = (global.navigator && global.navigator.connection &&
+               global.navigator.connection.effectiveType) || '';
+    var total = rows.reduce(function (a, r) { return a + r.count; }, 0);
+
+    var body = rows.length
+      ? '<table class="perf__table">' + rows.map(function (r) {
+          var mark = r.within === null ? '' : (r.within ? '✓' : '✗');
+          return '<tr class="' + (r.within === false ? 'is-over' : '') + '">' +
+            '<th>' + esc(r.action) + '</th>' +
+            '<td>' + r.count + '건</td>' +
+            '<td>중앙 ' + r.median + '</td>' +
+            '<td>최대 ' + r.max + '</td>' +
+            '<td>' + (r.budget ? mark + ' 기준 ' + r.budget : '') + '</td>' +
+            '</tr>';
+        }).join('') + '</table>'
+      : '<p class="perf__empty">아직 측정된 요청이 없습니다.</p>';
+
+    box.querySelector('.perf__head').textContent =
+      '측정 ' + total + '건' + (net ? ' · ' + net : '');
+    box.querySelector('.perf__body').innerHTML = body;
+  }
+
+  /**
+   * 현장에서 폰으로 눌러 카톡에 붙여 넣을 수 있어야 실측이 실제로 남는다.
+   * navigator.clipboard 는 비보안 컨텍스트에서 없을 수 있어 폴백을 둔다.
+   */
+  function perfCopy(text) {
+    if (global.navigator && global.navigator.clipboard && global.navigator.clipboard.writeText) {
+      global.navigator.clipboard.writeText(text)
+        .then(function () { toast('측정 결과를 복사했습니다.'); })
+        .catch(function () { perfCopyFallback(text); });
+      return;
+    }
+    perfCopyFallback(text);
+  }
+
+  function perfCopyFallback(text) {
+    var ta = document.createElement('textarea');
+    ta.className = 'perf__copy';
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    var done = false;
+    try { done = document.execCommand('copy'); } catch (e) { done = false; }
+    document.body.removeChild(ta);
+    toast(done ? '측정 결과를 복사했습니다.' : '복사하지 못했습니다. 화면을 캡처해 주세요.',
+      done ? undefined : 'error');
+  }
+
+  /**
+   * 패널이 화면 요소를 **가리지 않게** 자리를 잡는다.
+   *
+   * 고정 위치라 그냥 두면 아래쪽 버튼을 덮어 **눌리지 않는다.**
+   * (로그인 버튼이 실제로 그렇게 막혔고 브라우저 테스트가 잡아냈다.)
+   * 탭바 위로 올리고, 본문 아래쪽에 패널 높이만큼 여백을 준다 — 데모바와 같은 방식.
+   */
+  function perfFit(box) {
+    var tabbar = $('#tabbar');
+    var tabH = (tabbar && !tabbar.hidden) ? tabbar.offsetHeight : 0;
+    var root = document.documentElement;
+
+    if (box.hidden) {
+      root.style.setProperty('--perf-bottom', '8px');
+      document.body.style.paddingBottom = '';
+      return;
+    }
+    root.style.setProperty('--perf-bottom', (tabH + 8) + 'px');
+    document.body.style.paddingBottom = (tabH + box.offsetHeight + 16) + 'px';
+  }
+
+  function perfPanel() {
+    if (!perfEnabled()) return null;
+    if ($('#perfPanel')) return $('#perfPanel');
+
+    var box = document.createElement('div');
+    box.id = 'perfPanel';
+    box.className = 'perf';
+    box.innerHTML =
+      '<p class="perf__head"></p>' +
+      '<div class="perf__body"></div>' +
+      '<div class="perf__actions">' +
+        '<button type="button" data-perf="copy">복사</button>' +
+        '<button type="button" data-perf="clear">비우기</button>' +
+        '<button type="button" data-perf="close">닫기</button>' +
+      '</div>';
+    document.body.appendChild(box);
+
+    box.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-perf]');
+      if (!btn) return;
+      var act = btn.getAttribute('data-perf');
+      if (act === 'copy') perfCopy(global.API.perf.text());
+      else if (act === 'clear') { global.API.perf.clear(); perfRender(box); }
+      else if (act === 'close') { box.hidden = true; perfFit(box); }
+    });
+
+    perfRender(box);
+    perfFit(box);
+    // 요청이 끝날 때마다 다시 그린다. 폴링이 가장 단순하고, 패널이 떠 있을 때만 돈다.
+    setInterval(function () {
+      if (box.hidden) return;
+      perfRender(box);
+      perfFit(box);
+    }, 1000);
+    return box;
+  }
+
   global.UI = {
     $: $, $$: $$, esc: esc, nl2br: nl2br,
     toast: toast, confirmDialog: confirmDialog, setBusy: setBusy,
-    resizePhoto: resizePhoto, hhmm: hhmm, prettyDateTime: prettyDateTime
+    resizePhoto: resizePhoto, hhmm: hhmm, prettyDateTime: prettyDateTime,
+    perfPanel: perfPanel, perfEnabled: perfEnabled
   };
 })(window);
 
@@ -1268,6 +1572,7 @@ window.APP_CONFIG = {
 
   function init() {
     bindChrome();
+    UI.perfPanel();          // ?perf=1 일 때만 뜬다 (D-030)
     API.bootstrap()
       .then(function (boot) {
         state.boot = boot;
@@ -1344,7 +1649,6 @@ window.APP_CONFIG = {
 
   function renderLogin() {
     var c = (state.boot && state.boot.config) || {};
-    var sessions = (state.boot && state.boot.sessions) || [];
     setView(
       '<section class="hero">' +
         '<p class="hero__eyebrow">역사와 신앙의 현장을 직접 걸으며 배우는</p>' +
@@ -1355,18 +1659,6 @@ window.APP_CONFIG = {
         '<h2 class="card__title">참가자 확인</h2>' +
         '<p class="hint">신청하신 ' + esc(L('name', '이름')) + '과(와) ' +
           esc(L('phone', '연락처')) + ' 뒷 4자리로 들어갑니다.</p>' +
-        (sessions.length
-          ? '<label class="field"><span class="field__label">' + esc(L('session', '참여 일자')) + '</span>' +
-              '<div class="seg" role="radiogroup">' +
-                sessions.map(function (s, i) {
-                  return '<label class="seg__item"><input type="radio" name="session" value="' +
-                    esc(s.label) + '"' + (i === 0 ? ' checked' : '') + '>' +
-                    '<span>' + esc(s.label) + '</span></label>';
-                }).join('') +
-              '</div>' +
-              '<p class="hint">날짜를 잘못 골라도 명단이 맞으면 들어갈 수 있습니다.</p>' +
-            '</label>'
-          : '') +
         '<label class="field"><span class="field__label">' + esc(L('name', '이름')) + '</span>' +
           '<input class="input" type="text" name="name" placeholder="홍길동" required></label>' +
         '<label class="field"><span class="field__label">' + esc(L('phone', '연락처')) + ' 뒷 4자리</span>' +
@@ -1383,19 +1675,19 @@ window.APP_CONFIG = {
       var btn = form.querySelector('button[type="submit"]');
       UI.setBusy(btn, true, '확인 중…');
 
+      // 회차는 보내지 않는다. 로그인은 이름 + 뒷 4자리로 하고,
+      // 참여 일자는 명단에서 읽는다 (D-027).
       API.login(
-        form.session ? form.session.value : '',
+        '',
         form.name.value.trim(),
         form.last4.value.trim()
       )
         .then(function (data) {
           state.me = data.me;
           state.view = 'home';
-          try { localStorage.setItem(APP_CONFIG.SESSION_KEY, data.me.participant.session); } catch (err) { /* 무시 */ }
           render();
-          toast(data.me.sessionCorrected
-            ? data.me.participant.name + '님은 ' + data.me.participant.session + ' 참여로 배정되어 있습니다.'
-            : data.me.participant.name + '님 환영합니다.');
+          toast(data.me.participant.name + '님 환영합니다. (' +
+            data.me.participant.session + ')');
         })
         .catch(function (err) {
           UI.setBusy(btn, false);
@@ -1603,8 +1895,15 @@ window.APP_CONFIG = {
         'placeholder="현장에서 보고 느낀 것을 적어 주세요."></textarea></label>' +
       '<div class="field">' +
         '<span class="field__label">사진 <em>(선택)</em></span>' +
-        '<label class="filepick"><input type="file" name="photo" accept="image/*" capture="environment" hidden>' +
-          '<span>사진 선택 / 촬영</span></label>' +
+        // 🔴 입력이 둘이다. 하나에 capture 를 붙이면 그 입력은 **카메라만** 열고
+        // 갤러리 선택지를 아예 없앤다. 예전에는 입력이 하나뿐이라 버튼 글씨가
+        // '사진 선택 / 촬영' 인데 선택이 안 됐다 (D-027).
+        '<div class="filepick-row">' +
+          '<label class="filepick"><input type="file" name="photoShot" accept="image/*" ' +
+            'capture="environment" hidden><span>📷 촬영</span></label>' +
+          '<label class="filepick"><input type="file" name="photoPick" accept="image/*" hidden>' +
+            '<span>🖼 갤러리에서 선택</span></label>' +
+        '</div>' +
         '<div id="photoPreview" class="photo-preview" hidden>' +
           '<img alt="선택한 사진 미리보기">' +
           '<button type="button" class="btn btn--ghost btn--sm" id="photoClear">사진 빼기</button>' +
@@ -1618,27 +1917,31 @@ window.APP_CONFIG = {
 
   function bindJournalForm() {
     var form = $('#journalForm');
-    var input = form.querySelector('input[name="photo"]');
+    // 촬영·갤러리 두 입력을 똑같이 다룬다. 어느 쪽으로 넣었든 결과는 사진 한 장이다.
+    var inputs = [].slice.call(form.querySelectorAll('input[type="file"]'));
     var preview = $('#photoPreview');
 
-    input.addEventListener('change', function () {
-      var file = input.files && input.files[0];
-      if (!file) return;
-      UI.resizePhoto(file)
-        .then(function (photo) {
-          state.pendingPhoto = photo;
-          preview.querySelector('img').src = photo.previewUrl;
-          preview.hidden = false;
-        })
-        .catch(function (err) {
-          input.value = '';
-          toast(err.message, 'error');
-        });
+    inputs.forEach(function (input) {
+      input.addEventListener('change', function () {
+        var file = input.files && input.files[0];
+        if (!file) return;
+        UI.resizePhoto(file)
+          .then(function (photo) {
+            state.pendingPhoto = photo;
+            preview.querySelector('img').src = photo.previewUrl;
+            preview.hidden = false;
+          })
+          .catch(function (err) {
+            input.value = '';
+            toast(err.message, 'error');
+          });
+      });
     });
 
     $('#photoClear').addEventListener('click', function () {
       state.pendingPhoto = null;
-      input.value = '';
+      // 둘 다 비운다. 하나만 비우면 같은 사진을 다시 골랐을 때 change 가 안 뜬다.
+      inputs.forEach(function (input) { input.value = ''; });
       preview.hidden = true;
     });
 
@@ -1976,6 +2279,7 @@ window.APP_CONFIG = {
   }
 
   function init() {
+    UI.perfPanel();          // ?perf=1 일 때만 뜬다 (D-030)
     $('#tabbar').addEventListener('click', function (e) {
       var btn = e.target.closest('[data-view]');
       if (!btn) return;

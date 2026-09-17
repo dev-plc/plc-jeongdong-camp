@@ -10,6 +10,109 @@
 
   var CFG = global.APP_CONFIG;
 
+  // ---------------------------------------------------------------- 응답 시간 측정
+  //
+  // `DATABASE.md` 에 넘어갈 기준을 수치로 적어 뒀는데(부트스트랩 3초, me·progress.list
+  // 2초) **재는 방법이 없었다.** 기준을 적어 두고 재지 않으면 기준이 없는 것과 같다.
+  //
+  // **항상 기록한다.** 비용은 타임스탬프 하나와 배열 push 다. 캠프 당일 느리면
+  // 그때 이미 데이터가 쌓여 있어야 한다 — 그제서야 켜면 늦다 (D-030).
+  // 보여 주는 것만 ?perf=1 로 토글한다(UI.perfPanel).
+
+  var PERF_KEY = 'plc_jd_perf';
+  var PERF_MAX = 200;          // 최근 N건만. 메모리·localStorage 폭주 방지
+  var perfLog = [];
+
+  /** 기준선. DATABASE.md 의 '넘어갈 기준' 과 같은 값이어야 한다. */
+  var PERF_BUDGET = { 'bootstrap': 3000, 'me': 2000, 'progress.list': 2000 };
+
+  (function loadPerf() {
+    try {
+      var raw = localStorage.getItem(PERF_KEY);
+      if (raw) perfLog = JSON.parse(raw) || [];
+    } catch (e) { perfLog = []; }
+  })();
+
+  function perfSave() {
+    try { localStorage.setItem(PERF_KEY, JSON.stringify(perfLog)); } catch (e) { /* 시크릿 모드 등 */ }
+  }
+
+  function now() {
+    return (global.performance && global.performance.now)
+      ? global.performance.now() : Date.now();
+  }
+
+  /**
+   * 한 건 기록. 실패도 남긴다 — **느린 실패가 오히려 중요한 신호**다.
+   * cached=true 인 건은 표본에서 빠진다(perfSummary 참고).
+   */
+  function perfRecord(action, ms, ok, cached) {
+    perfLog.push({ a: action, ms: Math.round(ms), ok: !!ok, c: !!cached, t: Date.now() });
+    if (perfLog.length > PERF_MAX) perfLog = perfLog.slice(-PERF_MAX);
+    perfSave();
+  }
+
+  function median(nums) {
+    if (!nums.length) return 0;
+    var s = nums.slice().sort(function (a, b) { return a - b; });
+    var mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+  }
+
+  /**
+   * 액션별 요약.
+   *
+   * 🔴 **캐시 히트는 표본에서 뺀다.** bootstrap 은 sessionStorage 에 담아 두므로
+   * 그대로 세면 0ms 가 섞여 **중앙값이 거짓이 된다.** 캐시 건수는 따로만 보여 준다.
+   */
+  function perfSummary() {
+    var by = {};
+    perfLog.forEach(function (e) {
+      if (!by[e.a]) by[e.a] = { action: e.a, samples: [], cached: 0, failed: 0 };
+      if (e.c) { by[e.a].cached++; return; }      // ← 표본에 넣지 않는다
+      by[e.a].samples.push(e.ms);
+      if (!e.ok) by[e.a].failed++;
+    });
+
+    return Object.keys(by).map(function (k) {
+      var r = by[k];
+      var budget = PERF_BUDGET[r.action] || null;
+      var max = r.samples.length ? Math.max.apply(null, r.samples) : 0;
+      return {
+        action: r.action,
+        count: r.samples.length,
+        cached: r.cached,
+        failed: r.failed,
+        median: median(r.samples),
+        max: max,
+        budget: budget,
+        // 기준이 있는 액션만 판정한다. 표본이 없으면 판정하지 않는다(null).
+        within: (budget && r.samples.length) ? (max <= budget) : null
+      };
+    }).sort(function (a, b) { return a.action < b.action ? -1 : 1; });
+  }
+
+  /** 현장에서 폰으로 복사해 갈 수 있는 텍스트. 이게 없으면 실측이 안 남는다. */
+  function perfText() {
+    var rows = perfSummary();
+    var net = (global.navigator && global.navigator.connection &&
+               global.navigator.connection.effectiveType) || '';
+    var out = ['[정동캠프 응답 시간 실측]',
+               new Date().toLocaleString('ko-KR') + (net ? ' · ' + net : ''), ''];
+    if (!rows.length) {
+      out.push('(측정된 요청이 없습니다)');
+      return out.join('\n');
+    }
+    rows.forEach(function (r) {
+      var line = r.action + ' — ' + r.count + '건 · 중앙 ' + r.median + 'ms · 최대 ' + r.max + 'ms';
+      if (r.budget) line += ' · 기준 ' + r.budget + 'ms ' + (r.within ? 'OK' : '초과');
+      if (r.failed) line += ' · 실패 ' + r.failed + '건';
+      if (r.cached) line += ' · 캐시 ' + r.cached + '건(표본 제외)';
+      out.push(line);
+    });
+    return out.join('\n');
+  }
+
   function getToken() {
     try { return localStorage.getItem(CFG.TOKEN_KEY) || ''; } catch (e) { return ''; }
   }
@@ -43,6 +146,9 @@
       ));
     }
 
+    var started = now();
+    var mark = function (ok) { perfRecord(action, now() - started, ok, false); };
+
     return fetch(CFG.API_BASE, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -63,9 +169,11 @@
           if (err.code === 'UNAUTHORIZED') setToken('');
           throw new ApiError(err.code || 'SERVER_ERROR', err.message || '오류가 발생했습니다.');
         }
+        mark(true);
         return json.data;
       })
       .catch(function (e) {
+        mark(false);
         if (e instanceof ApiError) throw e;
         throw new ApiError('SERVER_ERROR', '네트워크 연결을 확인해 주세요.');
       });
@@ -79,7 +187,11 @@
         var raw = sessionStorage.getItem(KEY);
         if (raw) {
           var cached = JSON.parse(raw);
-          if (Date.now() - cached.at < CFG.BOOTSTRAP_TTL) return Promise.resolve(cached.data);
+          if (Date.now() - cached.at < CFG.BOOTSTRAP_TTL) {
+            // 캐시 히트도 남기되 **표본에서는 뺀다.** 0ms 를 같이 세면 중앙값이 거짓이 된다.
+            perfRecord('bootstrap', 0, true, true);
+            return Promise.resolve(cached.data);
+          }
         }
       } catch (e) { /* 캐시 없음 */ }
     }
@@ -92,6 +204,13 @@
   global.API = {
     call: call,
     bootstrap: bootstrap,
+    perf: {
+      list: function () { return perfLog.slice(); },
+      summary: perfSummary,
+      text: perfText,
+      budgets: PERF_BUDGET,
+      clear: function () { perfLog = []; perfSave(); }
+    },
     getToken: getToken,
     setToken: setToken,
     ApiError: ApiError,
