@@ -376,9 +376,10 @@ textarea.input { resize: vertical; min-height: 96px; }
 
 /* ------------------------------------------------------------------ 탐험일지 */
 
-.tabs { display: flex; gap: 8px; margin: 4px 0 14px; }
+/* 탭이 넷 이상(전체 + 회차들)이 될 수 있다. 좁은 화면에서 줄을 바꾼다 — .seg 와 같은 방식(D-026). */
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
 .tab {
-  flex: 1;
+  flex: 1 1 96px;
   padding: 9px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -550,3 +551,9 @@ textarea.input { resize: vertical; min-height: 96px; }
 }
 /* 클립보드가 없을 때 쓰는 복사용 임시 요소. 화면에 보이면 안 된다. */
 .perf__copy { position: fixed; left: -9999px; top: 0; opacity: 0; }
+
+/* 비활성 회차 탭. 숨기지 않고 **꺼져 있음을 보여 준다** — 운영진은 데이터를 계속 본다 (D-031). */
+.tab.is-off { opacity: .55; }
+.tab.is-off small {
+  display: block; font-size: 10px; letter-spacing: .02em; opacity: .8;
+}

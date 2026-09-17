@@ -295,10 +295,14 @@ function autoResize_() {
 function checkDuplicates() {
   var rows = readTable_(SHEETS.PARTICIPANTS).filter(function (r) { return str_(r[COL.NAME]); });
   var sessionList = sessionLabels_();
+  // 비활성 회차에 사람이 있으면 그 사람은 **로그인이 막힌다.** 조용히 두면 안 된다 (D-031).
+  var inactiveList = sessions_().filter(function (x) { return !x.active; })
+    .map(function (x) { return x.label; });
   var courseNames = readTable_(SHEETS.COURSES).map(function (r) { return str_(r['코스명']); });
 
   var seen = {};
   var dup = [], missing = [], badSession = [], noLeader = [], courseMismatch = [], badCourse = [];
+  var inactive = [];
   var audienceBySession = {};   // 회차별 부서 분포 — 1:1 원칙과 어긋나는지 보기 위함
 
   // 같은 연락처가 여러 행에 반복되면 아직 채우지 않은 임시값으로 본다.
@@ -329,6 +333,9 @@ function checkDuplicates() {
     } else if (sessionList.indexOf(session) < 0) {
       badSession.push('행 ' + r.__row + ' (' + name + '): 참여 일자 "' + session +
         '" 가 Config 의 회차 목록에 없음 (' + sessionList.join(' / ') + ')');
+    }
+    if (session && inactiveList.indexOf(session) >= 0) {
+      inactive.push('행 ' + r.__row + ' (' + name + '): "' + session + '" 는 비활성 회차 — 로그인 불가');
     }
     if (session && sessionList.indexOf(session) >= 0) {
       var aud = str_(r[COL.AUDIENCE]);
@@ -407,6 +414,7 @@ function checkDuplicates() {
   block_(out, dup, '❌ 로그인 충돌 (해당 인원은 로그인 불가)', '✅ 로그인 충돌 없음');
   block_(out, missing, '⚠ 필수값 누락', '✅ 필수값 누락 없음');
   block_(out, badSession, '⚠ 참여 일자 문제', '✅ 참여 일자 정상');
+  block_(out, inactive, '⚠ 비활성 회차 인원 (로그인 불가)', '✅ 비활성 회차에 배정된 인원 없음');
   block_(out, badCourse, '⚠ 배정 코스 오타', '✅ 배정 코스 정상');
   block_(out, courseMismatch, '⚠ 조 안에서 배정 코스 불일치', '✅ 조별 배정 코스 일관됨');
   block_(out, noLeader, '⚠ 조장 없는 조', '✅ 모든 조에 조장 있음');
@@ -586,6 +594,11 @@ function addSession() {
     appendRow_(SHEETS.CONFIG, {
       '키': 'SESSION_' + n + '_DATE', '값': date, '설명': n + '차 실제 날짜'
     });
+    // 끄는 스위치를 **미리 만들어 둔다.** 있어야 있는 줄 안다 (D-031).
+    appendRow_(SHEETS.CONFIG, {
+      '키': 'SESSION_' + n + '_ACTIVE', '값': 'TRUE',
+      '설명': 'FALSE 로 두면 이 회차 참가자는 로그인할 수 없습니다 (명단은 그대로 남습니다)'
+    });
   });
 
   clearConfigCache();          // 새 회차를 곧바로 읽게 한다
@@ -601,7 +614,8 @@ function addSession() {
   applyValidation_();
 
   var out = ['✅ 회차를 추가했습니다.', '',
-    'SESSION_' + n + ' = ' + label + (date ? ' (' + date + ')' : '')];
+    'SESSION_' + n + ' = ' + label + (date ? ' (' + date + ')' : ''),
+    '끝나면 Config 의 SESSION_' + n + '_ACTIVE 를 FALSE 로 바꾸면 로그인이 막힙니다.'];
   if (copyFrom) out.push('일정표 ' + copyFrom.length + '행을 복사했습니다.');
   if (__validationSkipped.length) {
     out.push('', '⚠ 드롭다운을 못 넣은 열 ' + __validationSkipped.length + '개:');

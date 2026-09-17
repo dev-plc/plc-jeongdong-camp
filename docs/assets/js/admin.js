@@ -12,7 +12,7 @@
 
   var $ = UI.$, esc = UI.esc, nl2br = UI.nl2br, toast = UI.toast;
 
-  var state = { boot: null, view: 'review', authed: false, audience: '전체' };
+  var state = { boot: null, view: 'review', authed: false, audience: '전체', session: '전체' };
 
   /** 항목 이름은 서버가 내려주는 마스터시트 헤더를 그대로 쓴다(bootstrap.labels). */
   function L(key, fallback) {
@@ -85,6 +85,46 @@
     if (state.audience === '전체') return true;
     var v = String(value || '');
     return v === state.audience || v.indexOf('혼합') >= 0 || v.indexOf(state.audience) >= 0;
+  }
+
+  // ---------------------------------------------------------------- 회차 필터
+  //
+  // 부서 필터만 있어서 사전답사를 따로 볼 수가 없었다. 회차는 Config 가 정하므로
+  // 목록을 박지 않고 boot.sessions 를 그대로 쓴다 — 회차를 늘려도 따라온다 (D-026).
+  // 기본값은 **전체**다. 지금까지의 동작과 같아 놀랄 일이 없다 (D-031).
+
+  function sessionFilterHtml() {
+    var list = (state.boot && state.boot.sessions) || [];
+    if (list.length < 2) return '';   // 회차가 하나뿐이면 고를 것이 없다
+
+    return '<div class="tabs" id="sessionFilter">' +
+      '<button type="button" class="tab' + (state.session === '전체' ? ' is-active' : '') +
+        '" data-session="전체">전체</button>' +
+      list.map(function (s) {
+        // 비활성 회차도 **보여 준다.** 운영진은 데이터를 계속 확인해야 한다.
+        return '<button type="button" class="tab' +
+          (state.session === s.label ? ' is-active' : '') +
+          (s.active === false ? ' is-off' : '') +
+          '" data-session="' + esc(s.label) + '">' + esc(s.label) +
+          (s.active === false ? '<small>비활성</small>' : '') + '</button>';
+      }).join('') +
+      '</div>';
+  }
+
+  function bindSessionFilter(rerender) {
+    var el = $('#sessionFilter');
+    if (!el) return;
+    el.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-session]');
+      if (!btn) return;
+      state.session = btn.getAttribute('data-session');
+      rerender();
+    });
+  }
+
+  function matchesSession(value) {
+    if (state.session === '전체') return true;
+    return String(value || '') === state.session;
   }
 
   // ------------------------------------------------------------ 로그인
@@ -191,11 +231,14 @@
     setView('<p class="loading">불러오는 중…</p>');
     API.call('admin.progress.board')
       .then(function (board) {
-        var teams = board.teams.filter(function (t) { return matchesAudience(t.audience); });
+        var teams = board.teams.filter(function (t) {
+          return matchesAudience(t.audience) && matchesSession(t.session);
+        });
 
         setView(
           '<section class="section-head"><h2>' + esc(L('group', '조 배정')) + '별 진행 현황</h2>' +
             '<p class="hint">조장이 기록한 도착·완료 상태입니다. 조마다 배정 코스가 달라 방문 순서가 다릅니다.</p></section>' +
+          sessionFilterHtml() +
           audienceFilterHtml() +
           (teams.length
             ? '<div class="card"><div class="table-scroll"><table class="admin-table">' +
@@ -228,6 +271,7 @@
                 ? '명단에 조가 배정된 참가자가 아직 없습니다.'
                 : esc(state.audience) + '에 배정된 조가 없습니다.') + '</p>')
         );
+        bindSessionFilter(renderProgress);
         bindAudienceFilter(renderProgress);
       })
       .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
@@ -240,7 +284,9 @@
     API.call('admin.fee.board')
       .then(function (data) {
         var sum = data.summary;
-        var teams = data.teams.filter(function (t) { return matchesAudience(t.audience); });
+        var teams = data.teams.filter(function (t) {
+          return matchesAudience(t.audience) && matchesSession(t.session);
+        });
 
         setView(
           '<section class="section-head"><h2>' + esc(L('feeStatus', '입금 여부')) + ' 현황</h2>' +
@@ -251,7 +297,8 @@
             '<div><dt>면제</dt><dd>' + (sum['면제'] || 0) + '명</dd></div>' +
             '<div><dt>합계</dt><dd>' + (sum['합계'] || 0) + '명</dd></div>' +
             '<div><dt>수납액</dt><dd>' + won(sum['수납액']) + ' / ' + won(sum['예상수입']) + '</dd></div>' +
-          '</dl><p class="hint">전체 합계는 부서 필터와 무관하게 전원 기준입니다.</p></section>' +
+          '</dl><p class="hint">전체 합계는 필터와 무관하게 전원 기준입니다.</p></section>' +
+          sessionFilterHtml() +
           audienceFilterHtml() +
           '<div class="card"><div class="table-scroll"><table class="admin-table">' +
             '<thead><tr><th>' + esc(L('session', '참여 일자')) + ' · ' + esc(L('group', '조 배정')) + '</th>' +
@@ -269,6 +316,7 @@
             }).join('') +
           '</tbody></table></div></div>'
         );
+        bindSessionFilter(renderFee);
         bindAudienceFilter(renderFee);
       })
       .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
