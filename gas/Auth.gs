@@ -172,6 +172,13 @@ function login_(body) {
   if (!str_(p[COL.SESSION])) {
     throw new AppError('BAD_REQUEST', '참여 일자가 아직 배정되지 않았습니다. 운영진에게 문의해 주세요.');
   }
+  // 🔴 비활성 회차는 **로그인을 막는다.** 사전답사가 끝나면 이걸로 끈다 (D-031).
+  // 명단은 그대로 두므로 되돌리는 것은 Config 한 칸이다.
+  if (!isActiveSession_(str_(p[COL.SESSION]))) {
+    logEvent_('auth.login', name, str_(p[COL.SESSION]), 'SESSION_INACTIVE', '');
+    throw new AppError('FORBIDDEN',
+      '지금은 열려 있지 않은 회차입니다(' + str_(p[COL.SESSION]) + ').\n운영진에게 문의해 주세요.');
+  }
   if (!str_(p['참가자ID'])) {
     throw new AppError('SERVER_ERROR', '참가자 ID가 비어 있습니다. 운영진에게 문의해 주세요. (fillParticipantIds 실행 필요)');
   }

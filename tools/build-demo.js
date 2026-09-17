@@ -149,9 +149,12 @@ body { padding-top: var(--demobar-h, 76px); }
     NOTICE_TICKER: '09:30까지 PL교회 본당 앞으로 모여 주세요'
   };
 
+  // 회차는 Config 가 정한다(D-026). 세 번째는 **비활성**이라 관리자 필터에
+  // '비활성' 으로 뜨고 그 회차 참가자는 로그인할 수 없다(D-031).
   var SESSIONS = [
-    { label: '10/31(토)', date: '2026-10-31' },
-    { label: '11/07(토)', date: '2026-11-07' }
+    { n: 1, label: '10/31(토)', date: '2026-10-31', active: true },
+    { n: 2, label: '11/07(토)', date: '2026-11-07', active: true },
+    { n: 3, label: '사전답사(10/11)', date: '2026-10-11', active: false }
   ];
 
   var CHECKPOINTS = [

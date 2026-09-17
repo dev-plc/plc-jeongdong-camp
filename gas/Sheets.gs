@@ -137,7 +137,19 @@ function sessions_() {
     if (!m) return;
     var label = str_(conf[key]);
     if (!label) return;
-    out.push({ n: parseInt(m[1], 10), label: label, date: str_(conf[key + '_DATE'] || '') });
+    // `SESSION_<n>_ACTIVE` 가 없거나 비어 있으면 **활성**이다.
+    // 기존 회차는 행을 새로 넣지 않아도 그대로 돌아간다 (D-031).
+    var flag = conf[key + '_ACTIVE'];
+    var active = (flag === undefined || str_(flag) === '')
+      ? true
+      : /^(true|y|yes|1|on)$/i.test(str_(flag));
+
+    out.push({
+      n: parseInt(m[1], 10),
+      label: label,
+      date: str_(conf[key + '_DATE'] || ''),
+      active: active
+    });
   });
 
   return out.sort(function (a, b) { return a.n - b.n; });
@@ -147,8 +159,26 @@ function sessionLabels_() {
   return sessions_().map(function (s) { return s.label; });
 }
 
+/**
+ * **앱이 실제로 열어 주는** 회차만.
+ *
+ * 비활성 회차는 앱 입장에서 **없는 회차**다 — 그 회차 참가자는 로그인할 수 없고
+ * 일정표도 내려가지 않는다. 시트 데이터는 그대로 남는다 (D-031).
+ * 사전답사가 끝나면 이걸로 끈다.
+ */
+function activeSessionLabels_() {
+  return sessions_().filter(function (s) { return s.active; })
+    .map(function (s) { return s.label; });
+}
+
+/** 명단에 적을 수 있는 회차인가. 비활성도 **적을 수는 있다**(드롭다운·명단 점검용). */
 function isValidSession_(label) {
   return sessionLabels_().indexOf(str_(label)) >= 0;
+}
+
+/** 지금 로그인을 열어 주는 회차인가. */
+function isActiveSession_(label) {
+  return activeSessionLabels_().indexOf(str_(label)) >= 0;
 }
 
 /**
