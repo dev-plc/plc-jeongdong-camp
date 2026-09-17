@@ -21,6 +21,7 @@
   }
 
   function init() {
+    UI.perfPanel();          // ?perf=1 일 때만 뜬다 (D-030)
     $('#tabbar').addEventListener('click', function (e) {
       var btn = e.target.closest('[data-view]');
       if (!btn) return;

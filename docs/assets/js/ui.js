@@ -146,9 +146,149 @@
     return Number(m[2]) + '월 ' + Number(m[3]) + '일 ' + m[4] + ':' + m[5];
   }
 
+  // ---------------------------------------------------------------- 실측 패널
+  //
+  // `?perf=1` 일 때만 뜬다. 쿼리가 없으면 **DOM 에 아예 만들지 않는다** —
+  // 참가자에게는 흔적도 보이지 않는다.
+  // 기록 자체는 api.js 가 항상 하고 있다. 여기는 보여 주기만 한다 (D-030).
+
+  var PERF_ON_KEY = 'plc_jd_perf_on';
+
+  /** ?perf=1 로 켜고 ?perf=0 으로 끈다. 한 번 켜면 화면을 옮겨도 유지된다. */
+  function perfEnabled() {
+    var q = null;
+    try {
+      q = new URLSearchParams(global.location.search).get('perf');
+    } catch (e) { /* 아주 오래된 브라우저 */ }
+
+    if (q === '1' || q === 'on') {
+      try { localStorage.setItem(PERF_ON_KEY, '1'); } catch (e) { /* 무시 */ }
+      return true;
+    }
+    if (q === '0' || q === 'off') {
+      try { localStorage.removeItem(PERF_ON_KEY); } catch (e) { /* 무시 */ }
+      return false;
+    }
+    try { return localStorage.getItem(PERF_ON_KEY) === '1'; } catch (e) { return false; }
+  }
+
+  function perfRows() {
+    return (global.API && global.API.perf) ? global.API.perf.summary() : [];
+  }
+
+  function perfRender(box) {
+    var rows = perfRows();
+    var net = (global.navigator && global.navigator.connection &&
+               global.navigator.connection.effectiveType) || '';
+    var total = rows.reduce(function (a, r) { return a + r.count; }, 0);
+
+    var body = rows.length
+      ? '<table class="perf__table">' + rows.map(function (r) {
+          var mark = r.within === null ? '' : (r.within ? '✓' : '✗');
+          return '<tr class="' + (r.within === false ? 'is-over' : '') + '">' +
+            '<th>' + esc(r.action) + '</th>' +
+            '<td>' + r.count + '건</td>' +
+            '<td>중앙 ' + r.median + '</td>' +
+            '<td>최대 ' + r.max + '</td>' +
+            '<td>' + (r.budget ? mark + ' 기준 ' + r.budget : '') + '</td>' +
+            '</tr>';
+        }).join('') + '</table>'
+      : '<p class="perf__empty">아직 측정된 요청이 없습니다.</p>';
+
+    box.querySelector('.perf__head').textContent =
+      '측정 ' + total + '건' + (net ? ' · ' + net : '');
+    box.querySelector('.perf__body').innerHTML = body;
+  }
+
+  /**
+   * 현장에서 폰으로 눌러 카톡에 붙여 넣을 수 있어야 실측이 실제로 남는다.
+   * navigator.clipboard 는 비보안 컨텍스트에서 없을 수 있어 폴백을 둔다.
+   */
+  function perfCopy(text) {
+    if (global.navigator && global.navigator.clipboard && global.navigator.clipboard.writeText) {
+      global.navigator.clipboard.writeText(text)
+        .then(function () { toast('측정 결과를 복사했습니다.'); })
+        .catch(function () { perfCopyFallback(text); });
+      return;
+    }
+    perfCopyFallback(text);
+  }
+
+  function perfCopyFallback(text) {
+    var ta = document.createElement('textarea');
+    ta.className = 'perf__copy';
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    var done = false;
+    try { done = document.execCommand('copy'); } catch (e) { done = false; }
+    document.body.removeChild(ta);
+    toast(done ? '측정 결과를 복사했습니다.' : '복사하지 못했습니다. 화면을 캡처해 주세요.',
+      done ? undefined : 'error');
+  }
+
+  /**
+   * 패널이 화면 요소를 **가리지 않게** 자리를 잡는다.
+   *
+   * 고정 위치라 그냥 두면 아래쪽 버튼을 덮어 **눌리지 않는다.**
+   * (로그인 버튼이 실제로 그렇게 막혔고 브라우저 테스트가 잡아냈다.)
+   * 탭바 위로 올리고, 본문 아래쪽에 패널 높이만큼 여백을 준다 — 데모바와 같은 방식.
+   */
+  function perfFit(box) {
+    var tabbar = $('#tabbar');
+    var tabH = (tabbar && !tabbar.hidden) ? tabbar.offsetHeight : 0;
+    var root = document.documentElement;
+
+    if (box.hidden) {
+      root.style.setProperty('--perf-bottom', '8px');
+      document.body.style.paddingBottom = '';
+      return;
+    }
+    root.style.setProperty('--perf-bottom', (tabH + 8) + 'px');
+    document.body.style.paddingBottom = (tabH + box.offsetHeight + 16) + 'px';
+  }
+
+  function perfPanel() {
+    if (!perfEnabled()) return null;
+    if ($('#perfPanel')) return $('#perfPanel');
+
+    var box = document.createElement('div');
+    box.id = 'perfPanel';
+    box.className = 'perf';
+    box.innerHTML =
+      '<p class="perf__head"></p>' +
+      '<div class="perf__body"></div>' +
+      '<div class="perf__actions">' +
+        '<button type="button" data-perf="copy">복사</button>' +
+        '<button type="button" data-perf="clear">비우기</button>' +
+        '<button type="button" data-perf="close">닫기</button>' +
+      '</div>';
+    document.body.appendChild(box);
+
+    box.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-perf]');
+      if (!btn) return;
+      var act = btn.getAttribute('data-perf');
+      if (act === 'copy') perfCopy(global.API.perf.text());
+      else if (act === 'clear') { global.API.perf.clear(); perfRender(box); }
+      else if (act === 'close') { box.hidden = true; perfFit(box); }
+    });
+
+    perfRender(box);
+    perfFit(box);
+    // 요청이 끝날 때마다 다시 그린다. 폴링이 가장 단순하고, 패널이 떠 있을 때만 돈다.
+    setInterval(function () {
+      if (box.hidden) return;
+      perfRender(box);
+      perfFit(box);
+    }, 1000);
+    return box;
+  }
+
   global.UI = {
     $: $, $$: $$, esc: esc, nl2br: nl2br,
     toast: toast, confirmDialog: confirmDialog, setBusy: setBusy,
-    resizePhoto: resizePhoto, hhmm: hhmm, prettyDateTime: prettyDateTime
+    resizePhoto: resizePhoto, hhmm: hhmm, prettyDateTime: prettyDateTime,
+    perfPanel: perfPanel, perfEnabled: perfEnabled
   };
 })(window);
