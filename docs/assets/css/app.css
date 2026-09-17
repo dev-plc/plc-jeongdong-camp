@@ -520,3 +520,33 @@ textarea.input { resize: vertical; min-height: 96px; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ---- 실측 패널 (?perf=1). 참가자에게는 렌더되지 않는다 — D-030 ---- */
+.perf {
+  /* 탭바(z-index 20, 화면 맨 아래) **위에** 앉는다.
+     그리고 body 에 그만큼 아래 여백을 줘 화면 요소를 가리지 않게 한다 —
+     안 그러면 로그인 버튼이 패널에 덮여 **눌리지 않는다**(실제로 테스트가 잡았다). */
+  position: fixed; left: 8px; right: 8px;
+  bottom: calc(var(--perf-bottom, 8px)); z-index: 120;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(30, 24, 22, .94); color: #fff;
+  font-size: 12px; line-height: 1.5;
+  box-shadow: 0 6px 24px rgba(0,0,0,.28);
+}
+.perf[hidden] { display: none; }
+.perf__head { margin: 0 0 6px; font-weight: 700; letter-spacing: .02em; }
+.perf__empty { margin: 0; opacity: .7; }
+.perf__table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.perf__table th,
+.perf__table td { padding: 2px 0; text-align: right; font-weight: 400; white-space: nowrap; }
+.perf__table th { text-align: left; font-weight: 700; padding-right: 8px; }
+.perf__table tr.is-over { color: #ffb4a2; }
+.perf__actions { display: flex; gap: 6px; margin-top: 8px; }
+.perf__actions button {
+  flex: 1; padding: 6px 8px;
+  border: 1px solid rgba(255,255,255,.3); border-radius: 999px;
+  background: none; color: #fff; font-family: inherit; font-size: 12px; cursor: pointer;
+}
+/* 클립보드가 없을 때 쓰는 복사용 임시 요소. 화면에 보이면 안 된다. */
+.perf__copy { position: fixed; left: -9999px; top: 0; opacity: 0; }

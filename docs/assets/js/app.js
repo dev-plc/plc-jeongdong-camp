@@ -34,6 +34,7 @@
 
   function init() {
     bindChrome();
+    UI.perfPanel();          // ?perf=1 일 때만 뜬다 (D-030)
     API.bootstrap()
       .then(function (boot) {
         state.boot = boot;
