@@ -203,11 +203,20 @@
    ```
    기본값 `REPLACE_WITH_DEPLOYMENT_ID` 가 그대로면 앱이
    "아직 서버 주소가 설정되지 않았습니다" 를 띄웁니다.
-2. 작업 브랜치에 커밋·푸시 → **Pull Request 를 `main` 으로 머지**
-3. GitHub 저장소 → Settings → Pages
+2. **`node tools/stamp-assets.js`** 를 돌리고 바뀐 HTML 을 함께 커밋
+   - `app.js` → `app.js?v=7847799b` 처럼 **내용 해시**를 붙입니다.
+     GitHub Pages 는 응답 헤더를 바꿀 수 없어서, 이게 **브라우저 캐시를 깨는 유일한 수단**입니다.
+   - 잊으면 `node tools/stamp-assets.js --check` 와 `test-stamp.js` 가 잡습니다.
+     **"고쳤는데 화면에 안 보인다" 의 1번 원인입니다** (D-028).
+3. 작업 브랜치에 커밋·푸시 → **Pull Request 를 `main` 으로 머지**
+4. GitHub 저장소 → Settings → Pages
    - Source: **Deploy from a branch**
    - Branch: `main` / 폴더: **`/docs`**
-4. 1~2분 뒤 `https://dev-plc.github.io/plc-jeongdong-camp/` 에서 확인
+5. 1~2분 뒤 `https://dev-plc.github.io/plc-jeongdong-camp/` 에서 확인
+
+> **`docs/demo.html` 은 손으로 고치지 마세요.** `tools/build-demo.js` 가 만드는
+> 생성물입니다. 앱을 고쳤으면 `node tools/build-demo.js` 를 돌리세요.
+> 손으로 고치면 `app.css`/`app.js` 의 변경이 데모에만 빠져 **"고쳤는데 안 보인다" 가 됩니다.**
 
 `docs/.nojekyll` 이 있어 Jekyll 빌드를 건너뜁니다(언더스코어로 시작하는 파일이 없어도 빌드가 빨라짐).
 
