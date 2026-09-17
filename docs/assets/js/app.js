@@ -34,6 +34,7 @@
 
   function init() {
     bindChrome();
+    UI.perfPanel();          // ?perf=1 일 때만 뜬다 (D-030)
     API.bootstrap()
       .then(function (boot) {
         state.boot = boot;
@@ -110,7 +111,6 @@
 
   function renderLogin() {
     var c = (state.boot && state.boot.config) || {};
-    var sessions = (state.boot && state.boot.sessions) || [];
     setView(
       '<section class="hero">' +
         '<p class="hero__eyebrow">역사와 신앙의 현장을 직접 걸으며 배우는</p>' +
@@ -121,18 +121,6 @@
         '<h2 class="card__title">참가자 확인</h2>' +
         '<p class="hint">신청하신 ' + esc(L('name', '이름')) + '과(와) ' +
           esc(L('phone', '연락처')) + ' 뒷 4자리로 들어갑니다.</p>' +
-        (sessions.length
-          ? '<label class="field"><span class="field__label">' + esc(L('session', '참여 일자')) + '</span>' +
-              '<div class="seg" role="radiogroup">' +
-                sessions.map(function (s, i) {
-                  return '<label class="seg__item"><input type="radio" name="session" value="' +
-                    esc(s.label) + '"' + (i === 0 ? ' checked' : '') + '>' +
-                    '<span>' + esc(s.label) + '</span></label>';
-                }).join('') +
-              '</div>' +
-              '<p class="hint">날짜를 잘못 골라도 명단이 맞으면 들어갈 수 있습니다.</p>' +
-            '</label>'
-          : '') +
         '<label class="field"><span class="field__label">' + esc(L('name', '이름')) + '</span>' +
           '<input class="input" type="text" name="name" placeholder="홍길동" required></label>' +
         '<label class="field"><span class="field__label">' + esc(L('phone', '연락처')) + ' 뒷 4자리</span>' +
@@ -149,19 +137,19 @@
       var btn = form.querySelector('button[type="submit"]');
       UI.setBusy(btn, true, '확인 중…');
 
+      // 회차는 보내지 않는다. 로그인은 이름 + 뒷 4자리로 하고,
+      // 참여 일자는 명단에서 읽는다 (D-027).
       API.login(
-        form.session ? form.session.value : '',
+        '',
         form.name.value.trim(),
         form.last4.value.trim()
       )
         .then(function (data) {
           state.me = data.me;
           state.view = 'home';
-          try { localStorage.setItem(APP_CONFIG.SESSION_KEY, data.me.participant.session); } catch (err) { /* 무시 */ }
           render();
-          toast(data.me.sessionCorrected
-            ? data.me.participant.name + '님은 ' + data.me.participant.session + ' 참여로 배정되어 있습니다.'
-            : data.me.participant.name + '님 환영합니다.');
+          toast(data.me.participant.name + '님 환영합니다. (' +
+            data.me.participant.session + ')');
         })
         .catch(function (err) {
           UI.setBusy(btn, false);
@@ -369,8 +357,15 @@
         'placeholder="현장에서 보고 느낀 것을 적어 주세요."></textarea></label>' +
       '<div class="field">' +
         '<span class="field__label">사진 <em>(선택)</em></span>' +
-        '<label class="filepick"><input type="file" name="photo" accept="image/*" capture="environment" hidden>' +
-          '<span>사진 선택 / 촬영</span></label>' +
+        // 🔴 입력이 둘이다. 하나에 capture 를 붙이면 그 입력은 **카메라만** 열고
+        // 갤러리 선택지를 아예 없앤다. 예전에는 입력이 하나뿐이라 버튼 글씨가
+        // '사진 선택 / 촬영' 인데 선택이 안 됐다 (D-027).
+        '<div class="filepick-row">' +
+          '<label class="filepick"><input type="file" name="photoShot" accept="image/*" ' +
+            'capture="environment" hidden><span>📷 촬영</span></label>' +
+          '<label class="filepick"><input type="file" name="photoPick" accept="image/*" hidden>' +
+            '<span>🖼 갤러리에서 선택</span></label>' +
+        '</div>' +
         '<div id="photoPreview" class="photo-preview" hidden>' +
           '<img alt="선택한 사진 미리보기">' +
           '<button type="button" class="btn btn--ghost btn--sm" id="photoClear">사진 빼기</button>' +
@@ -384,27 +379,31 @@
 
   function bindJournalForm() {
     var form = $('#journalForm');
-    var input = form.querySelector('input[name="photo"]');
+    // 촬영·갤러리 두 입력을 똑같이 다룬다. 어느 쪽으로 넣었든 결과는 사진 한 장이다.
+    var inputs = [].slice.call(form.querySelectorAll('input[type="file"]'));
     var preview = $('#photoPreview');
 
-    input.addEventListener('change', function () {
-      var file = input.files && input.files[0];
-      if (!file) return;
-      UI.resizePhoto(file)
-        .then(function (photo) {
-          state.pendingPhoto = photo;
-          preview.querySelector('img').src = photo.previewUrl;
-          preview.hidden = false;
-        })
-        .catch(function (err) {
-          input.value = '';
-          toast(err.message, 'error');
-        });
+    inputs.forEach(function (input) {
+      input.addEventListener('change', function () {
+        var file = input.files && input.files[0];
+        if (!file) return;
+        UI.resizePhoto(file)
+          .then(function (photo) {
+            state.pendingPhoto = photo;
+            preview.querySelector('img').src = photo.previewUrl;
+            preview.hidden = false;
+          })
+          .catch(function (err) {
+            input.value = '';
+            toast(err.message, 'error');
+          });
+      });
     });
 
     $('#photoClear').addEventListener('click', function () {
       state.pendingPhoto = null;
-      input.value = '';
+      // 둘 다 비운다. 하나만 비우면 같은 사진을 다시 골랐을 때 change 가 안 뜬다.
+      inputs.forEach(function (input) { input.value = ''; });
       preview.hidden = true;
     });
 

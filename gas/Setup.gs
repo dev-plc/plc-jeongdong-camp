@@ -327,7 +327,8 @@ function checkDuplicates() {
     if (!session) {
       badSession.push('행 ' + r.__row + ' (' + name + '): 참여 일자 미배정 — 로그인 불가');
     } else if (sessionList.indexOf(session) < 0) {
-      badSession.push('행 ' + r.__row + ' (' + name + '): 참여 일자 "' + session + '" 가 Config 의 SESSION_1/2 와 다름');
+      badSession.push('행 ' + r.__row + ' (' + name + '): 참여 일자 "' + session +
+        '" 가 Config 의 회차 목록에 없음 (' + sessionList.join(' / ') + ')');
     }
     if (session && sessionList.indexOf(session) >= 0) {
       var aud = str_(r[COL.AUDIENCE]);
@@ -514,6 +515,110 @@ function syncTeams() {
  *   그래서 행정팀 동기화 스크립트의 메뉴도 여기서 함께 만든다 — MasterSync.gs 참고.
  */
 /**
+ * 회차를 하나 더 만든다. **사전답사 리허설이 이걸로 돌아간다.**
+ *
+ * 왜 메뉴인가: `Config` 탭에 `SESSION_3` 두 줄을 손으로 적어도 앱은 읽는다
+ * (`sessions_()` 가 키를 훑으므로). 하지만 **`참여 일자` 드롭다운이 안 따라온다** —
+ * 명단에서 새 회차를 고를 수가 없다. 그 뒷정리까지 한 번에 하려고 메뉴로 둔다.
+ *
+ * 사전답사를 특별 취급하지 않는다. **그냥 회차 하나**다. 그래야 로그인·조·지점 체크·
+ * 일지가 본 캠프와 똑같은 경로로 돌아가고, 리허설의 의미가 생긴다 (D-026).
+ */
+function addSession() {
+  var ui;
+  try {
+    ui = SpreadsheetApp.getUi();
+  } catch (e) {
+    throw new Error('이 기능은 시트 메뉴에서 실행해 주세요.');
+  }
+
+  var current = sessions_();
+
+  var label = promptFor_(ui, '새 회차의 참여 일자', '');
+  if (label === null) return;
+  label = str_(label);
+  if (!label) { ui.alert('참여 일자를 입력해 주세요.'); return; }
+
+  // 라벨이 겹치면 두 회차의 조가 한 키로 뭉갠다 (D-011).
+  var dup = current.filter(function (c) { return c.label === label; });
+  if (dup.length) {
+    ui.alert('"' + label + '" 는 이미 SESSION_' + dup[0].n + ' 에 있습니다.\n' +
+      '회차마다 다른 표기를 쓰세요.');
+    return;
+  }
+
+  var date = promptFor_(ui, '실제 날짜 (YYYY-MM-DD)', '');
+  if (date === null) return;
+
+  var maxN = 0;
+  current.forEach(function (c) { if (c.n > maxN) maxN = c.n; });
+  var n = maxN + 1;
+
+  // 일정표를 베껴 올 회차. 사전답사는 본 캠프와 동선이 같아 이게 있으면 바로 화면이 뜬다.
+  var copyFrom = null;
+  if (current.length) {
+    var source = current[0];
+    var rows = readTable_(SHEETS.TIMELINE).filter(function (r) {
+      return str_(r[COL.SESSION]) === source.label;
+    });
+    if (rows.length) {
+      var ans = ui.alert('일정표 복사',
+        '"' + source.label + '" 의 일정표 ' + rows.length + '행을 새 회차로 복사할까요?\n' +
+        '(복사한 뒤 Timeline 탭에서 시간만 고치면 됩니다)',
+        ui.ButtonSet.OK_CANCEL);
+      if (ans === ui.Button.OK) copyFrom = rows;
+    }
+  }
+
+  var confirm = ['이렇게 추가합니다.', '',
+    '  키   : SESSION_' + n,
+    '  일자 : ' + label,
+    '  날짜 : ' + (date || '(비어 있음)'),
+    '  일정표: ' + (copyFrom ? copyFrom.length + '행 복사' : '복사 안 함'),
+    '', '진행할까요?'].join('\n');
+  if (ui.alert('회차 추가', confirm, ui.ButtonSet.OK_CANCEL) !== ui.Button.OK) return;
+
+  withLock_(function () {
+    appendRow_(SHEETS.CONFIG, {
+      '키': 'SESSION_' + n, '값': label,
+      '설명': n + '차 참여 일자 — 명단의 "' + COL.SESSION + '" 표기와 글자까지 같아야 함'
+    });
+    appendRow_(SHEETS.CONFIG, {
+      '키': 'SESSION_' + n + '_DATE', '값': date, '설명': n + '차 실제 날짜'
+    });
+  });
+
+  clearConfigCache();          // 새 회차를 곧바로 읽게 한다
+  invalidateTable_(SHEETS.CONFIG);
+
+  if (copyFrom) {
+    writeTimeline_(label, copyFrom.map(function (r) {
+      return [str_(r['시작']), str_(r['종료']), str_(r['내용']), str_(r['장소']), str_(r['비고'])];
+    }));
+  }
+
+  // 드롭다운에 새 라벨을 넣는다. 이게 이 메뉴의 존재 이유다.
+  applyValidation_();
+
+  var out = ['✅ 회차를 추가했습니다.', '',
+    'SESSION_' + n + ' = ' + label + (date ? ' (' + date + ')' : '')];
+  if (copyFrom) out.push('일정표 ' + copyFrom.length + '행을 복사했습니다.');
+  if (__validationSkipped.length) {
+    out.push('', '⚠ 드롭다운을 못 넣은 열 ' + __validationSkipped.length + '개:');
+    out.push('  ' + __validationSkipped.join(', '));
+    out.push('  (이미 시트에 드롭다운이 걸려 있는 열입니다. 직접 입력하면 됩니다)');
+  }
+  out.push('', '다음 순서로 진행하세요.',
+    '  1. 마스터에 이 회차로 참가할 사람을 추가하고 "' + COL.SESSION + '" 을 ' + label + ' 로',
+    '  2. 참가자ID 채우기',
+    '  3. 조 목록 동기화',
+    '  4. 명단 점검');
+  ui.alert(out.join('\n'));
+
+  return { n: n, label: label, date: date, timeline: copyFrom ? copyFrom.length : 0 };
+}
+
+/**
  * 회차 날짜(참여 일자)를 바꾼다.
  *
  * **왜 메뉴로 만들었나**: `seedConfig_` 는 이미 있는 키를 덮어쓰지 않는다.
@@ -532,27 +637,38 @@ function changeSchedule() {
     throw new Error('이 기능은 시트 메뉴에서 실행해 주세요.');
   }
 
-  var cur1 = confStr_('SESSION_1', '');
-  var cur2 = confStr_('SESSION_2', '');
+  // 회차 개수는 Config 가 정한다. 사전답사를 얹어 3회차가 되면 3번 묻는다 (D-026).
+  var current = sessions_();
+  if (!current.length) { ui.alert('Config 에 회차가 없습니다. 먼저 "회차 추가" 를 실행하세요.'); return; }
 
-  var next1 = promptFor_(ui, '1차 참여 일자', cur1);
-  if (next1 === null) return;
-  var next1Date = promptFor_(ui, '1차 실제 날짜 (YYYY-MM-DD)', confStr_('SESSION_1_DATE', ''));
-  if (next1Date === null) return;
-  var next2 = promptFor_(ui, '2차 참여 일자', cur2);
-  if (next2 === null) return;
-  var next2Date = promptFor_(ui, '2차 실제 날짜 (YYYY-MM-DD)', confStr_('SESSION_2_DATE', ''));
-  if (next2Date === null) return;
+  var next = [];
+  for (var i = 0; i < current.length; i++) {
+    var ord = (i + 1) + '차';
+    var label = promptFor_(ui, ord + ' 참여 일자', current[i].label);
+    if (label === null) return;
+    var date = promptFor_(ui, ord + ' 실제 날짜 (YYYY-MM-DD)', current[i].date);
+    if (date === null) return;
+    next.push({ n: current[i].n, from: current[i].label, label: label, date: date });
+  }
 
-  if (!next1 || !next2) { ui.alert('참여 일자는 둘 다 입력해야 합니다.'); return; }
-  if (next1 === next2) { ui.alert('1차와 2차가 같습니다. 서로 다른 값이어야 합니다.'); return; }
+  var blank = next.filter(function (x) { return !x.label; });
+  if (blank.length) { ui.alert('참여 일자는 모두 입력해야 합니다.'); return; }
+
+  // 서로 같은 라벨이 있으면 두 회차의 조가 한 키로 뭉갠다 (D-011).
+  var seen = {};
+  for (var d = 0; d < next.length; d++) {
+    if (seen[next[d].label]) {
+      ui.alert('참여 일자가 서로 같습니다: "' + next[d].label + '"\n회차마다 다른 값이어야 합니다.');
+      return;
+    }
+    seen[next[d].label] = true;
+  }
 
   // 옛 라벨 → 새 라벨. **반드시 이 맵을 한 번만 적용한다.**
   // 1차를 먼저 치환하고 2차를 치환하면, 새 1차 라벨이 옛 2차 라벨과 같은 경우
   // (10/24·10/31 → 10/31·11/07 이 정확히 그렇다) 두 회차가 한 값으로 뭉갠다.
   var rename = {};
-  if (cur1 && cur1 !== next1) rename[cur1] = next1;
-  if (cur2 && cur2 !== next2) rename[cur2] = next2;
+  next.forEach(function (x) { if (x.from && x.from !== x.label) rename[x.from] = x.label; });
 
   var targets = [SHEETS.PARTICIPANTS, SHEETS.TEAMS, SHEETS.TIMELINE,
                  SHEETS.PROGRESS, SHEETS.JOURNAL];
@@ -583,7 +699,7 @@ function changeSchedule() {
   if (total === 0 && Object.keys(rename).length) {
     lines.push('', '⚠ 바뀔 행이 하나도 없습니다.');
     lines.push('  명단의 참여 일자 표기가 현재 Config 값과 다를 수 있습니다.');
-    lines.push('  (Config: "' + cur1 + '" / "' + cur2 + '")');
+    lines.push('  (Config: ' + current.map(function (c) { return '"' + c.label + '"'; }).join(' / ') + ')');
   }
   if (collisions.length) {
     lines.push('', '⚠ 합쳐질 수 있습니다 — 옮겨갈 회차에 이미 행이 있습니다:');
@@ -600,18 +716,18 @@ function changeSchedule() {
       return { name: name, n: renameSessionIn_(name, rename) };
     });
     // allowNew: 키가 지워졌더라도 이 내부 호출은 통과해야 한다(오타 방어는 콘솔 입력용).
-    [['SESSION_1', next1], ['SESSION_1_DATE', next1Date],
-     ['SESSION_2', next2], ['SESSION_2_DATE', next2Date]].forEach(function (kv) {
-      configSet_({ isAdmin: true }, { key: kv[0], value: kv[1], allowNew: true });
+    next.forEach(function (x) {
+      configSet_({ isAdmin: true }, { key: 'SESSION_' + x.n, value: x.label, allowNew: true });
+      configSet_({ isAdmin: true }, { key: 'SESSION_' + x.n + '_DATE', value: x.date, allowNew: true });
     });
     return done;
   });
 
   clearConfigCache();
 
-  var out = ['✅ 일정을 바꿨습니다.', '',
-             '1차: ' + next1 + ' (' + next1Date + ')',
-             '2차: ' + next2 + ' (' + next2Date + ')', ''];
+  var out = ['✅ 일정을 바꿨습니다.', ''];
+  next.forEach(function (x, i) { out.push((i + 1) + '차: ' + x.label + ' (' + x.date + ')'); });
+  out.push('');
   changed.forEach(function (c) { out.push('  · ' + c.name + ': ' + c.n + '행 수정'); });
   out.push('', '앱에는 즉시 반영됩니다.');
   ui.alert(out.join('\n'));
@@ -688,6 +804,7 @@ function onOpen() {
     .addItem('조 목록 동기화', 'syncTeams')
     .addItem('명단 점검', 'checkDuplicates')
     .addSeparator()
+    .addItem('회차 추가 (사전답사 등)', 'addSession')
     .addItem('일정 변경 (회차 날짜)', 'changeSchedule')
     .addItem('캐시 비우기 (설정·공지·일정)', 'clearConfigCache')
     .addToUi();
