@@ -119,15 +119,28 @@ var LEADER_ROLES = ['조장', '스태프', '사역자'];
 
 /**
  * 참여 일자 목록. Config 에서 읽으므로 날짜가 바뀌어도 배포가 필요 없다.
- * 반환: [{ label: '10/31(토)', date: '2026-10-31' }, ...]
+ * 반환: [{ n: 1, label: '10/31(토)', date: '2026-10-31' }, ...] — 번호순.
+ *
+ * **회차 개수는 정해져 있지 않다.** Config 의 키에서 `SESSION_<숫자>` 를 찾아낸다.
+ * 사전답사 같은 회차를 `SESSION_3` 으로 하나 더 얹으면 로그인 화면·일정표·조 키·
+ * 명단 점검이 전부 따라온다 (D-026).
+ *
+ * 🔴 `1..N` 을 훑다 빈 칸에서 멈추는 방식은 **쓰지 않는다.**
+ * 그러면 `SESSION_2` 를 지웠을 때 `SESSION_3` 이 **에러 없이 사라진다.**
  */
 function sessions_() {
+  var conf = getConfig_();   // 이미 캐시된 키→값 맵. 추가 읽기가 없다.
   var out = [];
-  [1, 2].forEach(function (n) {
-    var label = confStr_('SESSION_' + n, '');
-    if (label) out.push({ label: label, date: confStr_('SESSION_' + n + '_DATE', '') });
+
+  Object.keys(conf).forEach(function (key) {
+    var m = /^SESSION_(\d+)$/.exec(key);   // SESSION_1_DATE 는 걸리지 않는다
+    if (!m) return;
+    var label = str_(conf[key]);
+    if (!label) return;
+    out.push({ n: parseInt(m[1], 10), label: label, date: str_(conf[key + '_DATE'] || '') });
   });
-  return out;
+
+  return out.sort(function (a, b) { return a.n - b.n; });
 }
 
 function sessionLabels_() {

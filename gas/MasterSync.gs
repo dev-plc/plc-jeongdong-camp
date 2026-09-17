@@ -985,7 +985,7 @@ function syncFormToNewDb() {
 // ------------------------------------------------- Config 에서 회차 라벨 변경
 
 /**
- * `Config` 탭에서 `SESSION_1` / `SESSION_2` 의 **값**을 고치면
+ * `Config` 탭에서 `SESSION_1` / `SESSION_2` / … 의 **값**을 고치면
  * 명단·Teams·Timeline·Progress·Journal 다섯 탭의 `참여 일자` 를 따라 바꾼다.
  *
  * **왜 자동으로 해야 하나**: `참여 일자` 는 설정값이 아니라 조를 특정하는 키의 일부다(D-011).
@@ -1005,7 +1005,7 @@ function applyScheduleEdit_(e, sheet) {
   if (e.range.getColumn() !== idx['값']) return;   // '값' 열이 아니면 무관
 
   var key = str_(sheet.getRange(e.range.getRow(), idx['키']).getValue());
-  if (key !== 'SESSION_1' && key !== 'SESSION_2') return;
+  if (!/^SESSION_\d+$/.test(key)) return;   // 회차 개수는 정해져 있지 않다 (D-026)
 
   var from = str_(e.oldValue);
   var to = str_(e.range.getValue());
@@ -1022,9 +1022,12 @@ function applyScheduleEdit_(e, sheet) {
     e.range.setValue(from);
     invalidateTable_(SHEETS.CONFIG);
     clearConfigCache();
-    var other = key === 'SESSION_1' ? 'SESSION_2' : 'SESSION_1';
+    // 새 라벨을 지금 쓰고 있는 회차를 찾아 이름을 대 준다. 그 회차를 먼저 비켜야 한다.
+    var owner = null;
+    sessions_().forEach(function (sn) { if (sn.label === to && !owner) owner = 'SESSION_' + sn.n; });
     ss.toast('"' + to + '" 에 이미 ' + blocked + '행이 있어 두 회차가 섞입니다.\n' +
-      other + ' 를 먼저 바꾼 뒤 다시 시도하세요. (값은 되돌렸습니다)', '⚠ 일정 변경 보류', 15);
+      (owner ? owner : '그 라벨을 쓰는 회차') +
+      ' 를 먼저 바꾼 뒤 다시 시도하세요. (값은 되돌렸습니다)', '⚠ 일정 변경 보류', 15);
     return;
   }
 
