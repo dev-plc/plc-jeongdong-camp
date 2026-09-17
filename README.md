@@ -84,7 +84,7 @@ python3 -m http.server 8080 --directory docs   # → http://localhost:8080/demo.
 | [API 명세](docs-dev/spec/API.md) | 액션 목록, 요청/응답, 에러 코드 |
 | [결정사항 (ADR)](docs-dev/spec/DECISIONS.md) | 인증 방식·공개 범위·회비 처리 등 확정된 판단과 그 이유 |
 | [추가 작업 예정](docs-dev/spec/BACKLOG.md) | 아직 안 만든 것 — 진행 현황 실시간 파악, 버전 기반 자동 새로고침 |
-| [Firebase 설계](docs-dev/spec/FIREBASE.md) | 읽기 미러 구조와 **이번엔 안 넣는 이유**, 넘어갈 기준 수치 |
+| [DB 도입 설계](docs-dev/spec/DATABASE.md) | 읽기 미러 구조, **Firebase vs Supabase 비교**, 이번엔 안 넣는 이유, 넘어갈 기준 수치 |
 | [브랜드 가이드](docs-dev/brand/BRAND.md) | 붉은벽돌 `#984534` / 회색담벼락 `#c2c2c2`, 서체, 그래픽 |
 | [배포 가이드](docs-dev/ops/DEPLOY.md) | GAS · Pages · Cloudflare 설정과 당일 운영 메모 |
 
