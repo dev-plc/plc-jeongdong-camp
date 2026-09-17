@@ -224,6 +224,10 @@ textarea.input { resize: vertical; min-height: 96px; }
 }
 .filepick--sm { padding: 9px; font-size: 13px; margin-bottom: 8px; }
 
+/* 촬영 / 갤러리 두 버튼. 좁은 화면에서 라벨이 길면 아래로 넘긴다. */
+.filepick-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.filepick-row .filepick { flex: 1 1 140px; }
+
 .photo-preview { margin-top: 10px; }
 .photo-preview img {
   width: 100%;

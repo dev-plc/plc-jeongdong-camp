@@ -84,10 +84,20 @@
    */
   function resizePhoto(file) {
     return new Promise(function (resolve, reject) {
-      if (!file || !/^image\//.test(file.type)) {
-        reject(new Error('이미지 파일만 올릴 수 있습니다.'));
+      if (!file) {
+        reject(new Error('사진을 선택해 주세요.'));
         return;
       }
+      // 🔴 file.type 으로 미리 거르지 않는다.
+      //
+      // 예전 코드는 `!/^image\//.test(file.type)` 로 막았다. 그런데 안드로이드
+      // 갤러리·클라우드 피커는 타입을 **빈 값이나 application/octet-stream** 으로
+      // 넘긴다. 그러면 사진을 골랐는데도 "이미지 파일만 올릴 수 있습니다" 가 떴다.
+      // 카메라 촬영은 항상 image/jpeg 라 이 구멍이 드러나지 않았다 (D-027).
+      //
+      // 브라우저는 blob 을 **바이트로 판별해** 디코드한다(확인함 — 타입이
+      // application/octet-stream 인 PNG 도 그대로 열린다). 판단의 주인은 디코더다.
+      // 이미지가 아니면 아래 img.onerror 가 받는다.
       var url = URL.createObjectURL(file);
       var img = new Image();
 
@@ -115,7 +125,7 @@
       };
       img.onerror = function () {
         URL.revokeObjectURL(url);
-        reject(new Error('사진을 읽지 못했습니다. 다른 사진으로 시도해 주세요.'));
+        reject(new Error('사진을 읽지 못했습니다. 이미지 파일인지 확인하고 다시 시도해 주세요.'));
       };
       img.src = url;
     });
