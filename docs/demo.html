@@ -200,8 +200,10 @@ body.is-auth .view { padding-bottom: calc(var(--tabbar-h) + 28px + env(safe-area
 }
 textarea.input { resize: vertical; min-height: 96px; }
 
-.seg { display: flex; gap: 8px; }
-.seg__item { flex: 1; position: relative; }
+/* 회차는 2개로 정해져 있지 않다 (사전답사 등). 3개부터는 다음 줄로 넘긴다 —
+   좁은 화면에서 셋을 한 줄에 욱여넣으면 라벨이 칸 안에서 눌린다. */
+.seg { display: flex; flex-wrap: wrap; gap: 8px; }
+.seg__item { flex: 1 1 140px; position: relative; }
 .seg__item input { position: absolute; opacity: 0; pointer-events: none; }
 .seg__item span {
   display: block;
@@ -236,6 +238,10 @@ textarea.input { resize: vertical; min-height: 96px; }
   cursor: pointer;
 }
 .filepick--sm { padding: 9px; font-size: 13px; margin-bottom: 8px; }
+
+/* 촬영 / 갤러리 두 버튼. 좁은 화면에서 라벨이 길면 아래로 넘긴다. */
+.filepick-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.filepick-row .filepick { flex: 1 1 140px; }
 
 .photo-preview { margin-top: 10px; }
 .photo-preview img {
