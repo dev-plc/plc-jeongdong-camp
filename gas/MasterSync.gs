@@ -112,11 +112,27 @@ function isSyncExcludedSheet_(sheetName) {
 function onEdit(e) {
   if (!e || !e.range) return;
 
-  var lock = LockService.getDocumentLock();
-  try { lock.waitLock(3000); } catch (error) { return; }
+  // ── 🔴 여기에 문서 락이 있었다. 지금은 없다. ────────────────────────────
+  // 예전 코드는 waitLock(3000) 이 실패하면 **그냥 return** 했다.
+  // 구글시트의 단순 트리거는 동시에 여러 개가 돈다. 한 칸씩 빠르게 치면
+  // 실행이 겹치고, 뒤엣것은 락을 못 잡아 **조용히 사라졌다** —
+  // 재시도도, 큐도, 알림도, 로그도 없이. "빠르게 입력하면 다 스킵된다"의 정체다.
+  //
+  // 그 락은 지키는 게 없었다:
+  //  · 웹앱의 withLock_ 은 getScriptLock() 이고 여기는 getDocumentLock() 이었다.
+  //    **애초에 서로 배제하지 않는다.**
+  //  · 웹앱은 마스터(Participants)를 **읽기만** 한다. 겹쳐 쓸 일이 없다.
+  //  · onEdit 끼리는 편집된 칸마다 **서로 다른 셀**에 쓴다. 행을 넣거나 지우지도
+  //    않으므로 읽고-고쳐-쓰기 경합이 없다.
+  // 그래서 지키는 것 없이 데이터만 버리고 있었다 (D-025).
+  // 락이 진짜 필요한 곳은 applyScheduleEdit_ 하나뿐이라 거기로 옮겼다.
 
+  var sheet = null;
   try {
-    var sheet = e.source.getActiveSheet();
+    // 🔴 e.source.getActiveSheet() 가 아니라 e.range.getSheet() 다.
+    // 실행이 밀리는 동안 사용자가 다른 탭으로 넘어가면 '활성 탭' 은 이미 딴 곳이다.
+    // 그러면 값은 편집된 범위에서 읽으면서 헤더는 엉뚱한 탭에서 읽는다.
+    sheet = e.range.getSheet();
     var sheetName = sheet.getName();
 
     // ── 캐시 무효화는 **아래 조기 return 보다 먼저** 해야 한다. ──────────────
@@ -131,7 +147,7 @@ function onEdit(e) {
     // Config 탭에서 회차 라벨(SESSION_1/2)을 고치면 5개 탭을 따라 바꾼다.
     // 이것도 조기 return 앞이어야 한다 — Config 는 앱 탭이다.
     if (sheetName === SHEETS.CONFIG) {
-      applyScheduleEdit_(e, sheet);
+      withScheduleLock_(e, function () { applyScheduleEdit_(e, sheet); });
       return;
     }
 
@@ -153,8 +169,8 @@ function onEdit(e) {
     // 붙여넣기가 너무 크면 칸마다 전파하다 실행 시간 한도에 걸린다.
     // 일부만 조용히 반영하느니 **아무것도 안 하고 알린다.**
     if (numRows * numCols > SYNC_MAX_CELLS) {
-      e.source.toast(numRows * numCols + '칸을 한 번에 붙여넣어 자동 전파를 건너뛰었습니다.\n' +
-        '메뉴 → 🔄 동기화 관리 → 👥 명단 반영 으로 한꺼번에 맞추세요.', '⚠ 전파 생략', 15);
+      syncToast_(e, numRows * numCols + '칸을 한 번에 붙여넣어 자동 전파를 건너뛰었습니다.\n' +
+        '메뉴 → 🔄 동기화 관리 → 👥 명단 반영 으로 한꺼번에 맞추세요.', '⚠ 전파 생략');
       return;
     }
 
@@ -167,9 +183,25 @@ function onEdit(e) {
     var readonly = syncReadonlyHeaders_();
     var values = range.getValues();
 
-    // 전파 대상 탭의 데이터를 한 번만 읽어 재사용한다.
-    // 칸마다 getDataRange() 를 다시 읽으면 붙여넣기 한 번에 왕복이 폭증한다.
-    var targetsCache = null;
+    // 이 실행에서 전파할 헤더를 먼저 모은다.
+    // 대상 탭을 고를 때 쓴다 — '조 배정' 만 고쳤으면 그 열이 없는 회비 탭은 아예 안 읽는다.
+    var editedHeaders = [];
+    for (var c = 0; c < numCols; c++) {
+      var h = headers[firstCol + c - 1];
+      if (!h || h === SYNC_PRIMARY_KEY) continue;
+      if (readonly.indexOf(h) >= 0) continue;
+      if (editedHeaders.indexOf(h) < 0) editedHeaders.push(h);
+    }
+
+    // 편집된 행들의 '이름' 을 **한 번에** 읽는다.
+    // 예전에는 칸마다 getRange().getValue() 로 이름을 다시 읽어 왕복이 칸 수만큼 늘었다.
+    var nameByRow = readNameColumn_(sheet, firstRow, numRows, nameColIndex,
+      firstCol, numCols, values);
+
+    // 무거운 준비는 전부 **필요할 때 한 번만** 한다.
+    var targets = null;      // 전파 대상 탭 (loadPushTargets_)
+    var masterIndex = null;  // 마스터 인덱스 (pullFromMaster_)
+    var writes = [];         // 모아 두었다가 마지막에 한꺼번에 쓴다
 
     for (var i = 0; i < numRows; i++) {
       var row = firstRow + i;
@@ -186,90 +218,240 @@ function onEdit(e) {
         // [기능 1] 이름을 입력하면 마스터에서 나머지 값을 당겨온다.
         if (header === SYNC_PRIMARY_KEY) {
           if (sheetName === masterName) continue;
-          pullFromMaster_(ss, sheet, headers, row, value, masterName);
+          if (!masterIndex) masterIndex = loadMasterIndex_(ss, masterName);
+          pullFromMaster_(masterIndex, sheet, headers, row, value);
           continue;
         }
 
         // [기능 2] 일반 값 수정 → 같은 이름을 가진 다른 탭에도 반영.
-        var targetName = sheet.getRange(row, nameColIndex).getValue();
+        var targetName = nameByRow[row];
         if (!targetName) continue;
-        if (!targetsCache) targetsCache = loadPushTargets_(ss, sheetName);
-        pushToOtherSheets_(targetsCache, header, targetName, value);
+        if (!targets) targets = loadPushTargets_(ss, sheetName, editedHeaders);
+        queuePush_(writes, targets, header, targetName, value);
       }
     }
 
+    flushWrites_(writes);
+
   } catch (error) {
+    // 조용히 삼키지 않는다. 운영진은 실행 로그를 보지 않는다.
     console.error('동기화 중 오류 발생: ' + error.message);
+    syncToast_(e, '값을 다른 탭에 반영하다 실패했습니다.\n' + error.message, '⚠ 동기화 오류');
+  }
+}
+
+/** 시트 상단에 알린다. e.source 가 없어도(테스트 등) 죽지 않는다. */
+function syncToast_(e, message, title) {
+  try {
+    var ss = (e && e.source) || getSpreadsheet_();
+    ss.toast(message, title, 15);
+  } catch (ignored) { /* 알림 실패가 본 작업을 막지 않게 한다. */ }
+}
+
+/**
+ * 회차 라벨 변경만 직렬화한다.
+ * 5개 탭 수백 행을 읽고 고쳐 쓰므로 두 실행이 겹치면 실제로 깨진다.
+ * 못 잡으면 **조용히 넘기지 않고 알린다** — 이게 예전 onEdit 이 하던 실수다.
+ */
+function withScheduleLock_(e, fn) {
+  var lock = LockService.getDocumentLock();
+  try {
+    lock.waitLock(10000);
+  } catch (error) {
+    syncToast_(e, '다른 변경이 처리 중이라 일정 반영을 못 했습니다.\n' +
+      '잠시 후 값을 다시 입력해 주세요.', '⚠ 일정 반영 실패');
+    return;
+  }
+  try {
+    fn();
   } finally {
     lock.releaseLock();
   }
 }
 
-function pullFromMaster_(ss, sheet, headers, editedRow, name, masterName) {
-  var masterSheet = ss.getSheetByName(masterName);
-  if (!masterSheet) return;
+/**
+ * 편집된 행들의 `이름` 을 한 번에 읽는다.
+ * 이름 열이 편집 범위 안에 있으면 방금 붙여넣은 값이 맞으므로 거기서 가져온다.
+ */
+function readNameColumn_(sheet, firstRow, numRows, nameColIndex, firstCol, numCols, values) {
+  var out = {};
+  var inRange = nameColIndex >= firstCol && nameColIndex < firstCol + numCols;
 
-  var masterHeaders = headerRow_(masterSheet);
-  var masterNameIdx = masterHeaders.indexOf(SYNC_PRIMARY_KEY);
-  if (masterNameIdx < 0) return;
-
-  var masterData = masterSheet.getDataRange().getValues();
-  var sourceRow = null;
-  for (var i = 1; i < masterData.length; i++) {
-    if (masterData[i][masterNameIdx] === name) { sourceRow = masterData[i]; break; }
+  if (inRange) {
+    for (var i = 0; i < numRows; i++) {
+      out[firstRow + i] = String(values[i][nameColIndex - firstCol] || '').trim();
+    }
+    return out;
   }
+
+  var col = sheet.getRange(firstRow, nameColIndex, numRows, 1).getValues();
+  for (var k = 0; k < numRows; k++) {
+    out[firstRow + k] = String(col[k][0] || '').trim();
+  }
+  return out;
+}
+
+/**
+ * 마스터의 헤더와 `이름 → 행 값` 색인을 **실행당 한 번만** 만든다.
+ * 예전 pullFromMaster_ 는 이름 칸마다 마스터 전체를 다시 읽었다 —
+ * 이름 9개를 붙여넣으면 145행짜리 마스터를 9번 읽었다.
+ */
+function loadMasterIndex_(ss, masterName) {
+  var sheet = ss.getSheetByName(masterName);
+  if (!sheet) return { headers: [], rowByName: {} };
+
+  var headers = headerRow_(sheet);
+  var nameIdx = headers.indexOf(SYNC_PRIMARY_KEY);
+  if (nameIdx < 0) return { headers: headers, rowByName: {} };
+
+  var lastRow = sheet.getLastRow();
+  var rowByName = {};
+  if (lastRow >= 2) {
+    var data = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+    for (var i = 0; i < data.length; i++) {
+      var key = String(data[i][nameIdx] || '').trim();
+      if (key && !rowByName.hasOwnProperty(key)) rowByName[key] = data[i];
+    }
+  }
+  return { headers: headers, rowByName: rowByName };
+}
+
+/**
+ * 하위 탭에 이름을 입력하면 마스터에서 나머지 값을 당겨온다.
+ * 행 하나를 **한 번 읽어 배열에서 고친 뒤 한 번에 쓴다** —
+ * 예전에는 채울 열마다 setValue() 를 불러 행 하나에 최대 14번 썼다.
+ */
+function pullFromMaster_(masterIndex, sheet, headers, editedRow, name) {
+  var key = String(name || '').trim();
+  if (!key) return;
+
+  var sourceRow = masterIndex.rowByName[key];
   if (!sourceRow) return;
+
+  var readonly = syncReadonlyHeaders_();
+  var current = sheet.getRange(editedRow, 1, 1, headers.length).getValues()[0];
+  var changed = false;
 
   for (var j = 0; j < headers.length; j++) {
     var header = headers[j];
     if (!header) continue;
     if (header === SYNC_PRIMARY_KEY) continue;
-    if (syncReadonlyHeaders_().indexOf(header) >= 0) continue;
+    if (readonly.indexOf(header) >= 0) continue;
 
-    var idx = masterHeaders.indexOf(header);
-    if (idx >= 0) sheet.getRange(editedRow, j + 1).setValue(sourceRow[idx]);
+    var idx = masterIndex.headers.indexOf(header);
+    if (idx < 0) continue;
+    if (current[j] === sourceRow[idx]) continue;
+
+    current[j] = sourceRow[idx];
+    changed = true;
   }
+
+  if (changed) sheet.getRange(editedRow, 1, 1, headers.length).setValues([current]);
 }
 
 /**
- * 전파 대상 탭들의 헤더·데이터를 한 번만 읽어 둔다.
- * 붙여넣기 한 번에 칸이 수십 개일 수 있어, 칸마다 다시 읽으면 왕복이 폭증한다.
+ * 전파 대상 탭을 고르고 **필요한 것만** 읽어 둔다.
+ *
+ * 두 단계로 나눈 이유: 한 칸 고칠 때마다 실무 탭 전체를 읽으면 실행이 몇 초씩 걸리고,
+ * 그 느림이 곧 동시 실행 충돌이 된다(D-025).
+ *  ① 헤더 행만 읽어 **편집된 열을 가진 탭**만 남긴다 — `조 배정` 만 고쳤으면
+ *     그 열이 없는 `회비` 는 여기서 걸러져 데이터를 아예 안 읽는다.
+ *  ② 남은 탭에서 **`이름` 열 1열만** 읽는다. 145×6 이 145×1 이 된다.
  */
-function loadPushTargets_(ss, sourceSheetName) {
+function loadPushTargets_(ss, sourceSheetName, editedHeaders) {
   var out = [];
+  if (!editedHeaders || !editedHeaders.length) return out;
+
   ss.getSheets().forEach(function (sheet) {
     var name = sheet.getName();
     if (name === sourceSheetName) return;
     if (isSyncExcludedSheet_(name)) return;
-    if (sheet.getLastColumn() === 0 || sheet.getLastRow() < 2) return;
+
+    var lastRow = sheet.getLastRow();
+    if (sheet.getLastColumn() === 0 || lastRow < 2) return;
 
     var headers = headerRow_(sheet);
     var nameIdx = headers.indexOf(SYNC_PRIMARY_KEY);
     if (nameIdx < 0) return;
 
-    var data = sheet.getDataRange().getValues();
-    var rowByName = {};
-    for (var i = 1; i < data.length; i++) {
-      var key = String(data[i][nameIdx] || '').trim();
-      // 같은 이름이 여럿이면 **첫 행**만 잡는다(기존 동작 유지).
-      if (key && !rowByName.hasOwnProperty(key)) rowByName[key] = i + 1;
+    // ① 편집된 열을 하나도 안 가진 탭은 여기서 끝. 데이터를 읽지 않는다.
+    var useful = false;
+    for (var h = 0; h < editedHeaders.length; h++) {
+      if (headers.indexOf(editedHeaders[h]) >= 0) { useful = true; break; }
     }
-    out.push({ sheet: sheet, headers: headers, rowByName: rowByName });
+    if (!useful) return;
+
+    // ② 이름 열 1열만 읽는다.
+    var col = sheet.getRange(2, nameIdx + 1, lastRow - 1, 1).getValues();
+    var rowByName = {};
+    for (var i = 0; i < col.length; i++) {
+      var key = String(col[i][0] || '').trim();
+      // 같은 이름이 여럿이면 **첫 행**만 잡는다(기존 동작 유지).
+      if (key && !rowByName.hasOwnProperty(key)) rowByName[key] = i + 2;
+    }
+    out.push({ sheet: sheet, headers: headers, rowByName: rowByName, id: out.length });
   });
   return out;
 }
 
-/** 같은 이름을 가진 다른 탭의 같은 헤더 칸에 값을 반영한다. */
-function pushToOtherSheets_(targets, editedHeader, targetName, newValue) {
+/**
+ * 같은 이름을 가진 다른 탭의 같은 헤더 칸에 넣을 값을 **모아 둔다.**
+ * 바로 쓰지 않는 이유: 여러 열을 붙여넣으면 칸 수만큼 setValue() 왕복이 늘어난다.
+ * flushWrites_ 가 탭·행 단위로 묶어 한 번에 쓴다.
+ */
+function queuePush_(writes, targets, editedHeader, targetName, newValue) {
   var key = String(targetName).trim();
   targets.forEach(function (t) {
     var col = t.headers.indexOf(editedHeader);
     if (col < 0) return;
     var row = t.rowByName[key];
     if (!row) return;
-    t.sheet.getRange(row, col + 1).setValue(newValue);
-    invalidateTable_(t.sheet.getName());
+    writes.push({ target: t, row: row, col: col, value: newValue });
   });
+}
+
+/**
+ * 모아 둔 쓰기를 탭·행 단위로 묶어 내보낸다.
+ *
+ * 한 행 안에서 **붙어 있는 열끼리** 묶어 setValues() 한 번으로 쓴다.
+ * 읽지 않고 쓰기만 하므로 왕복이 늘지 않는다 —
+ * 한 열만 내리 붙여넣으면 행마다 1회, 세 열을 한 번에 붙여넣으면 그것도 행마다 1회다.
+ */
+function flushWrites_(writes) {
+  if (!writes.length) return;
+
+  var groups = {};
+  var order = [];
+  writes.forEach(function (w) {
+    var k = w.target.id + '#' + w.row;
+    if (!groups[k]) {
+      groups[k] = { target: w.target, row: w.row, cells: [] };
+      order.push(k);
+    }
+    groups[k].cells.push(w);
+  });
+
+  var touched = {};
+  order.forEach(function (k) {
+    var group = groups[k];
+    var cells = group.cells.slice().sort(function (a, b) { return a.col - b.col; });
+
+    var runStart = 0;
+    for (var i = 1; i <= cells.length; i++) {
+      // 마지막이거나, 앞 칸과 열이 붙어 있지 않으면 거기서 한 덩어리를 끊는다.
+      if (i < cells.length && cells[i].col === cells[i - 1].col + 1) continue;
+
+      var run = cells.slice(runStart, i);
+      var values = run.map(function (c) { return c.value; });
+      group.target.sheet
+        .getRange(group.row, run[0].col + 1, 1, run.length)
+        .setValues([values]);
+      runStart = i;
+    }
+    touched[group.target.sheet.getName()] = true;
+  });
+
+  Object.keys(touched).forEach(function (name) { invalidateTable_(name); });
 }
 
 // ---------------------------------------------------------------- 명단 반영
