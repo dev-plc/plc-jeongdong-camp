@@ -12,7 +12,6 @@ window.APP_CONFIG = {
 
   // 로그인 토큰을 담아 둘 localStorage 키
   TOKEN_KEY: 'plc_jd_token',
-  SESSION_KEY: 'plc_jd_session',
 
   // 업로드 전 클라이언트 리사이즈 기준 (긴 변 px / JPEG 품질)
   PHOTO_MAX_EDGE: 1600,
