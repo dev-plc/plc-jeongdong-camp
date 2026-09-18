@@ -238,8 +238,38 @@
    -- 쓰기: GAS. service_role 은 RLS 는 우회하지만 **GRANT 는 우회하지 못합니다.**
    grant usage on schema public to service_role;
    grant all    on app_cache   to service_role;
+
+   -- ─────────────────────────────────────────────────────────────
+   -- 진행 사본 (D-038). 조·지점 단위 행이라 JSONB 한 덩어리가 아닙니다.
+   create table if not exists progress_cache (
+     session      text not null,
+     team         text not null,
+     checkpoint   text not null,
+     status       text not null,
+     arrived_at   timestamptz,
+     completed_at timestamptz,
+     score        numeric,           -- 퀴즈점수가 정수가 아닐 수 있습니다
+     memo         text,
+     updated_at   timestamptz not null default now(),
+     primary key (session, team, checkpoint),
+     -- 🔴 화이트리스트의 마지막 문지기. ENUM.PROGRESS 와 같아야 합니다.
+     constraint progress_status_ck check (status in ('대기','도착','완료'))
+   );
+
+   alter table progress_cache enable row level security;
+   drop policy if exists "public read" on progress_cache;
+   create policy "public read" on progress_cache for select to anon using (true);
+
+   grant select on progress_cache to anon;
+   grant all    on progress_cache to service_role;
    ```
    `anon` 에는 **읽기만** 줍니다. 쓰기는 GAS 의 service key 로만 합니다.
+
+   > 🔴 **상태값을 늘릴 때의 순서**
+   > 화이트리스트가 두 곳에 있습니다 — `ENUM.PROGRESS`(`gas/Sheets.gs`)와
+   > 위 `progress_status_ck`. **SQL 의 `CHECK` 를 먼저 열고**, 그다음 GAS 를 고쳐
+   > 재배포합니다. 거꾸로 하면 DB 가 막아서 사본만 조용히 실패합니다
+   > (`Log` 탭의 `mirror.progress` 행에 남습니다).
 
    > 🔴 **증상별 진단**
    > - **미러 갱신이 실패한다** (`mirrorPush` 가 false) → `service_role` GRANT 누락.
