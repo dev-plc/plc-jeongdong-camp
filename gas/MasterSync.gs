@@ -142,6 +142,10 @@ function onEdit(e) {
     // (앱이 고치는 경로인 configSet_ 은 스스로 캐시를 비우므로 여기선 사람 편집만 본다.)
     if (isCachedSourceSheet_(sheetName)) {
       clearConfigCache();
+      // 공개 데이터가 바뀐 **바로 그 순간**이다. 미러도 같이 민다 (D-032).
+      // mirrorPush 는 설정이 없으면 아무 일도 안 하고, 실패해도 던지지 않는다 —
+      // 미러 때문에 사람이 시트를 고치는 일이 막히면 안 된다.
+      mirrorPush();
     }
 
     // Config 탭에서 회차 라벨(SESSION_1/2)을 고치면 5개 탭을 따라 바꾼다.

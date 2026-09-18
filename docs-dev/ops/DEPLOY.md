@@ -192,6 +192,105 @@
 
 ---
 
+## 1-7. 읽기 미러 (Supabase) — 선택
+
+공개 데이터(설정·지점·일정표·공지)만 Supabase 에 복제해 첫 화면을 빠르게 합니다.
+**안 해도 앱은 돕니다.** 설정이 비어 있으면 지금까지처럼 GAS 로만 갑니다 (D-032).
+
+1. **Supabase 프로젝트 생성** — 정동캠프 부서 계정(`ym@plch.or.kr`).
+   GitHub 저장소 계정(`dev@plch.or.kr`)과 **달라도 무관합니다.**
+   조직으로 만들고 `dev@` 를 멤버로 초대해 두세요(담당자 교체 대비).
+
+   생성 화면에서 고를 것 — **기본을 "닫힘" 으로** 잡습니다.
+
+   | 항목 | 값 | 이유 |
+   |---|---|---|
+   | **Enable Data API** | **켜기** | `/rest/v1/…`(PostgREST)가 이 설계의 **유일한 통로**입니다. 끄면 아무것도 안 됩니다 |
+   | **Automatically expose new tables** | **끄기** | 2단계에서 **명단 테이블이 실수로 공개되는 것**을 막습니다. Supabase 자신도 끄기를 권합니다 |
+   | **Enable automatic RLS** | **켜기** | 정책 없는 테이블은 아무도 못 읽습니다 — **안전한 실패** |
+   | GitHub 연동 | **안 함** | 이 설계는 쓰지 않습니다. 권한 표면만 늘어납니다 |
+   | Region | **Seoul** | 참가자가 국내, 현장 모바일 |
+   | Organization | `dev@` 프로젝트가 든 조직과 **다른지 확인** | 무료 조직당 프로젝트 수 제한이 있습니다 |
+   | Database password | 강한 것으로 생성 후 **보관** | 이 설계는 안 쓰지만(REST + API key 만 씁니다) 나중에 필요합니다 |
+
+2. **테이블·정책·권한** — SQL Editor 에서:
+   ```sql
+   create table if not exists app_cache (
+     key        text primary key,
+     value      jsonb not null,
+     updated_at timestamptz not null default now()
+   );
+
+   alter table app_cache enable row level security;
+
+   -- 읽기 정책: 공개 데이터라 anon 에게 연다
+   drop policy if exists "public read" on app_cache;
+   create policy "public read" on app_cache for select to anon using (true);
+
+   -- 🔴 테이블 권한. 위에서 'Automatically expose new tables' 를 껐으므로
+   -- **어느 역할도 권한이 없는 상태**입니다. 읽는 쪽과 쓰는 쪽 둘 다 줘야 합니다.
+   -- 정책(어떤 행을 볼 수 있나)과 권한(테이블에 닿을 수 있나)은 **별개**입니다.
+
+   -- 읽기: 앱(브라우저)
+   grant usage on schema public to anon;
+   grant select on app_cache to anon;
+
+   -- 쓰기: GAS. service_role 은 RLS 는 우회하지만 **GRANT 는 우회하지 못합니다.**
+   grant usage on schema public to service_role;
+   grant all    on app_cache   to service_role;
+   ```
+   `anon` 에는 **읽기만** 줍니다. 쓰기는 GAS 의 service key 로만 합니다.
+
+   > 🔴 **증상별 진단**
+   > - **미러 갱신이 실패한다** (`mirrorPush` 가 false) → `service_role` GRANT 누락.
+   >   `Log` 탭의 `mirror.push` 행에 `permission denied for table app_cache` 가 보입니다.
+   > - **앱이 미러를 안 쓴다 / 빈 화면** → `anon` GRANT 누락.
+   >   이쪽은 **에러가 아니라 빈 배열**이 와서 앱이 조용히 GAS 로 폴백합니다 —
+   >   겉보기엔 잘 돌아가서 원인을 찾기 어렵습니다.
+3. **키 복사** — Settings → API Keys. Supabase 는 키 체계가 **둘** 입니다.
+
+   | 탭 | 쓸 키 | 어디에 |
+   |---|---|---|
+   | **Publishable and secret** (권장) | `sb_publishable_…` | `config.js` 의 `SUPABASE_ANON_KEY` |
+   | | `sb_secret_…` | GAS 속성 `SUPABASE_SERVICE_KEY` |
+   | Legacy (anon, service_role) | `eyJhbGci…` (anon) / (service_role) | 위와 같은 자리. 둘 다 동작합니다 |
+
+   **새 형식(`sb_…`)을 권합니다** — 화면에서 Supabase 자신이 그쪽을 권하고,
+   개별 폐기·회전이 됩니다. 코드는 **두 형식 모두** 동작합니다(D-032).
+
+   > ⚠ **`Disable JWT-based API keys` 는 누르지 마세요.** 지금 누를 이유가 없고,
+   > 2단계에서 JWT 를 직접 발급할 때 영향이 있는지 먼저 확인해야 합니다.
+
+   > 🔴 **`sb_secret_…` / `service_role` 은 `config.js` 에 절대 넣지 마세요.**
+   > 저장소가 공개라 넣는 순간 전권 키가 공개됩니다. 이름이 비슷해 헷갈리는 자리입니다.
+
+4. **GAS 스크립트 속성**: `SUPABASE_URL` · `SUPABASE_SERVICE_KEY`
+   > 🔴 service key 는 **프로젝트 전권 키**입니다. 시트에서 스크립트 편집기를 열 수
+   > 있는 사람은 볼 수 있습니다. 2단계(명단)로 갈 때 이 자리를 반드시 다시 봅니다.
+5. **권한 재승인** — `UrlFetchApp` 을 처음 쓰므로 스코프가 늘었습니다
+   (`script.external_request`·`script.scriptapp`). **새 버전 배포 후 승인 화면이 한 번 뜹니다.**
+6. 메뉴 `🧭 정동캠프 → 미러 지금 갱신` 으로 한 번 밀어 보고,
+   `미러 자동 갱신 켜기 (하루 1회)` 로 트리거를 겁니다.
+7. **`docs/assets/js/config.js`** 에 `SUPABASE_URL` · `SUPABASE_ANON_KEY` 입력 →
+   `node tools/stamp-assets.js` → 커밋.
+   `SUPABASE_URL` 은 이미 넣어 두었습니다. **남은 것은 `SUPABASE_ANON_KEY` 하나**입니다 —
+   Supabase → Project Settings → API Keys 의 **publishable** 키(`sb_publishable_…`)를
+   **끝까지 통째로** 붙여넣습니다(화면에서 잘려 보이므로 복사 버튼을 씁니다).
+   비어 있는 동안에는 미러를 **아예 호출하지 않고** 예전 GAS 경로로만 가므로 안전합니다.
+   🔴 `sb_secret_…`(service_role)는 여기 넣지 않습니다 — 이 저장소는 공개입니다.
+   🔴 `stamp-assets.js` 를 잊으면 브라우저가 옛 `config.js` 를 계속 씁니다(D-028).
+
+> **끄는 법**: `config.js` 의 `SUPABASE_URL` 을 **빈 문자열로** 두면 끝입니다.
+> 즉시 예전 동작(GAS)으로 돌아갑니다.
+
+> **하루 1회 트리거는 정지 방지를 겸합니다.** 무료 프로젝트는 활동이 없으면 정지되는데,
+> 재푸시 요청이 곧 활동입니다. ⚠ **정확한 정지 조건은 프로젝트를 만든 뒤 확인하세요** —
+> 하루 1회로 부족하면 주기를 줄이면 됩니다.
+> 미러가 26시간 넘게 안 갱신되면 **앱이 알아서 미러를 버리고 GAS 로 갑니다.**
+> 낡은 공지를 조용히 계속 보여 주는 쪽이 더 나쁘기 때문입니다.
+
+---
+
 ## 2. 프론트엔드 (GitHub Pages)
 
 > 🔴 **Pages 는 `main` 브랜치를 봅니다.** 앱 코드가 아직 작업 브랜치에만 있다면
@@ -213,6 +312,11 @@
    - Source: **Deploy from a branch**
    - Branch: `main` / 폴더: **`/docs`**
 5. 1~2분 뒤 `https://dev-plc.github.io/plc-jeongdong-camp/` 에서 확인
+
+> **사전답사가 끝나면** `Config` 의 `SESSION_n_ACTIVE` 를 **`FALSE`** 로 바꾸세요.
+> 그 회차 참가자는 로그인할 수 없게 되고 일정표에서도 빠집니다. **명단은 그대로 남고**,
+> 관리자 콘솔에서는 `비활성` 표기와 함께 계속 보입니다 — 기록을 확인할 수 있습니다 (D-031).
+> 되돌리려면 `TRUE` 로 바꾸면 됩니다.
 
 > **응답 시간을 재려면** 주소 끝에 **`?perf=1`** 을 붙여 여세요.
 > 화면 아래에 액션별 중앙값·최대값과 기준선 대비 ✓/✗ 가 뜨고, **[복사]** 로

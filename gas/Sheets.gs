@@ -137,7 +137,19 @@ function sessions_() {
     if (!m) return;
     var label = str_(conf[key]);
     if (!label) return;
-    out.push({ n: parseInt(m[1], 10), label: label, date: str_(conf[key + '_DATE'] || '') });
+    // `SESSION_<n>_ACTIVE` 가 없거나 비어 있으면 **활성**이다.
+    // 기존 회차는 행을 새로 넣지 않아도 그대로 돌아간다 (D-031).
+    var flag = conf[key + '_ACTIVE'];
+    var active = (flag === undefined || str_(flag) === '')
+      ? true
+      : /^(true|y|yes|1|on)$/i.test(str_(flag));
+
+    out.push({
+      n: parseInt(m[1], 10),
+      label: label,
+      date: str_(conf[key + '_DATE'] || ''),
+      active: active
+    });
   });
 
   return out.sort(function (a, b) { return a.n - b.n; });
@@ -147,8 +159,26 @@ function sessionLabels_() {
   return sessions_().map(function (s) { return s.label; });
 }
 
+/**
+ * **앱이 실제로 열어 주는** 회차만.
+ *
+ * 비활성 회차는 앱 입장에서 **없는 회차**다 — 그 회차 참가자는 로그인할 수 없고
+ * 일정표도 내려가지 않는다. 시트 데이터는 그대로 남는다 (D-031).
+ * 사전답사가 끝나면 이걸로 끈다.
+ */
+function activeSessionLabels_() {
+  return sessions_().filter(function (s) { return s.active; })
+    .map(function (s) { return s.label; });
+}
+
+/** 명단에 적을 수 있는 회차인가. 비활성도 **적을 수는 있다**(드롭다운·명단 점검용). */
 function isValidSession_(label) {
   return sessionLabels_().indexOf(str_(label)) >= 0;
+}
+
+/** 지금 로그인을 열어 주는 회차인가. */
+function isActiveSession_(label) {
+  return activeSessionLabels_().indexOf(str_(label)) >= 0;
 }
 
 /**
@@ -408,7 +438,15 @@ function getConfig_() {
   var conf = {};
   readTable_(SHEETS.CONFIG).forEach(function (r) {
     var key = String(r['키'] || '').trim();
-    if (key) conf[key] = String(r['값'] === null || r['값'] === undefined ? '' : r['값']).trim();
+    if (!key) return;
+    var raw = r['값'];
+    // 🔴 날짜 셀은 Date 객체로 온다. 그냥 String() 을 씌우면
+    //    "Sat Oct 31 2026 00:00:00 GMT+0900 (한국 표준시)" 가 된다.
+    //    이 값이 sessions_() 의 date 로 나가고, `일정 변경`(Setup.gs)이 그것을
+    //    프롬프트 기본값으로 보여 줘 **다시 Config 에 써지기까지 한다.**
+    conf[key] = (raw instanceof Date)
+      ? Utilities.formatDate(raw, TZ, 'yyyy-MM-dd')
+      : String(raw === null || raw === undefined ? '' : raw).trim();
   });
   cache.put('config_v1', JSON.stringify(conf), 300);
   __configMemo = conf;
