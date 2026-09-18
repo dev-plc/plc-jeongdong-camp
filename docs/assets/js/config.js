@@ -18,5 +18,16 @@ window.APP_CONFIG = {
   PHOTO_QUALITY: 0.8,
 
   // bootstrap 캐시 유지 시간(ms). 공지·타임라인이 자주 바뀌지 않으므로 짧게만 잡는다.
-  BOOTSTRAP_TTL: 5 * 60 * 1000
+  BOOTSTRAP_TTL: 5 * 60 * 1000,
+
+  // ---- Supabase 읽기 미러 (D-032). 공개 데이터만 올라간다 ----
+  // 🔴 SUPABASE_URL 을 비우면 **즉시 예전 동작(GAS 경로)으로 돌아간다.**
+  //    되돌리는 방법이 이 한 줄이라는 점이 이 구조의 전제다.
+  // anon key 는 공개 전제의 키다. RLS 가 막으므로 정적 파일에 있어도 된다.
+  SUPABASE_URL: '',
+  SUPABASE_ANON_KEY: '',
+  // 미러가 이보다 낡았으면 **버리고 GAS 로 간다.** 하루 1회 갱신 + 시차 여유.
+  // 미러가 멈춘 채 낡은 값을 조용히 주는 것이 정지보다 나쁘다.
+  MIRROR_MAX_AGE: 26 * 60 * 60 * 1000,
+  MIRROR_TIMEOUT: 2500
 };

@@ -1033,7 +1033,10 @@ window.APP_CONFIG = {
   var perfLog = [];
 
   /** 기준선. DATABASE.md 의 '넘어갈 기준' 과 같은 값이어야 한다. */
-  var PERF_BUDGET = { 'bootstrap': 3000, 'me': 2000, 'progress.list': 2000 };
+  var PERF_BUDGET = {
+    'bootstrap': 3000, 'bootstrap:supabase': 3000,   // 미러가 빨라졌는지 나란히 본다
+    'me': 2000, 'progress.list': 2000
+  };
 
   (function loadPerf() {
     try {
@@ -1188,7 +1191,50 @@ window.APP_CONFIG = {
       });
   }
 
-  /** bootstrap 은 공개 데이터라 sessionStorage 에 잠깐 캐시한다. */
+  /**
+   * Supabase 읽기 미러에서 공개 데이터를 가져온다 (D-032).
+   *
+   * 실패·비어 있음·**낡음** 중 하나라도면 null 을 돌려주고 호출부가 GAS 로 간다.
+   * 🔴 낡은 것을 그냥 쓰지 않는 것이 핵심이다 — 미러가 멈춘 채 옛 공지를 계속
+   * 보여 주는 쪽이 미러가 죽는 것보다 나쁘다.
+   */
+  function bootstrapFromMirror() {
+    if (!CFG.SUPABASE_URL || !CFG.SUPABASE_ANON_KEY) return Promise.resolve(null);
+
+    var started = now();
+    var url = CFG.SUPABASE_URL.replace(/\/+$/, '') +
+      '/rest/v1/app_cache?key=eq.bootstrap&select=value,updated_at';
+
+    var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, CFG.MIRROR_TIMEOUT) : null;
+
+    return fetch(url, {
+      headers: { apikey: CFG.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + CFG.SUPABASE_ANON_KEY },
+      signal: ctrl ? ctrl.signal : undefined
+    })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (rows) {
+        if (timer) clearTimeout(timer);
+        var row = rows && rows[0];
+        if (!row || !row.value) return null;
+
+        var age = Date.now() - new Date(row.updated_at).getTime();
+        if (!(age >= 0) || age > CFG.MIRROR_MAX_AGE) return null;   // 낡았다 → 버린다
+
+        perfRecord('bootstrap:supabase', now() - started, true, false);
+        return row.value;
+      })
+      .catch(function () {
+        if (timer) clearTimeout(timer);
+        perfRecord('bootstrap:supabase', now() - started, false, false);
+        return null;   // 던지지 않는다. 호출부가 GAS 로 간다.
+      });
+  }
+
+  /**
+   * bootstrap 은 공개 데이터라 sessionStorage 에 잠깐 캐시한다.
+   * 캐시가 없으면 **미러 → GAS** 순으로 간다. 미러가 없거나 낡으면 예전 그대로다.
+   */
   function bootstrap(force) {
     var KEY = 'plc_jd_bootstrap';
     if (!force) {
@@ -1204,9 +1250,15 @@ window.APP_CONFIG = {
         }
       } catch (e) { /* 캐시 없음 */ }
     }
-    return call('bootstrap', {}, { anonymous: true }).then(function (data) {
+
+    var remember = function (data) {
       try { sessionStorage.setItem(KEY, JSON.stringify({ at: Date.now(), data: data })); } catch (e) { /* 무시 */ }
       return data;
+    };
+
+    return bootstrapFromMirror().then(function (mirrored) {
+      if (mirrored) return remember(mirrored);
+      return call('bootstrap', {}, { anonymous: true }).then(remember);
     });
   }
 

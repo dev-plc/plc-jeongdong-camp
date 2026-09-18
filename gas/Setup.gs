@@ -821,6 +821,9 @@ function onOpen() {
     .addItem('회차 추가 (사전답사 등)', 'addSession')
     .addItem('일정 변경 (회차 날짜)', 'changeSchedule')
     .addItem('캐시 비우기 (설정·공지·일정)', 'clearConfigCache')
+    .addSeparator()
+    .addItem('미러 지금 갱신 (Supabase)', 'mirrorPushNow')
+    .addItem('미러 자동 갱신 켜기 (하루 1회)', 'installMirrorTrigger')
     .addToUi();
 
   // 행정팀 탭 동기화 도구 (MasterSync.gs). 그 파일을 안 넣었으면 조용히 건너뛴다.
