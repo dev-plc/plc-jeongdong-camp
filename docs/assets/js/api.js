@@ -49,8 +49,16 @@
    * 한 건 기록. 실패도 남긴다 — **느린 실패가 오히려 중요한 신호**다.
    * cached=true 인 건은 표본에서 빠진다(perfSummary 참고).
    */
-  function perfRecord(action, ms, ok, cached, retried) {
-    perfLog.push({ a: action, ms: Math.round(ms), ok: !!ok, c: !!cached, r: retried || 0, t: Date.now() });
+  function perfRecord(action, ms, ok, opts) {
+    var o = opts || {};
+    perfLog.push({
+      a: action, ms: Math.round(ms), ok: !!ok,
+      c: !!o.cached,
+      r: o.retried || 0,
+      e: o.code || '',                                        // 실패 원인(오류 코드)
+      s: (typeof o.srv === 'number') ? o.srv : null,          // 서버가 실제로 쓴 시간
+      t: Date.now()
+    });
     if (perfLog.length > PERF_MAX) perfLog = perfLog.slice(-PERF_MAX);
     perfSave();
   }
@@ -71,11 +79,20 @@
   function perfSummary() {
     var by = {};
     perfLog.forEach(function (e) {
-      if (!by[e.a]) by[e.a] = { action: e.a, samples: [], cached: 0, failed: 0, retried: 0 };
-      if (e.c) { by[e.a].cached++; return; }      // ← 표본에 넣지 않는다
-      by[e.a].samples.push(e.ms);
-      by[e.a].retried += (e.r || 0);
-      if (!e.ok) by[e.a].failed++;
+      if (!by[e.a]) {
+        by[e.a] = { action: e.a, samples: [], srv: [], cached: 0, failed: 0, retried: 0, codes: {} };
+      }
+      var r = by[e.a];
+      if (e.c) { r.cached++; return; }            // ← 표본에 넣지 않는다
+      r.samples.push(e.ms);
+      r.retried += (e.r || 0);
+      if (typeof e.s === 'number') r.srv.push(e.s);
+      if (!e.ok) {
+        r.failed++;
+        // 🔴 '실패 8건' 만으로는 고칠 곳을 못 정한다. 코드별로 나눠 센다.
+        var code = e.e || 'UNKNOWN';
+        r.codes[code] = (r.codes[code] || 0) + 1;
+      }
     });
 
     return Object.keys(by).map(function (k) {
@@ -89,6 +106,11 @@
         failed: r.failed,
         // 재시도 건수. 드러나지 않고 삼킨 일시적 장애의 유일한 흔적이다.
         retried: r.retried,
+        // 🔴 서버가 실제로 쓴 시간. 이것과 median 의 차이가 **대기·전송 시간**이다.
+        //    30초가 걸렸을 때 서버 문제인지 대기열 문제인지 여기서 갈린다.
+        srvMedian: median(r.srv),
+        srvCount: r.srv.length,
+        codes: r.codes,
         median: median(r.samples),
         max: max,
         budget: budget,
@@ -110,10 +132,18 @@
       return out.join('\n');
     }
     rows.forEach(function (r) {
-      var line = r.action + ' — ' + r.count + '건 · 중앙 ' + r.median + 'ms · 최대 ' + r.max + 'ms';
+      var line = r.action + ' — ' + r.count + '건 · 중앙 ' + r.median + 'ms';
+      if (r.srvCount) line += '(서버 ' + r.srvMedian + 'ms)';
+      line += ' · 최대 ' + r.max + 'ms';
       if (r.budget) line += ' · 기준 ' + r.budget + 'ms ' + (r.within ? 'OK' : '초과');
       if (r.retried) line += ' · 재시도 ' + r.retried + '건';
-      if (r.failed) line += ' · 실패 ' + r.failed + '건';
+      if (r.failed) {
+        line += ' · 실패 ' + r.failed + '건';
+        var codes = Object.keys(r.codes);
+        if (codes.length) {
+          line += '(' + codes.map(function (c) { return c + ' ' + r.codes[c]; }).join(' · ') + ')';
+        }
+      }
       if (r.cached) line += ' · 캐시 ' + r.cached + '건(표본 제외)';
       out.push(line);
     });
@@ -195,8 +225,11 @@
     return transientError_('서버가 잠시 응답하지 않았습니다. 잠시 뒤 다시 시도해 주세요.');
   }
 
-  /** 한 번의 왕복. 성공하면 `data`, 실패하면 ApiError 를 던진다. */
-  function attempt_(action, body) {
+  /**
+   * 한 번의 왕복. 성공하면 `data`, 실패하면 ApiError 를 던진다.
+   * `info.srv` 에 **서버가 실제로 쓴 시간**을 담아 준다(성공·실패 둘 다).
+   */
+  function attempt_(action, body, info) {
     return fetch(CFG.API_BASE, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -223,6 +256,7 @@
           }
           throw nonJsonError_(res.status, res.text);
         }
+        if (typeof json.ms === 'number') info.srv = json.ms;
         if (!json.ok) {
           var err = json.error || {};
           if (err.code === 'UNAUTHORIZED') setToken('');
@@ -251,9 +285,10 @@
 
     var started = now();
     var retried = 0;
+    var info = { srv: null };   // 서버가 스스로 보고한 소요 시간
 
     function run(isRetry) {
-      return attempt_(action, body).catch(function (e) {
+      return attempt_(action, body, info).catch(function (e) {
         var err = (e instanceof ApiError) ? e : transientError_('네트워크 연결을 확인해 주세요.');
         if (!isRetry && err.transient && !NO_RETRY[action]) {
           retried = 1;
@@ -265,10 +300,11 @@
 
     // 걸린 시간은 **재시도를 포함한 전체**로 잰다 — 사용자가 실제로 기다린 시간이다.
     return run(false).then(function (data) {
-      perfRecord(action, now() - started, true, false, retried);
+      perfRecord(action, now() - started, true, { retried: retried, srv: info.srv });
       return data;
     }, function (e) {
-      perfRecord(action, now() - started, false, false, retried);
+      perfRecord(action, now() - started, false,
+        { retried: retried, srv: info.srv, code: e && e.code });
       throw e;
     });
   }
@@ -310,12 +346,12 @@
         var age = Date.now() - new Date(row.updated_at).getTime();
         if (!(age >= 0) || age > CFG.MIRROR_MAX_AGE) return null;   // 낡았다 → 버린다
 
-        perfRecord('bootstrap:supabase', now() - started, true, false);
+        perfRecord('bootstrap:supabase', now() - started, true, null);
         return row.value;
       })
       .catch(function () {
         if (timer) clearTimeout(timer);
-        perfRecord('bootstrap:supabase', now() - started, false, false);
+        perfRecord('bootstrap:supabase', now() - started, false, { code: 'MIRROR_MISS' });
         return null;   // 던지지 않는다. 호출부가 GAS 로 간다.
       });
   }
@@ -333,7 +369,7 @@
           var cached = JSON.parse(raw);
           if (Date.now() - cached.at < CFG.BOOTSTRAP_TTL) {
             // 캐시 히트도 남기되 **표본에서는 뺀다.** 0ms 를 같이 세면 중앙값이 거짓이 된다.
-            perfRecord('bootstrap', 0, true, true);
+            perfRecord('bootstrap', 0, true, { cached: true });
             return Promise.resolve(cached.data);
           }
         }
