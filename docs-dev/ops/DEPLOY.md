@@ -192,6 +192,46 @@
 
 ---
 
+## 1-7. 읽기 미러 (Supabase) — 선택
+
+공개 데이터(설정·지점·일정표·공지)만 Supabase 에 복제해 첫 화면을 빠르게 합니다.
+**안 해도 앱은 돕니다.** 설정이 비어 있으면 지금까지처럼 GAS 로만 갑니다 (D-032).
+
+1. **Supabase 프로젝트 생성** — 정동캠프 부서 계정(`ym@plch.or.kr`).
+   GitHub 저장소 계정(`dev@plch.or.kr`)과 **달라도 무관합니다.**
+   조직으로 만들고 `dev@` 를 멤버로 초대해 두세요(담당자 교체 대비).
+2. **테이블과 정책** — SQL Editor 에서:
+   ```sql
+   create table app_cache (
+     key        text primary key,
+     value      jsonb not null,
+     updated_at timestamptz not null default now()
+   );
+   alter table app_cache enable row level security;
+   create policy "public read" on app_cache for select to anon using (true);
+   ```
+   쓰기 정책은 만들지 않습니다 — anon 은 못 쓰고 GAS 만 service key 로 씁니다.
+3. **GAS 스크립트 속성**: `SUPABASE_URL` · `SUPABASE_SERVICE_KEY`
+   > 🔴 service key 는 **프로젝트 전권 키**입니다. 시트에서 스크립트 편집기를 열 수
+   > 있는 사람은 볼 수 있습니다. 2단계(명단)로 갈 때 이 자리를 반드시 다시 봅니다.
+4. **권한 재승인** — `UrlFetchApp` 을 처음 쓰므로 스코프가 늘었습니다
+   (`script.external_request`·`script.scriptapp`). **새 버전 배포 후 승인 화면이 한 번 뜹니다.**
+5. 메뉴 `🧭 정동캠프 → 미러 지금 갱신` 으로 한 번 밀어 보고,
+   `미러 자동 갱신 켜기 (하루 1회)` 로 트리거를 겁니다.
+6. **`docs/assets/js/config.js`** 에 `SUPABASE_URL` · `SUPABASE_ANON_KEY` 입력 →
+   `node tools/stamp-assets.js` → 커밋.
+
+> **끄는 법**: `config.js` 의 `SUPABASE_URL` 을 **빈 문자열로** 두면 끝입니다.
+> 즉시 예전 동작(GAS)으로 돌아갑니다.
+
+> **하루 1회 트리거는 정지 방지를 겸합니다.** 무료 프로젝트는 활동이 없으면 정지되는데,
+> 재푸시 요청이 곧 활동입니다. ⚠ **정확한 정지 조건은 프로젝트를 만든 뒤 확인하세요** —
+> 하루 1회로 부족하면 주기를 줄이면 됩니다.
+> 미러가 26시간 넘게 안 갱신되면 **앱이 알아서 미러를 버리고 GAS 로 갑니다.**
+> 낡은 공지를 조용히 계속 보여 주는 쪽이 더 나쁘기 때문입니다.
+
+---
+
 ## 2. 프론트엔드 (GitHub Pages)
 
 > 🔴 **Pages 는 `main` 브랜치를 봅니다.** 앱 코드가 아직 작업 브랜치에만 있다면
