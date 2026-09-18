@@ -217,7 +217,8 @@ function activeNotices_() {
 /** 참여 일자별 타임라인. { '10/31(토)': [...], '11/07(토)': [...] } */
 function timeline_() {
   var out = {};
-  sessionLabels_().forEach(function (label) { out[label] = []; });
+  // 비활성 회차는 앱 입장에서 없는 회차다. 일정표도 내려보내지 않는다 (D-031).
+  activeSessionLabels_().forEach(function (label) { out[label] = []; });
 
   readTable_(SHEETS.TIMELINE)
     .filter(function (r) { return out.hasOwnProperty(str_(r[COL.SESSION])); })

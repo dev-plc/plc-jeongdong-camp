@@ -24,7 +24,10 @@
   var perfLog = [];
 
   /** 기준선. DATABASE.md 의 '넘어갈 기준' 과 같은 값이어야 한다. */
-  var PERF_BUDGET = { 'bootstrap': 3000, 'me': 2000, 'progress.list': 2000 };
+  var PERF_BUDGET = {
+    'bootstrap': 3000, 'bootstrap:supabase': 3000,   // 미러가 빨라졌는지 나란히 본다
+    'me': 2000, 'progress.list': 2000
+  };
 
   (function loadPerf() {
     try {
@@ -46,8 +49,8 @@
    * 한 건 기록. 실패도 남긴다 — **느린 실패가 오히려 중요한 신호**다.
    * cached=true 인 건은 표본에서 빠진다(perfSummary 참고).
    */
-  function perfRecord(action, ms, ok, cached) {
-    perfLog.push({ a: action, ms: Math.round(ms), ok: !!ok, c: !!cached, t: Date.now() });
+  function perfRecord(action, ms, ok, cached, retried) {
+    perfLog.push({ a: action, ms: Math.round(ms), ok: !!ok, c: !!cached, r: retried || 0, t: Date.now() });
     if (perfLog.length > PERF_MAX) perfLog = perfLog.slice(-PERF_MAX);
     perfSave();
   }
@@ -68,9 +71,10 @@
   function perfSummary() {
     var by = {};
     perfLog.forEach(function (e) {
-      if (!by[e.a]) by[e.a] = { action: e.a, samples: [], cached: 0, failed: 0 };
+      if (!by[e.a]) by[e.a] = { action: e.a, samples: [], cached: 0, failed: 0, retried: 0 };
       if (e.c) { by[e.a].cached++; return; }      // ← 표본에 넣지 않는다
       by[e.a].samples.push(e.ms);
+      by[e.a].retried += (e.r || 0);
       if (!e.ok) by[e.a].failed++;
     });
 
@@ -83,6 +87,8 @@
         count: r.samples.length,
         cached: r.cached,
         failed: r.failed,
+        // 재시도 건수. 드러나지 않고 삼킨 일시적 장애의 유일한 흔적이다.
+        retried: r.retried,
         median: median(r.samples),
         max: max,
         budget: budget,
@@ -106,6 +112,7 @@
     rows.forEach(function (r) {
       var line = r.action + ' — ' + r.count + '건 · 중앙 ' + r.median + 'ms · 최대 ' + r.max + 'ms';
       if (r.budget) line += ' · 기준 ' + r.budget + 'ms ' + (r.within ? 'OK' : '초과');
+      if (r.retried) line += ' · 재시도 ' + r.retried + '건';
       if (r.failed) line += ' · 실패 ' + r.failed + '건';
       if (r.cached) line += ' · 캐시 ' + r.cached + '건(표본 제외)';
       out.push(line);
@@ -130,6 +137,102 @@
   }
   ApiError.prototype = Object.create(Error.prototype);
 
+  // ---------------------------------------------------------------- 재시도
+  //
+  // `doPost`(gas/Code.gs)는 **어떤 경우에도 JSON 을 돌려준다** — 본문 파싱 실패도
+  // 라우팅 예외도 `jsonErr_` 를 탄다. 그러므로 JSON 이 아닌 본문은 **스크립트 밖에서**
+  // 온 것이다. 남는 것은 셋뿐이다.
+  //
+  //   1. 구글의 HTML 오류 페이지 — 동시 실행/할당량 초과, 일시적 장애
+  //   2. 구글 로그인 안내 HTML — 배포 액세스 권한이 "모든 사용자" 가 아님
+  //   3. 빈 본문 — /exec → script.googleusercontent.com 리다이렉트 중 끊김
+  //
+  // **1·3 은 일시적이라 한 번 더 보내면 대개 통과한다.** 2 는 다시 보내도 똑같다.
+  // 재시도는 **한 번만** 둔다 — 두 번 이상은 진짜 장애일 때 기다리는 시간만 늘린다.
+
+  var RETRY_DELAY = 600;
+
+  // 🔴 재시도하면 안 되는 액션.
+  //
+  // `journalCreate_`(gas/Journal.gs:171)에는 멱등 키가 없다. `nextId_` 로 새 ID 를
+  // 만들어 행을 추가하고, 사진이 있으면 `savePhoto_` 가 Drive 에 **하나 더** 올린다.
+  // 첫 요청이 실제로는 성공했는데 응답만 못 받은 경우, 재시도는 **일지와 사진을
+  // 중복 생성한다.**
+  //
+  // 나머지는 안전하다 — 읽기는 부작용이 없고, progress.set·journal.update·
+  // admin.config.set 은 같은 값을 다시 쓰는 set 의미이며, auth.login 은 토큰을
+  // 다시 발급할 뿐이다.
+  //
+  // 허용 목록이 아니라 **거부 목록**인 이유: 액션이 늘 때 빠뜨리면 재시도가 조용히
+  // 빠지고, 빠진 것은 아무도 눈치채지 못한다. 위험한 쪽을 명시하는 편이 낫다.
+  var NO_RETRY = { 'journal.create': true };
+
+  function delay_(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
+
+  function transientError_(message) {
+    var e = new ApiError('SERVER_ERROR', message);
+    e.transient = true;
+    return e;
+  }
+
+  /**
+   * 비-JSON 응답의 원인을 나눈다.
+   *
+   * 🔴 **말이 틀리면 운영진이 엉뚱한 곳을 본다.** 예전 메시지는 무조건
+   * "배포 설정을 확인해 주세요" 였는데, 자주 뜨는 것은 배포 문제가 아니라
+   * 일시적 장애다(배포 문제라면 매번 떴을 것이다).
+   */
+  function nonJsonError_(status, text) {
+    var body = String(text === null || text === undefined ? '' : text);
+    if (/accounts\.google\.com|ServiceLogin/.test(body)) {
+      var e = new ApiError('SERVER_ERROR',
+        '서버가 구글 로그인 화면을 돌려줬습니다.\n배포의 액세스 권한이 "모든 사용자" 인지 확인해 주세요.');
+      e.deployment = true;   // 진짜 배포 문제. 다시 보내도 똑같다 → 재시도하지 않는다.
+      return e;
+    }
+    return transientError_('서버가 잠시 응답하지 않았습니다. 잠시 뒤 다시 시도해 주세요.');
+  }
+
+  /** 한 번의 왕복. 성공하면 `data`, 실패하면 ApiError 를 던진다. */
+  function attempt_(action, body) {
+    return fetch(CFG.API_BASE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body),
+      redirect: 'follow'
+    })
+      .then(
+        function (res) {
+          return res.text().then(function (text) {
+            return { status: res.status, text: text };
+          });
+        },
+        function () { throw transientError_('네트워크 연결을 확인해 주세요.'); }
+      )
+      .then(function (res) {
+        var json;
+        try {
+          json = JSON.parse(res.text);
+        } catch (e) {
+          // 사후 확인용. 사용자에게는 보이지 않지만 이게 없으면 원인을 못 찾는다.
+          if (global.console && global.console.warn) {
+            global.console.warn('[api] 비-JSON 응답', action, res.status,
+              String(res.text).slice(0, 200));
+          }
+          throw nonJsonError_(res.status, res.text);
+        }
+        if (!json.ok) {
+          var err = json.error || {};
+          if (err.code === 'UNAUTHORIZED') setToken('');
+          // 서버가 제대로 답한 오류다. 다시 보내도 같은 답이 온다 → 재시도하지 않는다.
+          throw new ApiError(err.code || 'SERVER_ERROR', err.message || '오류가 발생했습니다.');
+        }
+        return json.data;
+      });
+  }
+
   /** 액션 호출. 인증이 필요한 액션은 토큰을 자동으로 실어 보낸다. */
   function call(action, payload, options) {
     var opts = options || {};
@@ -147,39 +250,80 @@
     }
 
     var started = now();
-    var mark = function (ok) { perfRecord(action, now() - started, ok, false); };
+    var retried = 0;
 
-    return fetch(CFG.API_BASE, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(body),
-      redirect: 'follow'
+    function run(isRetry) {
+      return attempt_(action, body).catch(function (e) {
+        var err = (e instanceof ApiError) ? e : transientError_('네트워크 연결을 확인해 주세요.');
+        if (!isRetry && err.transient && !NO_RETRY[action]) {
+          retried = 1;
+          return delay_(RETRY_DELAY).then(function () { return run(true); });
+        }
+        throw err;
+      });
+    }
+
+    // 걸린 시간은 **재시도를 포함한 전체**로 잰다 — 사용자가 실제로 기다린 시간이다.
+    return run(false).then(function (data) {
+      perfRecord(action, now() - started, true, false, retried);
+      return data;
+    }, function (e) {
+      perfRecord(action, now() - started, false, false, retried);
+      throw e;
+    });
+  }
+
+  /**
+   * Supabase 읽기 미러에서 공개 데이터를 가져온다 (D-032).
+   *
+   * 실패·비어 있음·**낡음** 중 하나라도면 null 을 돌려주고 호출부가 GAS 로 간다.
+   * 🔴 낡은 것을 그냥 쓰지 않는 것이 핵심이다 — 미러가 멈춘 채 옛 공지를 계속
+   * 보여 주는 쪽이 미러가 죽는 것보다 나쁘다.
+   */
+  function bootstrapFromMirror() {
+    if (!CFG.SUPABASE_URL || !CFG.SUPABASE_ANON_KEY) return Promise.resolve(null);
+
+    var started = now();
+    var url = CFG.SUPABASE_URL.replace(/\/+$/, '') +
+      '/rest/v1/app_cache?key=eq.bootstrap&select=value,updated_at';
+
+    var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, CFG.MIRROR_TIMEOUT) : null;
+
+    // 🔴 키 형식이 둘이다. 옛 형식(JWT, `eyJ...`)만 Bearer 로 보낸다.
+    // 새 형식(`sb_publishable_...`)을 Bearer 로 보내면 JWT 파싱에 걸릴 수 있다.
+    var headers = { apikey: CFG.SUPABASE_ANON_KEY };
+    if (/^eyJ/.test(CFG.SUPABASE_ANON_KEY)) {
+      headers.Authorization = 'Bearer ' + CFG.SUPABASE_ANON_KEY;
+    }
+
+    return fetch(url, {
+      headers: headers,
+      signal: ctrl ? ctrl.signal : undefined
     })
-      .then(function (res) { return res.text(); })
-      .then(function (text) {
-        var json;
-        try {
-          json = JSON.parse(text);
-        } catch (e) {
-          // GAS 가 오류 HTML 을 돌려주는 경우(권한/배포 문제)
-          throw new ApiError('SERVER_ERROR', '서버 응답을 읽지 못했습니다. 배포 설정을 확인해 주세요.');
-        }
-        if (!json.ok) {
-          var err = json.error || {};
-          if (err.code === 'UNAUTHORIZED') setToken('');
-          throw new ApiError(err.code || 'SERVER_ERROR', err.message || '오류가 발생했습니다.');
-        }
-        mark(true);
-        return json.data;
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (rows) {
+        if (timer) clearTimeout(timer);
+        var row = rows && rows[0];
+        if (!row || !row.value) return null;
+
+        var age = Date.now() - new Date(row.updated_at).getTime();
+        if (!(age >= 0) || age > CFG.MIRROR_MAX_AGE) return null;   // 낡았다 → 버린다
+
+        perfRecord('bootstrap:supabase', now() - started, true, false);
+        return row.value;
       })
-      .catch(function (e) {
-        mark(false);
-        if (e instanceof ApiError) throw e;
-        throw new ApiError('SERVER_ERROR', '네트워크 연결을 확인해 주세요.');
+      .catch(function () {
+        if (timer) clearTimeout(timer);
+        perfRecord('bootstrap:supabase', now() - started, false, false);
+        return null;   // 던지지 않는다. 호출부가 GAS 로 간다.
       });
   }
 
-  /** bootstrap 은 공개 데이터라 sessionStorage 에 잠깐 캐시한다. */
+  /**
+   * bootstrap 은 공개 데이터라 sessionStorage 에 잠깐 캐시한다.
+   * 캐시가 없으면 **미러 → GAS** 순으로 간다. 미러가 없거나 낡으면 예전 그대로다.
+   */
   function bootstrap(force) {
     var KEY = 'plc_jd_bootstrap';
     if (!force) {
@@ -195,9 +339,15 @@
         }
       } catch (e) { /* 캐시 없음 */ }
     }
-    return call('bootstrap', {}, { anonymous: true }).then(function (data) {
+
+    var remember = function (data) {
       try { sessionStorage.setItem(KEY, JSON.stringify({ at: Date.now(), data: data })); } catch (e) { /* 무시 */ }
       return data;
+    };
+
+    return bootstrapFromMirror().then(function (mirrored) {
+      if (mirrored) return remember(mirrored);
+      return call('bootstrap', {}, { anonymous: true }).then(remember);
     });
   }
 
