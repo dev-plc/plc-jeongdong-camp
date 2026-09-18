@@ -135,7 +135,13 @@
       var line = r.action + ' — ' + r.count + '건 · 중앙 ' + r.median + 'ms';
       if (r.srvCount) line += '(서버 ' + r.srvMedian + 'ms)';
       line += ' · 최대 ' + r.max + 'ms';
-      if (r.budget) line += ' · 기준 ' + r.budget + 'ms ' + (r.within ? 'OK' : '초과');
+      // 🔴 within 은 **세 값**이다 — true/false/null(표본 없어 판정 안 함).
+      //    null 을 falsy 로 접으면 한 건도 안 잰 액션에 '초과' 가 찍힌다.
+      //    실제로 `bootstrap — 0건 … 기준 3000ms 초과` 로 나가 거짓 경보가 됐다.
+      //    패널(ui.js)은 처음부터 세 값으로 다뤘는데 이 텍스트만 틀렸다.
+      if (r.budget && r.within !== null) {
+        line += ' · 기준 ' + r.budget + 'ms ' + (r.within ? 'OK' : '초과');
+      }
       if (r.retried) line += ' · 재시도 ' + r.retried + '건';
       if (r.failed) {
         line += ' · 실패 ' + r.failed + '건';
