@@ -438,7 +438,15 @@ function getConfig_() {
   var conf = {};
   readTable_(SHEETS.CONFIG).forEach(function (r) {
     var key = String(r['키'] || '').trim();
-    if (key) conf[key] = String(r['값'] === null || r['값'] === undefined ? '' : r['값']).trim();
+    if (!key) return;
+    var raw = r['값'];
+    // 🔴 날짜 셀은 Date 객체로 온다. 그냥 String() 을 씌우면
+    //    "Sat Oct 31 2026 00:00:00 GMT+0900 (한국 표준시)" 가 된다.
+    //    이 값이 sessions_() 의 date 로 나가고, `일정 변경`(Setup.gs)이 그것을
+    //    프롬프트 기본값으로 보여 줘 **다시 Config 에 써지기까지 한다.**
+    conf[key] = (raw instanceof Date)
+      ? Utilities.formatDate(raw, TZ, 'yyyy-MM-dd')
+      : String(raw === null || raw === undefined ? '' : raw).trim();
   });
   cache.put('config_v1', JSON.stringify(conf), 300);
   __configMemo = conf;
