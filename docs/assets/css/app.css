@@ -543,6 +543,9 @@ textarea.input { resize: vertical; min-height: 96px; }
 .perf__table td { padding: 2px 0; text-align: right; font-weight: 400; white-space: nowrap; }
 .perf__table th { text-align: left; font-weight: 700; padding-right: 8px; }
 .perf__table tr.is-over { color: #ffb4a2; }
+/* 서버가 스스로 보고한 시간. 중앙값과 나란히 둬야 차이(대기·전송)가 눈에 띈다. */
+.perf__srv { opacity: .6; }
+.perf__fail { color: #ffb4a2; font-weight: 700; }
 .perf__actions { display: flex; gap: 6px; margin-top: 8px; }
 .perf__actions button {
   flex: 1; padding: 6px 8px;
