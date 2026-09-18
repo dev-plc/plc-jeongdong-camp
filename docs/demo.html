@@ -1213,8 +1213,8 @@ window.APP_CONFIG = {
     return new Promise(function (resolve) { setTimeout(resolve, ms); });
   }
 
-  function transientError_(message) {
-    var e = new ApiError('SERVER_ERROR', message);
+  function transientError_(message, code) {
+    var e = new ApiError(code || 'SERVER_ERROR', message);
     e.transient = true;
     return e;
   }
@@ -1240,21 +1240,41 @@ window.APP_CONFIG = {
   /**
    * 한 번의 왕복. 성공하면 `data`, 실패하면 ApiError 를 던진다.
    * `info.srv` 에 **서버가 실제로 쓴 시간**을 담아 준다(성공·실패 둘 다).
+   *
+   * `timeoutMs` 가 0 이하이거나 AbortController 가 없으면 상한 없이 기다린다
+   * (`bootstrapFromMirror` 와 같은 짜임).
    */
-  function attempt_(action, body, info) {
+  function attempt_(action, body, info, timeoutMs) {
+    var ctrl = (timeoutMs > 0 && typeof AbortController === 'function')
+      ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, timeoutMs) : null;
+    var done = function () { if (timer) clearTimeout(timer); };
+
     return fetch(CFG.API_BASE, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(body),
-      redirect: 'follow'
+      redirect: 'follow',
+      signal: ctrl ? ctrl.signal : undefined
     })
       .then(
         function (res) {
           return res.text().then(function (text) {
+            done();
             return { status: res.status, text: text };
-          });
+          }, function (e) { done(); throw e; });
         },
-        function () { throw transientError_('네트워크 연결을 확인해 주세요.'); }
+        function (e) {
+          done();
+          // 🔴 상한에 걸린 것과 진짜 연결 실패를 **구분해서** 남긴다.
+          //    다음 실측에서 TIMEOUT 이 대부분이면 전송 경로 문제가 확정된다.
+          if (ctrl && ctrl.signal.aborted) {
+            throw transientError_(
+              '서버가 제때 응답하지 않았습니다. 신호가 약한 곳일 수 있어요.\n잠시 뒤 다시 시도해 주세요.',
+              'TIMEOUT');
+          }
+          throw transientError_('네트워크 연결을 확인해 주세요.');
+        }
       )
       .then(function (res) {
         var json;
@@ -1299,10 +1319,25 @@ window.APP_CONFIG = {
     var retried = 0;
     var info = { srv: null };   // 서버가 스스로 보고한 소요 시간
 
+    // 🔴 상한은 **시도마다**가 아니라 **호출 전체**에 둔다.
+    //
+    // 시도마다 15초를 주면 재시도(D-033)와 겹쳐 최악 30초가 되어, 상한을 두는
+    // 의미가 반감된다. 각 시도는 **남은 예산**만큼만 기다리므로 총 대기가 언제나
+    // 예산 이하다. 첫 시도가 예산을 다 쓰면 재시도할 시간이 없어 재시도하지 않는다.
+    //
+    // 사진이 실린 요청은 전송 자체가 오래 걸리는 것이 정상이라 예산이 따로다.
+    var hasPhoto = !!(body.photo && body.photo.dataBase64);
+    var budget = hasPhoto ? CFG.UPLOAD_TIMEOUT : CFG.REQUEST_TIMEOUT;
+    var left = function () {
+      return budget > 0 ? Math.max(0, budget - (now() - started)) : 0;
+    };
+
     function run(isRetry) {
-      return attempt_(action, body, info).catch(function (e) {
+      return attempt_(action, body, info, left()).catch(function (e) {
         var err = (e instanceof ApiError) ? e : transientError_('네트워크 연결을 확인해 주세요.');
-        if (!isRetry && err.transient && !NO_RETRY[action]) {
+        var canRetry = !isRetry && err.transient && !NO_RETRY[action] &&
+          (budget <= 0 || left() > RETRY_DELAY);
+        if (canRetry) {
           retried = 1;
           return delay_(RETRY_DELAY).then(function () { return run(true); });
         }
