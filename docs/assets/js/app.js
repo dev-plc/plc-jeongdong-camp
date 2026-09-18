@@ -240,12 +240,14 @@
         ? 'https://map.kakao.com/link/map/' + encodeURIComponent(cp.name) + ',' + cp.lat + ',' + cp.lng
         : 'https://map.kakao.com/link/search/' + encodeURIComponent(cp.name);
 
-      return '<article class="cp cp--' + statusClass(p.status) + '">' +
+      // 화면은 이미 바뀌었지만 아직 서버에 안 갔다 — 그 사실을 숨기지 않는다.
+      return '<article class="cp cp--' + statusClass(p.status) + (p.pending ? ' is-saving' : '') + '">' +
         '<header class="cp__head">' +
           '<span class="cp__no">' + p.visitOrder + '</span>' +
           '<div><h3 class="cp__name">' + esc(cp.name) + '</h3>' +
           (cp.summary ? '<p class="cp__sum">' + esc(cp.summary) + '</p>' : '') + '</div>' +
-          '<span class="chip chip--' + statusClass(p.status) + '">' + esc(p.status) + '</span>' +
+          '<span class="chip chip--' + statusClass(p.status) + '">' + esc(p.status) +
+          (p.pending ? ' · 저장 중' : '') + '</span>' +
         '</header>' +
         (cp.description ? '<p class="cp__desc">' + nl2br(esc(cp.description)) + '</p>' : '') +
         (cp.mission ? '<p class="cp__mission"><strong>미션</strong> ' + esc(cp.mission) + '</p>' : '') +
@@ -287,6 +289,44 @@
     }
   }
 
+  // ---------------------------------------------------------------- 진행 기록
+  //
+  // 🔴 **화면을 먼저 바꾸고 전송은 뒤에서 한다** (낙관적 UI).
+  //
+  // 예전에는 버튼을 잠그고 서버를 기다렸다. 실측에서 이 요청이 최대 61초까지
+  // 걸렸고, 그동안 조장은 멎은 화면을 보고 있었다. 현장에서 쓸 수 없다.
+  //
+  // 대신 누르는 즉시 반영하고, **실패하면 되돌린다.** 화면이 거짓말한 채로
+  // 남지 않는 것이 이 구조의 전제다.
+
+  var progressSeq = 0;      // 늦게 온 옛 응답이 새 화면을 덮지 않게 한다
+
+  /**
+   * 서버가 할 일을 **그대로** 흉내 낸다 (gas/Code.gs 의 progressSet_).
+   * 규칙이 어긋나면 응답이 왔을 때 화면이 튄다.
+   *
+   * · 도착·완료는 **최초 시각만** 남긴다 (되돌렸다 다시 눌러도 처음 시각 유지)
+   * · 대기는 둘 다 비운다
+   * · 점수·메모는 서버가 함께 덮어쓴다 — 여기서도 똑같이 비운다
+   */
+  function applyProgressLocal(list, code, status) {
+    var now = UI.localIso();
+    return list.map(function (p) {
+      if (p.checkpoint !== code) return p;
+      var next = Object.assign({}, p, {
+        status: status, score: null, memo: '', pending: true
+      });
+      if (status === '대기') {
+        next.arrivedAt = '';
+        next.completedAt = '';
+        return next;
+      }
+      if (!next.arrivedAt) next.arrivedAt = now;
+      if (status === '완료' && !next.completedAt) next.completedAt = now;
+      return next;
+    });
+  }
+
   function onProgressClick(e) {
     var btn = e.target.closest('[data-status]');
     if (!btn) return;
@@ -294,15 +334,23 @@
     var code = wrap.getAttribute('data-cp');
     var status = btn.getAttribute('data-status');
 
-    UI.$$('[data-status]', wrap).forEach(function (b) { b.disabled = true; });
+    var previous = state.progress;          // 롤백용
+    var seq = ++progressSeq;
+
+    state.progress = applyProgressLocal(state.progress, code, status);
+    paintCourse();
+
     API.progressSet(code, status)
       .then(function (list) {
-        state.progress = list;
+        if (seq !== progressSeq) return;    // 더 최신 요청이 있다 → 옛 응답은 버린다
+        state.progress = list;              // 권위는 서버다
         paintCourse();
         toast('기록했습니다: ' + status);
       })
       .catch(function (err) {
-        UI.$$('[data-status]', wrap).forEach(function (b) { b.disabled = false; });
+        if (seq !== progressSeq) return;
+        state.progress = previous;          // 🔴 되돌린다
+        paintCourse();
         toast(err.message, 'error');
       });
   }
