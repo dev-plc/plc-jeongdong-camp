@@ -336,6 +336,8 @@ textarea.input { resize: vertical; min-height: 96px; }
 }
 .cp--here { border-left-color: var(--warn); }
 .cp--done { border-left-color: var(--ok); }
+/* 화면은 이미 바뀌었지만 아직 서버에 안 갔다. 숨기면 화면이 거짓말이 된다. */
+.cp.is-saving { opacity: .72; }
 
 .cp__head { display: flex; align-items: flex-start; gap: 11px; }
 .cp__head > div { flex: 1; min-width: 0; }
