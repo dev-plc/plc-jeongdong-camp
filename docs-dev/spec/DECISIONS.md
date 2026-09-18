@@ -1014,3 +1014,32 @@ GRANT 는 "테이블에 닿을 수 있는가"를 정합니다. 자동 노출을 
 고르게 하면 반드시 틀립니다 — 고를 필요가 없으면 틀릴 수도 없습니다.
 
 `test-mirror.js` 가 두 형식 각각에서 헤더가 어떻게 나가는지 고정합니다.
+
+### `service_role` 도 GRANT 가 필요하다 (D-032 보강 2)
+
+미러 첫 실행이 실패했습니다. 원인은 제가 **쓰는 쪽 권한을 빼먹은 것**이었습니다.
+
+`Automatically expose new tables` 를 껐으므로 새 테이블에는 **어느 역할도 권한이
+없습니다.** 저는 `anon` 에 `select` 만 주고, `service_role` 에는 아무것도 주지
+않았습니다. **`service_role` 은 RLS 는 우회하지만 테이블 GRANT 는 우회하지 못합니다.**
+"service key 는 전권" 이라는 통념이 여기서 어긋납니다 — 전권인 것은 *정책*에 대해서지
+*권한*에 대해서가 아닙니다.
+
+읽기와 쓰기 **양쪽 다** 명시해야 합니다.
+
+```sql
+grant usage on schema public to anon;          -- 읽기: 앱
+grant select on app_cache   to anon;
+grant usage on schema public to service_role;  -- 쓰기: GAS
+grant all    on app_cache   to service_role;
+```
+
+**두 실패의 증상이 다릅니다** — `DEPLOY.md` 에 진단표로 넣었습니다.
+
+- `service_role` 누락 → 미러 갱신이 **실패**하고 `Log` 에 `permission denied` 가 남습니다.
+  시끄럽게 실패하므로 찾기 쉽습니다.
+- `anon` 누락 → **에러가 아니라 빈 배열**이 옵니다. 앱은 "미러에 데이터가 없다" 고
+  보고 조용히 GAS 로 폴백합니다. **겉보기엔 잘 돌아가서** 왜 안 빨라지는지 알 수가 없습니다.
+
+후자가 훨씬 위험합니다. 자동 노출을 끄는 선택(안전한 기본값)이 **조용한 실패를
+하나 만들어 냈다**는 것이 이 건의 교훈입니다.
