@@ -200,17 +200,44 @@
 1. **Supabase 프로젝트 생성** — 정동캠프 부서 계정(`ym@plch.or.kr`).
    GitHub 저장소 계정(`dev@plch.or.kr`)과 **달라도 무관합니다.**
    조직으로 만들고 `dev@` 를 멤버로 초대해 두세요(담당자 교체 대비).
-2. **테이블과 정책** — SQL Editor 에서:
+
+   생성 화면에서 고를 것 — **기본을 "닫힘" 으로** 잡습니다.
+
+   | 항목 | 값 | 이유 |
+   |---|---|---|
+   | **Enable Data API** | **켜기** | `/rest/v1/…`(PostgREST)가 이 설계의 **유일한 통로**입니다. 끄면 아무것도 안 됩니다 |
+   | **Automatically expose new tables** | **끄기** | 2단계에서 **명단 테이블이 실수로 공개되는 것**을 막습니다. Supabase 자신도 끄기를 권합니다 |
+   | **Enable automatic RLS** | **켜기** | 정책 없는 테이블은 아무도 못 읽습니다 — **안전한 실패** |
+   | GitHub 연동 | **안 함** | 이 설계는 쓰지 않습니다. 권한 표면만 늘어납니다 |
+   | Region | **Seoul** | 참가자가 국내, 현장 모바일 |
+   | Organization | `dev@` 프로젝트가 든 조직과 **다른지 확인** | 무료 조직당 프로젝트 수 제한이 있습니다 |
+   | Database password | 강한 것으로 생성 후 **보관** | 이 설계는 안 쓰지만(REST + API key 만 씁니다) 나중에 필요합니다 |
+
+2. **테이블·정책·권한** — SQL Editor 에서:
    ```sql
-   create table app_cache (
+   create table if not exists app_cache (
      key        text primary key,
      value      jsonb not null,
      updated_at timestamptz not null default now()
    );
+
    alter table app_cache enable row level security;
+
+   -- 읽기 정책: 공개 데이터라 anon 에게 연다
+   drop policy if exists "public read" on app_cache;
    create policy "public read" on app_cache for select to anon using (true);
+
+   -- 🔴 테이블 권한. 위에서 'Automatically expose new tables' 를 껐다면
+   -- 이 두 줄이 없으면 **앱이 빈 결과를 받습니다.**
+   -- 정책(어떤 행을 볼 수 있나)과 권한(테이블에 닿을 수 있나)은 **별개**입니다.
+   grant usage on schema public to anon;
+   grant select on app_cache to anon;
    ```
-   쓰기 정책은 만들지 않습니다 — anon 은 못 쓰고 GAS 만 service key 로 씁니다.
+   **쓰기 권한은 주지 않습니다** — anon 은 못 쓰고, GAS 만 service key 로 씁니다
+   (`service_role` 은 RLS·GRANT 를 우회합니다).
+
+   > 🔴 **앱이 빈 화면이거나 미러가 안 잡히면 `grant` 누락을 먼저 의심하세요.**
+   > 정책만 있고 권한이 없으면 에러가 아니라 **빈 배열**이 옵니다 — 원인을 찾기 어렵습니다.
 3. **GAS 스크립트 속성**: `SUPABASE_URL` · `SUPABASE_SERVICE_KEY`
    > 🔴 service key 는 **프로젝트 전권 키**입니다. 시트에서 스크립트 편집기를 열 수
    > 있는 사람은 볼 수 있습니다. 2단계(명단)로 갈 때 이 자리를 반드시 다시 봅니다.
