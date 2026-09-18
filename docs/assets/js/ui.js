@@ -185,12 +185,20 @@
     var body = rows.length
       ? '<table class="perf__table">' + rows.map(function (r) {
           var mark = r.within === null ? '' : (r.within ? '✓' : '✗');
+          // 🔴 서버 시간을 중앙값 옆에 붙인다. 이 둘의 차이가 대기·전송 시간이고,
+          //    그 차이를 봐야 고칠 곳(코드냐 대기열이냐)이 정해진다.
+          var srv = r.srvCount ? '<span class="perf__srv">/' + r.srvMedian + '</span>' : '';
+          var codes = Object.keys(r.codes || {});
+          var fail = r.failed
+            ? '<td class="perf__fail">실패 ' + r.failed +
+              (codes.length ? ' ' + esc(codes.join('·')) : '') + '</td>'
+            : '<td>' + (r.budget ? mark + ' 기준 ' + r.budget : '') + '</td>';
           return '<tr class="' + (r.within === false ? 'is-over' : '') + '">' +
             '<th>' + esc(r.action) + '</th>' +
             '<td>' + r.count + '건</td>' +
-            '<td>중앙 ' + r.median + '</td>' +
+            '<td>중앙 ' + r.median + srv + '</td>' +
             '<td>최대 ' + r.max + '</td>' +
-            '<td>' + (r.budget ? mark + ' 기준 ' + r.budget : '') + '</td>' +
+            fail +
             '</tr>';
         }).join('') + '</table>'
       : '<p class="perf__empty">아직 측정된 요청이 없습니다.</p>';
