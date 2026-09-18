@@ -14,6 +14,7 @@
 
 function doGet(e) {
   var params = (e && e.parameter) || {};
+  __reqStart = Date.now();
   try {
     if (params.action === 'bootstrap' || !params.action) {
       return jsonOk_(bootstrap_());
@@ -29,6 +30,7 @@ function doGet(e) {
 
 function doPost(e) {
   var body;
+  __reqStart = Date.now();
   try {
     body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
   } catch (parseErr) {
@@ -75,10 +77,23 @@ function route_(action, body) {
 }
 
 // ---------------------------------------------------------------- 응답
+//
+// 🔴 응답에 **서버가 실제로 쓴 시간(ms)** 을 싣는다.
+//
+// 실측(D-030)은 브라우저에서 잰 왕복 시간뿐이라, 30초가 걸렸을 때 서버가 30초를 쓴
+// 것인지 대기열에서 기다린 것인지 **구분할 방법이 없었다.** 둘은 고치는 곳이 다르다.
+// 값 하나를 얹는 비용으로 그 구분이 생긴다.
+
+var __reqStart = 0;
+
+/** 이 실행이 시작된 뒤 지난 시간(ms). 진입점 밖에서 불리면 null. */
+function elapsedMs_() {
+  return __reqStart ? (Date.now() - __reqStart) : null;
+}
 
 function jsonOk_(data) {
   return ContentService
-    .createTextOutput(JSON.stringify({ ok: true, data: data }))
+    .createTextOutput(JSON.stringify({ ok: true, data: data, ms: elapsedMs_() }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -87,7 +102,9 @@ function jsonErr_(err) {
   var message = (err && err.message) || '알 수 없는 오류가 발생했습니다.';
   if (code === 'SERVER_ERROR') console.error(err && err.stack ? err.stack : err);
   return ContentService
-    .createTextOutput(JSON.stringify({ ok: false, error: { code: code, message: message } }))
+    .createTextOutput(JSON.stringify({
+      ok: false, error: { code: code, message: message }, ms: elapsedMs_()
+    }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
