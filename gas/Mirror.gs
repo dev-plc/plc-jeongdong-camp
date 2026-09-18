@@ -24,6 +24,24 @@ function mirrorConfig_() {
   };
 }
 
+/**
+ * Supabase 인증 헤더.
+ *
+ * 🔴 Supabase 는 키 체계가 둘이다.
+ *  · **옛 형식(JWT)**: `eyJhbGci...` — 키 자체가 역할을 담은 JWT 다.
+ *    PostgREST 가 이걸 디코드해 역할을 정하므로 `Authorization: Bearer` 로도 보내야 한다.
+ *  · **새 형식**: `sb_secret_...` / `sb_publishable_...` — JWT 가 아니다.
+ *    역할은 서버가 키로 판별한다. **Bearer 로 보내면 JWT 파싱에 실패할 수 있다.**
+ *
+ * 그래서 `apikey` 는 항상 보내고, `Authorization` 은 **JWT 처럼 생겼을 때만** 붙인다.
+ * 두 형식 모두에서 동작한다 (D-032).
+ */
+function supabaseAuthHeaders_(key) {
+  var headers = { apikey: key };
+  if (/^eyJ/.test(key)) headers.Authorization = 'Bearer ' + key;
+  return headers;
+}
+
 /** 미러를 쓸 수 있는 상태인가. 설정이 없으면 조용히 끈다(에러 아님). */
 function mirrorEnabled_() {
   var c = mirrorConfig_();
@@ -49,12 +67,12 @@ function mirrorPush() {
     var res = UrlFetchApp.fetch(c.url + '/rest/v1/' + MIRROR_TABLE, {
       method: 'post',
       contentType: 'application/json',
-      headers: {
-        apikey: c.key,
-        Authorization: 'Bearer ' + c.key,
+      headers: (function () {
+        var h = supabaseAuthHeaders_(c.key);
         // 같은 key 가 이미 있으면 덮어쓴다. 없으면 만든다.
-        Prefer: 'resolution=merge-duplicates'
-      },
+        h.Prefer = 'resolution=merge-duplicates';
+        return h;
+      })(),
       payload: JSON.stringify([{
         key: MIRROR_KEY,
         value: bootstrap_(),            // 앱이 받는 것과 **같은 것**을 보낸다

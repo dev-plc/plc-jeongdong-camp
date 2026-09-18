@@ -1208,8 +1208,15 @@ window.APP_CONFIG = {
     var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
     var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, CFG.MIRROR_TIMEOUT) : null;
 
+    // 🔴 키 형식이 둘이다. 옛 형식(JWT, `eyJ...`)만 Bearer 로 보낸다.
+    // 새 형식(`sb_publishable_...`)을 Bearer 로 보내면 JWT 파싱에 걸릴 수 있다.
+    var headers = { apikey: CFG.SUPABASE_ANON_KEY };
+    if (/^eyJ/.test(CFG.SUPABASE_ANON_KEY)) {
+      headers.Authorization = 'Bearer ' + CFG.SUPABASE_ANON_KEY;
+    }
+
     return fetch(url, {
-      headers: { apikey: CFG.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + CFG.SUPABASE_ANON_KEY },
+      headers: headers,
       signal: ctrl ? ctrl.signal : undefined
     })
       .then(function (res) { return res.ok ? res.json() : null; })
