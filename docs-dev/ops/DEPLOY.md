@@ -238,14 +238,31 @@
 
    > 🔴 **앱이 빈 화면이거나 미러가 안 잡히면 `grant` 누락을 먼저 의심하세요.**
    > 정책만 있고 권한이 없으면 에러가 아니라 **빈 배열**이 옵니다 — 원인을 찾기 어렵습니다.
-3. **GAS 스크립트 속성**: `SUPABASE_URL` · `SUPABASE_SERVICE_KEY`
+3. **키 복사** — Settings → API Keys. Supabase 는 키 체계가 **둘** 입니다.
+
+   | 탭 | 쓸 키 | 어디에 |
+   |---|---|---|
+   | **Publishable and secret** (권장) | `sb_publishable_…` | `config.js` 의 `SUPABASE_ANON_KEY` |
+   | | `sb_secret_…` | GAS 속성 `SUPABASE_SERVICE_KEY` |
+   | Legacy (anon, service_role) | `eyJhbGci…` (anon) / (service_role) | 위와 같은 자리. 둘 다 동작합니다 |
+
+   **새 형식(`sb_…`)을 권합니다** — 화면에서 Supabase 자신이 그쪽을 권하고,
+   개별 폐기·회전이 됩니다. 코드는 **두 형식 모두** 동작합니다(D-032).
+
+   > ⚠ **`Disable JWT-based API keys` 는 누르지 마세요.** 지금 누를 이유가 없고,
+   > 2단계에서 JWT 를 직접 발급할 때 영향이 있는지 먼저 확인해야 합니다.
+
+   > 🔴 **`sb_secret_…` / `service_role` 은 `config.js` 에 절대 넣지 마세요.**
+   > 저장소가 공개라 넣는 순간 전권 키가 공개됩니다. 이름이 비슷해 헷갈리는 자리입니다.
+
+4. **GAS 스크립트 속성**: `SUPABASE_URL` · `SUPABASE_SERVICE_KEY`
    > 🔴 service key 는 **프로젝트 전권 키**입니다. 시트에서 스크립트 편집기를 열 수
    > 있는 사람은 볼 수 있습니다. 2단계(명단)로 갈 때 이 자리를 반드시 다시 봅니다.
-4. **권한 재승인** — `UrlFetchApp` 을 처음 쓰므로 스코프가 늘었습니다
+5. **권한 재승인** — `UrlFetchApp` 을 처음 쓰므로 스코프가 늘었습니다
    (`script.external_request`·`script.scriptapp`). **새 버전 배포 후 승인 화면이 한 번 뜹니다.**
-5. 메뉴 `🧭 정동캠프 → 미러 지금 갱신` 으로 한 번 밀어 보고,
+6. 메뉴 `🧭 정동캠프 → 미러 지금 갱신` 으로 한 번 밀어 보고,
    `미러 자동 갱신 켜기 (하루 1회)` 로 트리거를 겁니다.
-6. **`docs/assets/js/config.js`** 에 `SUPABASE_URL` · `SUPABASE_ANON_KEY` 입력 →
+7. **`docs/assets/js/config.js`** 에 `SUPABASE_URL` · `SUPABASE_ANON_KEY` 입력 →
    `node tools/stamp-assets.js` → 커밋.
 
 > **끄는 법**: `config.js` 의 `SUPABASE_URL` 을 **빈 문자열로** 두면 끝입니다.
