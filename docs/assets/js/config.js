@@ -25,12 +25,12 @@ window.APP_CONFIG = {
   //    되돌리는 방법이 이 한 줄이라는 점이 이 구조의 전제다.
   // anon key 는 공개 전제의 키다. RLS 가 막으므로 정적 파일에 있어도 된다.
   SUPABASE_URL: 'https://zkxnyimfhyxyewozabka.supabase.co',
-  // ⚠ Supabase → Project Settings → API Keys 의 **publishable** 키(`sb_publishable_…`)를
-  //   통째로 붙여넣는다. 이게 비어 있는 동안에는 미러를 아예 호출하지 않고
-  //   예전 GAS 경로로만 간다(api.js `bootstrapFromMirror`). 즉 빈 채로 두어도 안전하다.
-  // 🔴 `sb_secret_…`(service_role)는 **절대 여기 넣지 않는다.** 이 저장소는 공개이고
-  //   그 키는 프로젝트 전권이다. 그 키는 GAS 스크립트 속성에만 둔다.
-  SUPABASE_ANON_KEY: '',
+  // publishable 키. **공개를 전제로 한 키**라 이 저장소(공개)에 있어도 된다 —
+  // app_cache 는 RLS 정책(select 만)과 테이블 권한(grant select)으로 두 겹으로 막혀 있고,
+  // 올라가는 것도 bootstrap_() 의 공개 데이터뿐이다(명단·연락처는 들어가지 않는다).
+  // 🔴 `sb_secret_…`(service_role)는 **절대 여기 넣지 않는다.** RLS·GRANT 를 모두
+  //   우회하는 전권 키다. 그 키는 GAS 스크립트 속성에만 둔다.
+  SUPABASE_ANON_KEY: 'sb_publishable_FUADV8bojaFvFlr_D4RILA_vpB-jLpC',
   // 미러가 이보다 낡았으면 **버리고 GAS 로 간다.** 하루 1회 갱신 + 시차 여유.
   // 미러가 멈춘 채 낡은 값을 조용히 주는 것이 정지보다 나쁘다.
   MIRROR_MAX_AGE: 26 * 60 * 60 * 1000,
