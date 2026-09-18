@@ -273,6 +273,12 @@
    `미러 자동 갱신 켜기 (하루 1회)` 로 트리거를 겁니다.
 7. **`docs/assets/js/config.js`** 에 `SUPABASE_URL` · `SUPABASE_ANON_KEY` 입력 →
    `node tools/stamp-assets.js` → 커밋.
+   `SUPABASE_URL` 은 이미 넣어 두었습니다. **남은 것은 `SUPABASE_ANON_KEY` 하나**입니다 —
+   Supabase → Project Settings → API Keys 의 **publishable** 키(`sb_publishable_…`)를
+   **끝까지 통째로** 붙여넣습니다(화면에서 잘려 보이므로 복사 버튼을 씁니다).
+   비어 있는 동안에는 미러를 **아예 호출하지 않고** 예전 GAS 경로로만 가므로 안전합니다.
+   🔴 `sb_secret_…`(service_role)는 여기 넣지 않습니다 — 이 저장소는 공개입니다.
+   🔴 `stamp-assets.js` 를 잊으면 브라우저가 옛 `config.js` 를 계속 씁니다(D-028).
 
 > **끄는 법**: `config.js` 의 `SUPABASE_URL` 을 **빈 문자열로** 두면 끝입니다.
 > 즉시 예전 동작(GAS)으로 돌아갑니다.
