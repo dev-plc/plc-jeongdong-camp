@@ -227,17 +227,26 @@
    drop policy if exists "public read" on app_cache;
    create policy "public read" on app_cache for select to anon using (true);
 
-   -- 🔴 테이블 권한. 위에서 'Automatically expose new tables' 를 껐다면
-   -- 이 두 줄이 없으면 **앱이 빈 결과를 받습니다.**
+   -- 🔴 테이블 권한. 위에서 'Automatically expose new tables' 를 껐으므로
+   -- **어느 역할도 권한이 없는 상태**입니다. 읽는 쪽과 쓰는 쪽 둘 다 줘야 합니다.
    -- 정책(어떤 행을 볼 수 있나)과 권한(테이블에 닿을 수 있나)은 **별개**입니다.
+
+   -- 읽기: 앱(브라우저)
    grant usage on schema public to anon;
    grant select on app_cache to anon;
-   ```
-   **쓰기 권한은 주지 않습니다** — anon 은 못 쓰고, GAS 만 service key 로 씁니다
-   (`service_role` 은 RLS·GRANT 를 우회합니다).
 
-   > 🔴 **앱이 빈 화면이거나 미러가 안 잡히면 `grant` 누락을 먼저 의심하세요.**
-   > 정책만 있고 권한이 없으면 에러가 아니라 **빈 배열**이 옵니다 — 원인을 찾기 어렵습니다.
+   -- 쓰기: GAS. service_role 은 RLS 는 우회하지만 **GRANT 는 우회하지 못합니다.**
+   grant usage on schema public to service_role;
+   grant all    on app_cache   to service_role;
+   ```
+   `anon` 에는 **읽기만** 줍니다. 쓰기는 GAS 의 service key 로만 합니다.
+
+   > 🔴 **증상별 진단**
+   > - **미러 갱신이 실패한다** (`mirrorPush` 가 false) → `service_role` GRANT 누락.
+   >   `Log` 탭의 `mirror.push` 행에 `permission denied for table app_cache` 가 보입니다.
+   > - **앱이 미러를 안 쓴다 / 빈 화면** → `anon` GRANT 누락.
+   >   이쪽은 **에러가 아니라 빈 배열**이 와서 앱이 조용히 GAS 로 폴백합니다 —
+   >   겉보기엔 잘 돌아가서 원인을 찾기 어렵습니다.
 3. **키 복사** — Settings → API Keys. Supabase 는 키 체계가 **둘** 입니다.
 
    | 탭 | 쓸 키 | 어디에 |
