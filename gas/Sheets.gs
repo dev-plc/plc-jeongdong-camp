@@ -704,6 +704,14 @@ function withLock_(fn) {
 
 // ---------------------------------------------------------------- 로그
 
+/**
+ * 구간별 소요 시간을 한 줄로. `Log` 탭의 `상세` 칸에 들어간다 (D-043).
+ * 새 화면도 새 통신 형식도 만들지 않고, 이미 있는 자리에 남긴다.
+ */
+function timingText_(t) {
+  return Object.keys(t).map(function (k) { return k + '=' + t[k]; }).join(' ');
+}
+
 function logEvent_(action, actor, target, result, detail) {
   try {
     appendRow_(SHEETS.LOG, {

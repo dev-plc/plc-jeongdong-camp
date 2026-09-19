@@ -538,6 +538,11 @@
         return mirrored || call('progress.list');
       });
     },
+    /** 여러 지점을 **한 요청**으로 (D-045). 서버는 단건도 그대로 받는다. */
+    progressSetBatch: function (items) {
+      return call('progress.set', { items: items })
+        .then(function (list) { lastProgressWrite = Date.now(); return list; });
+    },
     progressSet: function (checkpoint, status, score, memo) {
       return call('progress.set', { checkpoint: checkpoint, status: status, score: score, memo: memo })
         .then(function (list) {
