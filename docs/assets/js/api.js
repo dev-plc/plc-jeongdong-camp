@@ -26,7 +26,8 @@
   /** 기준선. DATABASE.md 의 '넘어갈 기준' 과 같은 값이어야 한다. */
   var PERF_BUDGET = {
     'bootstrap': 3000, 'bootstrap:supabase': 3000,   // 미러가 빨라졌는지 나란히 본다
-    'me': 2000, 'progress.list': 2000
+    'me': 2000,
+    'progress.list': 2000, 'progress.list:supabase': 2000   // 두 경로를 나란히 본다
   };
 
   (function loadPerf() {
@@ -357,44 +358,120 @@
    * 🔴 낡은 것을 그냥 쓰지 않는 것이 핵심이다 — 미러가 멈춘 채 옛 공지를 계속
    * 보여 주는 쪽이 미러가 죽는 것보다 나쁘다.
    */
-  function bootstrapFromMirror() {
-    if (!CFG.SUPABASE_URL || !CFG.SUPABASE_ANON_KEY) return Promise.resolve(null);
+  function mirrorEnabled() {
+    return !!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY);
+  }
 
+  /**
+   * 미러에서 한 번 읽는다. **절대 던지지 않는다** — 실패하면 null 이고
+   * 호출부가 GAS 로 간다. 그 폴백이 이 구조의 전제다.
+   *
+   * 🔴 키 형식이 둘이다. 옛 형식(JWT, `eyJ...`)만 Bearer 로 보낸다.
+   * 새 형식(`sb_publishable_...`)을 Bearer 로 보내면 JWT 파싱에 걸릴 수 있다.
+   */
+  function mirrorGet(path, label) {
     var started = now();
-    var url = CFG.SUPABASE_URL.replace(/\/+$/, '') +
-      '/rest/v1/app_cache?key=eq.bootstrap&select=value,updated_at';
-
     var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
     var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, CFG.MIRROR_TIMEOUT) : null;
 
-    // 🔴 키 형식이 둘이다. 옛 형식(JWT, `eyJ...`)만 Bearer 로 보낸다.
-    // 새 형식(`sb_publishable_...`)을 Bearer 로 보내면 JWT 파싱에 걸릴 수 있다.
     var headers = { apikey: CFG.SUPABASE_ANON_KEY };
     if (/^eyJ/.test(CFG.SUPABASE_ANON_KEY)) {
       headers.Authorization = 'Bearer ' + CFG.SUPABASE_ANON_KEY;
     }
 
-    return fetch(url, {
+    return fetch(CFG.SUPABASE_URL.replace(/\/+$/, '') + path, {
       headers: headers,
       signal: ctrl ? ctrl.signal : undefined
     })
       .then(function (res) { return res.ok ? res.json() : null; })
       .then(function (rows) {
         if (timer) clearTimeout(timer);
-        var row = rows && rows[0];
-        if (!row || !row.value) return null;
-
-        var age = Date.now() - new Date(row.updated_at).getTime();
-        if (!(age >= 0) || age > CFG.MIRROR_MAX_AGE) return null;   // 낡았다 → 버린다
-
-        perfRecord('bootstrap:supabase', now() - started, true, null);
-        return row.value;
+        if (!rows) { perfRecord(label, now() - started, false, { code: 'MIRROR_MISS' }); return null; }
+        perfRecord(label, now() - started, true, null);
+        return rows;
       })
       .catch(function () {
         if (timer) clearTimeout(timer);
-        perfRecord('bootstrap:supabase', now() - started, false, { code: 'MIRROR_MISS' });
-        return null;   // 던지지 않는다. 호출부가 GAS 로 간다.
+        perfRecord(label, now() - started, false, { code: 'MIRROR_MISS' });
+        return null;
       });
+  }
+
+  function bootstrapFromMirror() {
+    if (!mirrorEnabled()) return Promise.resolve(null);
+
+    return mirrorGet('/rest/v1/app_cache?key=eq.bootstrap&select=value,updated_at',
+      'bootstrap:supabase').then(function (rows) {
+      var row = rows && rows[0];
+      if (!row || !row.value) return null;
+
+      var age = Date.now() - new Date(row.updated_at).getTime();
+      if (!(age >= 0) || age > CFG.MIRROR_MAX_AGE) return null;   // 낡았다 → 버린다
+      return row.value;
+    });
+  }
+
+  // ---------------------------------------------------------------- 진행 읽기 미러 (D-042)
+  //
+  // 조장이 캠프 당일 가장 자주 여는 화면이다. GAS 로는 2.4~3.8초가 걸렸다.
+  //
+  // 🔴 **표에 없는 지점은 '대기' 다.** 사본에는 기록이 있는 지점만 들어 있고,
+  //    화면은 조의 코스 전체를 순서대로 보여 줘야 한다. 이 채워 넣기가
+  //    서버 `progressList_` 와 같은 결과를 내야 한다 — 테스트가 둘을 맞대 본다.
+
+  /** 조장이 마지막으로 기록한 시각. 사본이 그보다 낡으면 푸시가 실패한 것이다. */
+  var lastProgressWrite = 0;
+
+  function progressFromMirror(team) {
+    if (!mirrorEnabled()) return Promise.resolve(null);
+    if (!team || !team.session || !team.group || !team.route || !team.route.length) {
+      return Promise.resolve(null);
+    }
+
+    var path = '/rest/v1/progress_cache' +
+      '?session=eq.' + encodeURIComponent(team.session) +
+      '&team=eq.' + encodeURIComponent(team.group) +
+      '&select=checkpoint,status,arrived_at,completed_at,score,memo,updated_at';
+
+    return mirrorGet(path, 'progress.list:supabase').then(function (rows) {
+      // 🔴 빈 결과는 **쓰지 않는다.** 아직 한 곳도 기록 안 한 조일 수도 있지만,
+      //    권한(GRANT) 누락일 때도 똑같이 빈 배열이 온다. 둘을 구분할 수 없으니
+      //    안전한 쪽으로 간다 — GAS 가 답한다. 첫 기록 전 한 번만 손해다.
+      if (!rows || !rows.length) return null;
+
+      var newest = 0;
+      var byCode = {};
+      rows.forEach(function (r) {
+        byCode[r.checkpoint] = r;
+        var t = new Date(r.updated_at).getTime();
+        if (t > newest) newest = t;
+      });
+
+      // ① 동기화가 살아 있나. C 의 주기 동기화가 **모든 행**을 다시 쓰므로,
+      //    가장 새로운 행의 시각이 곧 동기화의 심박이다.
+      // 🔴 설정 키가 빠지면 `age > undefined` 가 false 라 **가드가 조용히 사라진다.**
+      //    없으면 bootstrap 기준으로 넘어진다 — 안전한 쪽이다.
+      var maxAge = CFG.MIRROR_PROGRESS_MAX_AGE || CFG.MIRROR_MAX_AGE;
+      var age = Date.now() - newest;
+      if (!(age >= 0) || age > maxAge) return null;
+
+      // ② 🔴 내가 방금 쓴 것보다 낡았다 = 사본 푸시가 실패했다.
+      //    그대로 쓰면 조장이 자기가 누른 값이 되돌아간 것처럼 본다.
+      if (lastProgressWrite && newest < lastProgressWrite) return null;
+
+      return team.route.map(function (code, i) {
+        var r = byCode[code];
+        return {
+          checkpoint: code,
+          visitOrder: i + 1,
+          status: (r && r.status) || '대기',
+          arrivedAt: (r && r.arrived_at) || '',
+          completedAt: (r && r.completed_at) || '',
+          score: (r && r.score !== null && r.score !== undefined) ? Number(r.score) : null,
+          memo: (r && r.memo) || ''
+        };
+      });
+    });
   }
 
   /**
@@ -451,9 +528,23 @@
       try { sessionStorage.clear(); } catch (e) { /* 무시 */ }
     },
     me: function () { return call('me'); },
-    progressList: function () { return call('progress.list'); },
+
+    /**
+     * `team` 을 주면 **미러 → GAS** 순으로 간다. 안 주면 예전 그대로 GAS 다.
+     * @param {{session:string, group:string, route:string[]}=} team
+     */
+    progressList: function (team) {
+      return progressFromMirror(team).then(function (mirrored) {
+        return mirrored || call('progress.list');
+      });
+    },
     progressSet: function (checkpoint, status, score, memo) {
-      return call('progress.set', { checkpoint: checkpoint, status: status, score: score, memo: memo });
+      return call('progress.set', { checkpoint: checkpoint, status: status, score: score, memo: memo })
+        .then(function (list) {
+          // 사본이 이보다 낡으면 푸시가 실패한 것이다. 다음 읽기에서 미러를 건너뛴다.
+          lastProgressWrite = Date.now();
+          return list;
+        });
     },
     journalList: function (scope, cursor, limit) {
       return call('journal.list', { scope: scope, cursor: cursor || 0, limit: limit || 30 });
