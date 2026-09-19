@@ -138,6 +138,23 @@
     return m ? m[1] + ':' + m[2] : '';
   }
 
+  /**
+   * 기기 로컬 시각을 ISO 로 만든다.
+   *
+   * 🔴 `toISOString()` 을 쓰면 안 된다 — 그건 UTC 라, `hhmm()` 이 `T(HH):(MM)` 만
+   * 읽으므로 **9시간 어긋난 시각**이 화면에 뜬다. 낙관적 UI 가 서버 응답 전에
+   * 시각을 보여 줄 때 쓰이므로, 잠깐이라도 틀린 시각을 보여 주면 안 된다.
+   */
+  function localIso(date) {
+    var d = date || new Date();
+    function p2(n) { return (n < 10 ? '0' : '') + n; }
+    var off = -d.getTimezoneOffset();          // 분. 한국이면 540
+    var sign = off >= 0 ? '+' : '-';
+    return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) +
+      'T' + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds()) +
+      sign + p2(Math.floor(Math.abs(off) / 60)) + ':' + p2(Math.abs(off) % 60);
+  }
+
   /** '2026-10-31T14:05:00+09:00' → '10월 31일 14:05' */
   function prettyDateTime(iso) {
     if (!iso) return '';
@@ -296,7 +313,7 @@
   global.UI = {
     $: $, $$: $$, esc: esc, nl2br: nl2br,
     toast: toast, confirmDialog: confirmDialog, setBusy: setBusy,
-    resizePhoto: resizePhoto, hhmm: hhmm, prettyDateTime: prettyDateTime,
+    resizePhoto: resizePhoto, hhmm: hhmm, localIso: localIso, prettyDateTime: prettyDateTime,
     perfPanel: perfPanel, perfEnabled: perfEnabled
   };
 })(window);

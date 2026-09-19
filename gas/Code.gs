@@ -313,7 +313,9 @@ function progressSet_(ctx, body) {
     score = n;
   }
 
-  return withLock_(function () {
+  // 🔴 시트가 먼저, DB 가 나중 (D-038).
+  //    락은 **시트 쓰기만** 잡는다. 사본 밀어 넣기는 락을 놓은 뒤에 한다.
+  var list = withLock_(function () {
     var existing = null;
     readTable_(SHEETS.PROGRESS).forEach(function (r) {
       if (rowTeamKey_(r) === ctx.teamKey && str_(r['지점코드']) === code) existing = r;
@@ -351,6 +353,12 @@ function progressSet_(ctx, body) {
     logEvent_('progress.set', ctx.pid, ctx.teamKey + '/' + code, status, '');
     return progressList_(ctx);
   });
+
+  // 사본. **실패해도 여기서 끝나지 않는다** — 원장(시트)에는 이미 들어갔고,
+  // 주기 동기화가 맞춘다. mirrorProgressPush_ 는 절대 던지지 않는다.
+  mirrorProgressPush_(ctx.session, ctx.group, list);
+
+  return list;
 }
 
 // ---------------------------------------------------------------- 회비 (읽기 전용, D-005)
