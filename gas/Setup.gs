@@ -842,6 +842,8 @@ function onOpen() {
     .addSeparator()
     .addItem('미러 지금 갱신 (Supabase)', 'mirrorPushNow')
     .addItem('미러 자동 갱신 켜기 (하루 1회)', 'installMirrorTrigger')
+    .addItem('캠프 모드 켜기 (10분 동기화)', 'installCampSync')
+    .addItem('캠프 모드 끄기', 'stopCampSync')
     .addToUi();
 
   // 행정팀 탭 동기화 도구 (MasterSync.gs). 그 파일을 안 넣었으면 조용히 건너뛴다.
