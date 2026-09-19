@@ -219,7 +219,8 @@
 
   function renderCourse() {
     setView('<p class="loading">불러오는 중…</p>');
-    API.progressList()
+    // 조 정보를 같이 넘기면 미러에서 먼저 읽는다 (D-042). 미러가 없거나 낡으면 GAS.
+    API.progressList(state.me && state.me.team)
       .then(function (list) {
         state.progress = list;
         paintCourse();
