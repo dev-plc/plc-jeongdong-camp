@@ -292,6 +292,51 @@ function progressList_(ctx) {
 }
 
 /** 조장 전용. (참여 일자, 조 배정, 지점코드) 당 1행을 upsert 한다. */
+/**
+ * 한 건의 변경을 검증해 정규화한다. **배치의 한 항목**도 이걸 거친다.
+ *
+ * 🔴 한 건이라도 걸리면 배치 전체를 거절한다(호출부에서 던진다). 일부만 들어가면
+ * 화면과 시트가 어긋나고, 그걸 되돌릴 방법이 없다.
+ */
+function normalizeProgressItem_(item) {
+  var status = str_(item.status);
+  if (ENUM.PROGRESS.indexOf(status) < 0) {
+    throw new AppError('BAD_REQUEST', '상태는 대기/도착/완료 중 하나여야 합니다.');
+  }
+  var code = normalizeCheckpoint_(item.checkpoint);
+  if (!code) throw new AppError('BAD_REQUEST', '지점을 선택해 주세요.');
+
+  // 🔴 **안 보냄 ≠ 비우기** (D-039).
+  //
+  // 앱은 상태만 보내고, JSON 은 값이 undefined 인 키를 싣지 않는다. 예전 코드는
+  // 안 보낸 경우에도 퀴즈점수·메모를 '' 로 덮어, 조장이 상태를 누를 때마다
+  // 운영진이 시트에 적어 둔 값이 지워졌다. 키가 없으면 손대지 않는다.
+  var hasScore = item.score !== undefined;
+  var hasMemo = item.memo !== undefined;
+
+  var score = '';
+  if (hasScore && item.score !== null && item.score !== '') {
+    var n = Number(item.score);
+    if (isNaN(n) || n < 0 || n > 100) throw new AppError('BAD_REQUEST', '점수는 0~100 사이여야 합니다.');
+    score = n;
+  }
+  return { code: code, status: status, hasScore: hasScore, score: score,
+           hasMemo: hasMemo, memo: str_(item.memo) };
+}
+
+/**
+ * 조장 전용. (참여 일자, 조 배정, 지점코드) 당 1행을 upsert 한다.
+ *
+ * 🔴 **여러 건을 한 번에 받는다** (D-045).
+ *
+ * 예전에는 지점 하나 누를 때마다 한 요청이었다. 실측에서 연타하면 `lock` 이
+ * 126 → 1,464 → 2,978 → 4,541ms 로 **쌓였다** — 각 요청이 락을 쥔 만큼 다음이
+ * 줄을 선다. 그리고 요청당 고정비(스프레드시트 열기·인증·읽기·목록)가 2.5~4초라,
+ * 그걸 **N번 내는 것**이 진짜 비용이었다.
+ *
+ * 묶으면 그 고정비를 한 번만 낸다. Classfinder 의 `batch` 와 같은 생각이다.
+ * 단건 `{checkpoint, status}` 도 그대로 받는다 — 옛 앱이 새 서버에 붙어도 돈다.
+ */
 function progressSet_(ctx, body) {
   if (!confBool_('PROGRESS_OPEN', true)) {
     throw new AppError('CLOSED', '진행 기록이 마감되었습니다.');
@@ -299,111 +344,96 @@ function progressSet_(ctx, body) {
   if (!ctx.isLeader) throw new AppError('FORBIDDEN', '조장만 기록할 수 있습니다.');
   if (!ctx.group) throw new AppError('NOT_FOUND', '배정된 조가 없습니다.');
 
-  var status = str_(body.status);
-  if (ENUM.PROGRESS.indexOf(status) < 0) {
-    throw new AppError('BAD_REQUEST', '상태는 대기/도착/완료 중 하나여야 합니다.');
-  }
-  var code = normalizeCheckpoint_(body.checkpoint);
-  if (!code) throw new AppError('BAD_REQUEST', '지점을 선택해 주세요.');
+  var raw = Array.isArray(body.items) ? body.items : [body];
+  if (!raw.length) throw new AppError('BAD_REQUEST', '기록할 지점이 없습니다.');
 
-  // 🔴 **안 보냄 ≠ 비우기.**
-  //
-  // 앱은 `API.progressSet(code, status)` 로 두 인자만 보내고, JSON 은 값이
-  // undefined 인 키를 아예 싣지 않는다. 그런데 예전 코드는 안 보낸 경우에도
-  // 퀴즈점수·메모를 '' 로 덮었다 — 조장이 상태를 누를 때마다 운영진이 시트에
-  // 적어 둔 값이 지워졌다. 코스 화면이 그 둘을 안 그려서 드러나지 않았다.
-  //
-  // 키가 없으면 손대지 않고, null·'' 를 **명시적으로** 보내면 지운다.
-  // 운영진이 점수를 지우고 싶을 때는 지울 수 있어야 한다.
-  var hasScore = body.score !== undefined;
-  var hasMemo = body.memo !== undefined;
+  // 🔴 **전부 먼저 검증한다.** 쓰기 중간에 던지면 일부만 들어간 채로 끝난다.
+  var items = raw.map(normalizeProgressItem_);
 
-  var score = '';
-  if (hasScore && body.score !== null && body.score !== '') {
-    var n = Number(body.score);
-    if (isNaN(n) || n < 0 || n > 100) throw new AppError('BAD_REQUEST', '점수는 0~100 사이여야 합니다.');
-    score = n;
-  }
+  // 같은 지점이 두 번 오면 **마지막이 이긴다.** 앱의 큐도 같은 규칙이다.
+  var byCode = {};
+  items.forEach(function (it) { byCode[it.code] = it; });
+  var codes = Object.keys(byCode);
 
-  // 🔴 **안을 쪼개 잰다** (D-043).
-  //
-  // 이 요청만 서버에서 8.5초가 걸린다. 다른 액션은 0.6~2.5초다. 사본 비용은
-  // A/B 로 882ms 임을 확인했으니 그것으로는 설명이 안 된다. 어디가 먹는지
-  // 모르는 채로 고치면 엉뚱한 데를 건드린다 — 재고 나서 고친다.
-  //
-  // 걸린 시간은 `Log` 탭의 `상세` 칸에 남는다. 새 화면도, 새 통신 형식도 필요 없다.
-  var T = { auth: __authMs };     // route_ 가 먼저 부른 requireUser_ 가 쓴 시간
+  var T = { auth: __authMs, n: codes.length };
   var t0 = Date.now();
 
   // 🔴 시트가 먼저, DB 가 나중 (D-038).
-  //    락은 **한 행의 읽고-고치고-쓰기만** 잡는다. 목록 만들기와 사본 밀어 넣기는
+  //    락은 **행의 읽고-고치고-쓰기만** 잡는다. 목록 만들기와 사본 밀어 넣기는
   //    락을 놓은 뒤에 한다 (D-044).
   withLock_(function () {
     var tLock = Date.now();
     T.lock = tLock - t0;
 
-    var existing = null;
-    readTable_(SHEETS.PROGRESS).forEach(function (r) {
-      if (rowTeamKey_(r) === ctx.teamKey && str_(r['지점코드']) === code) existing = r;
+    var rows = readTable_(SHEETS.PROGRESS);
+    var existingByCode = {};
+    rows.forEach(function (r) {
+      if (rowTeamKey_(r) === ctx.teamKey) existingByCode[str_(r['지점코드'])] = r;
     });
+    // 🔴 번호는 **이미 읽은 행에서** 한 번만 구한다.
+    //    `nextId_` 는 시트를 다시 읽고, `appendRow_` 가 캐시를 비우므로,
+    //    루프 안에서 부르면 새 행마다 **락을 쥔 채** 전량 재읽기가 생긴다 (D-044).
+    var seq = maxIdNumber_(rows, '기록ID', 'PR');
     T.read = Date.now() - tLock;
 
-    var now = nowStamp_();
-    // `updateRow_` 는 현재 행을 먼저 읽고 patch 에 있는 키만 덮어쓴다.
-    // 그래서 **키를 빼면 기존 값이 그대로 남는다.**
-    var patch = {
-      '상태': status,
-      '기록자ID': ctx.pid,
-      '수정일시': now
-    };
-    if (hasScore) patch['퀴즈점수'] = score;
-    if (hasMemo) patch['메모'] = str_(body.memo);
-    // 최초 도착·완료 시각만 남긴다(되돌렸다 다시 눌러도 처음 시각 유지).
-    if (status === '도착' || status === '완료') {
-      if (!existing || !str_(existing['도착시각'])) patch['도착시각'] = now;
-    }
-    if (status === '완료') {
-      if (!existing || !str_(existing['완료시각'])) patch['완료시각'] = now;
-    }
-    if (status === '대기') {
-      patch['도착시각'] = '';
-      patch['완료시각'] = '';
-    }
-
     var tWrite = Date.now();
-    if (existing) {
-      updateRow_(SHEETS.PROGRESS, existing.__row, patch);
-    } else {
-      patch['기록ID'] = nextId_(SHEETS.PROGRESS, '기록ID', 'PR', 4);
-      patch[COL.SESSION] = ctx.session;
-      patch[COL.GROUP] = ctx.group;
-      patch['지점코드'] = code;
-      appendRow_(SHEETS.PROGRESS, patch);
-    }
-    T.write = Date.now() - tWrite;
+    var now = nowStamp_();
 
+    codes.forEach(function (code) {
+      var it = byCode[code];
+      var existing = existingByCode[code];
+
+      // `updateRow_` 는 현재 행을 먼저 읽고 patch 에 있는 키만 덮어쓴다.
+      // 그래서 **키를 빼면 기존 값이 그대로 남는다.**
+      var patch = {
+        '상태': it.status,
+        '기록자ID': ctx.pid,
+        '수정일시': now
+      };
+      if (it.hasScore) patch['퀴즈점수'] = it.score;
+      if (it.hasMemo) patch['메모'] = it.memo;
+      // 최초 도착·완료 시각만 남긴다(되돌렸다 다시 눌러도 처음 시각 유지).
+      if (it.status === '도착' || it.status === '완료') {
+        if (!existing || !str_(existing['도착시각'])) patch['도착시각'] = now;
+      }
+      if (it.status === '완료') {
+        if (!existing || !str_(existing['완료시각'])) patch['완료시각'] = now;
+      }
+      if (it.status === '대기') {
+        patch['도착시각'] = '';
+        patch['완료시각'] = '';
+      }
+
+      if (existing) {
+        updateRow_(SHEETS.PROGRESS, existing.__row, patch);
+      } else {
+        patch['기록ID'] = padId_('PR', ++seq, 4);
+        patch[COL.SESSION] = ctx.session;
+        patch[COL.GROUP] = ctx.group;
+        patch['지점코드'] = code;
+        appendRow_(SHEETS.PROGRESS, patch);
+      }
+    });
+    T.write = Date.now() - tWrite;
   });
 
-  // 🔴 목록 만들기를 **락 밖으로** 뺐다 (D-044).
-  //
-  // 실측에서 `lock` 이 연타할수록 126 → 1,464 → 2,978 → 4,541ms 로 쌓였다.
-  // 한 사람이 빠르게 눌러도 경합이 난다 — 각 요청이 락을 쥔 시간만큼 다음이 줄을 선다.
-  // 락이 지켜야 하는 것은 **한 행의 읽고-고치고-쓰기**뿐이고, 목록 만들기는
-  // 그냥 읽기다. 밖으로 빼면 락 보유 시간이 절반 아래로 줄고 대기도 따라 준다.
+  // 목록 만들기는 그냥 읽기다 — 락이 지켜야 할 것이 아니다 (D-044).
   var tList = Date.now();
   var list = progressList_(ctx);
   T.list = Date.now() - tList;
 
   // 사본. **실패해도 여기서 끝나지 않는다** — 원장(시트)에는 이미 들어갔고,
   // 주기 동기화가 맞춘다. mirrorProgressPush_ 는 절대 던지지 않는다.
+  // 🔴 배치당 **한 번**이다. 건별로 밀면 배치의 이득이 사라진다.
   var tMirror = Date.now();
   mirrorProgressPush_(ctx.session, ctx.group, list);
   T.mirror = Date.now() - tMirror;
 
-  // 🔴 기록은 락 **밖에서** 한다. 로그 쓰기도 시트 쓰기라, 락 안에 두면
+  // 🔴 기록도 락 **밖에서** 한다. 로그 쓰기도 시트 쓰기라, 락 안에 두면
   //    다른 조장이 그만큼 더 기다린다 (D-038 과 같은 이유).
   T.total = Date.now() - t0;
-  logEvent_('progress.set', ctx.pid, ctx.teamKey + '/' + code, status, timingText_(T));
+  logEvent_('progress.set', ctx.pid, ctx.teamKey + '/' + codes.join(','),
+    codes.length === 1 ? byCode[codes[0]].status : codes.length + '건', timingText_(T));
 
   return list;
 }
