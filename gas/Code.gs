@@ -306,8 +306,20 @@ function progressSet_(ctx, body) {
   var code = normalizeCheckpoint_(body.checkpoint);
   if (!code) throw new AppError('BAD_REQUEST', '지점을 선택해 주세요.');
 
+  // 🔴 **안 보냄 ≠ 비우기.**
+  //
+  // 앱은 `API.progressSet(code, status)` 로 두 인자만 보내고, JSON 은 값이
+  // undefined 인 키를 아예 싣지 않는다. 그런데 예전 코드는 안 보낸 경우에도
+  // 퀴즈점수·메모를 '' 로 덮었다 — 조장이 상태를 누를 때마다 운영진이 시트에
+  // 적어 둔 값이 지워졌다. 코스 화면이 그 둘을 안 그려서 드러나지 않았다.
+  //
+  // 키가 없으면 손대지 않고, null·'' 를 **명시적으로** 보내면 지운다.
+  // 운영진이 점수를 지우고 싶을 때는 지울 수 있어야 한다.
+  var hasScore = body.score !== undefined;
+  var hasMemo = body.memo !== undefined;
+
   var score = '';
-  if (body.score !== undefined && body.score !== null && body.score !== '') {
+  if (hasScore && body.score !== null && body.score !== '') {
     var n = Number(body.score);
     if (isNaN(n) || n < 0 || n > 100) throw new AppError('BAD_REQUEST', '점수는 0~100 사이여야 합니다.');
     score = n;
@@ -322,13 +334,15 @@ function progressSet_(ctx, body) {
     });
 
     var now = nowIso_();
+    // `updateRow_` 는 현재 행을 먼저 읽고 patch 에 있는 키만 덮어쓴다.
+    // 그래서 **키를 빼면 기존 값이 그대로 남는다.**
     var patch = {
       '상태': status,
-      '퀴즈점수': score,
       '기록자ID': ctx.pid,
-      '메모': str_(body.memo),
       '수정일시': now
     };
+    if (hasScore) patch['퀴즈점수'] = score;
+    if (hasMemo) patch['메모'] = str_(body.memo);
     // 최초 도착·완료 시각만 남긴다(되돌렸다 다시 눌러도 처음 시각 유지).
     if (status === '도착' || status === '완료') {
       if (!existing || !str_(existing['도착시각'])) patch['도착시각'] = now;
