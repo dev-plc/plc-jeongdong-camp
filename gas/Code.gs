@@ -325,13 +325,27 @@ function progressSet_(ctx, body) {
     score = n;
   }
 
+  // 🔴 **안을 쪼개 잰다** (D-043).
+  //
+  // 이 요청만 서버에서 8.5초가 걸린다. 다른 액션은 0.6~2.5초다. 사본 비용은
+  // A/B 로 882ms 임을 확인했으니 그것으로는 설명이 안 된다. 어디가 먹는지
+  // 모르는 채로 고치면 엉뚱한 데를 건드린다 — 재고 나서 고친다.
+  //
+  // 걸린 시간은 `Log` 탭의 `상세` 칸에 남는다. 새 화면도, 새 통신 형식도 필요 없다.
+  var T = {};
+  var t0 = Date.now();
+
   // 🔴 시트가 먼저, DB 가 나중 (D-038).
   //    락은 **시트 쓰기만** 잡는다. 사본 밀어 넣기는 락을 놓은 뒤에 한다.
   var list = withLock_(function () {
+    var tLock = Date.now();
+    T.lock = tLock - t0;
+
     var existing = null;
     readTable_(SHEETS.PROGRESS).forEach(function (r) {
       if (rowTeamKey_(r) === ctx.teamKey && str_(r['지점코드']) === code) existing = r;
     });
+    T.read = Date.now() - tLock;
 
     var now = nowStamp_();
     // `updateRow_` 는 현재 행을 먼저 읽고 patch 에 있는 키만 덮어쓴다.
@@ -355,6 +369,7 @@ function progressSet_(ctx, body) {
       patch['완료시각'] = '';
     }
 
+    var tWrite = Date.now();
     if (existing) {
       updateRow_(SHEETS.PROGRESS, existing.__row, patch);
     } else {
@@ -364,13 +379,24 @@ function progressSet_(ctx, body) {
       patch['지점코드'] = code;
       appendRow_(SHEETS.PROGRESS, patch);
     }
-    logEvent_('progress.set', ctx.pid, ctx.teamKey + '/' + code, status, '');
-    return progressList_(ctx);
+    T.write = Date.now() - tWrite;
+
+    var tList = Date.now();
+    var out = progressList_(ctx);
+    T.list = Date.now() - tList;
+    return out;
   });
 
   // 사본. **실패해도 여기서 끝나지 않는다** — 원장(시트)에는 이미 들어갔고,
   // 주기 동기화가 맞춘다. mirrorProgressPush_ 는 절대 던지지 않는다.
+  var tMirror = Date.now();
   mirrorProgressPush_(ctx.session, ctx.group, list);
+  T.mirror = Date.now() - tMirror;
+
+  // 🔴 기록은 락 **밖에서** 한다. 로그 쓰기도 시트 쓰기라, 락 안에 두면
+  //    다른 조장이 그만큼 더 기다린다 (D-038 과 같은 이유).
+  T.total = Date.now() - t0;
+  logEvent_('progress.set', ctx.pid, ctx.teamKey + '/' + code, status, timingText_(T));
 
   return list;
 }
