@@ -197,7 +197,25 @@ function login_(body) {
  * 토큰에서 현재 사용자 컨텍스트를 만든다.
  * 토큰에는 pid 만 들어 있으므로 권한 판단은 항상 시트를 다시 읽어서 한다.
  */
+/**
+ * 마지막 `requireUser_` 가 쓴 시간(ms). 구간 측정에만 쓴다 (D-044).
+ *
+ * 실측에서 응답 전체(`ms`)와 `progressSet_` 안에서 잰 `total` 의 차이가
+ * **1.8~2.7초**였다. 그 차이가 여기인지 아니면 스프레드시트를 여는 비용인지
+ * 가려야 고칠 곳이 정해진다. 또 추측하지 않는다.
+ */
+var __authMs = 0;
+
 function requireUser_(body) {
+  var __t = Date.now();
+  try {
+    return requireUserInner_(body);
+  } finally {
+    __authMs = Date.now() - __t;
+  }
+}
+
+function requireUserInner_(body) {
   var payload = verifyToken_(body && body.token);
   if (payload.pid === 'ADMIN') {
     return { isAdmin: true, isLeader: true, pid: 'ADMIN', session: '', group: '', teamKey: '', row: null };

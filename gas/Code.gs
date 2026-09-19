@@ -332,12 +332,13 @@ function progressSet_(ctx, body) {
   // 모르는 채로 고치면 엉뚱한 데를 건드린다 — 재고 나서 고친다.
   //
   // 걸린 시간은 `Log` 탭의 `상세` 칸에 남는다. 새 화면도, 새 통신 형식도 필요 없다.
-  var T = {};
+  var T = { auth: __authMs };     // route_ 가 먼저 부른 requireUser_ 가 쓴 시간
   var t0 = Date.now();
 
   // 🔴 시트가 먼저, DB 가 나중 (D-038).
-  //    락은 **시트 쓰기만** 잡는다. 사본 밀어 넣기는 락을 놓은 뒤에 한다.
-  var list = withLock_(function () {
+  //    락은 **한 행의 읽고-고치고-쓰기만** 잡는다. 목록 만들기와 사본 밀어 넣기는
+  //    락을 놓은 뒤에 한다 (D-044).
+  withLock_(function () {
     var tLock = Date.now();
     T.lock = tLock - t0;
 
@@ -381,11 +382,17 @@ function progressSet_(ctx, body) {
     }
     T.write = Date.now() - tWrite;
 
-    var tList = Date.now();
-    var out = progressList_(ctx);
-    T.list = Date.now() - tList;
-    return out;
   });
+
+  // 🔴 목록 만들기를 **락 밖으로** 뺐다 (D-044).
+  //
+  // 실측에서 `lock` 이 연타할수록 126 → 1,464 → 2,978 → 4,541ms 로 쌓였다.
+  // 한 사람이 빠르게 눌러도 경합이 난다 — 각 요청이 락을 쥔 시간만큼 다음이 줄을 선다.
+  // 락이 지켜야 하는 것은 **한 행의 읽고-고치고-쓰기**뿐이고, 목록 만들기는
+  // 그냥 읽기다. 밖으로 빼면 락 보유 시간이 절반 아래로 줄고 대기도 따라 준다.
+  var tList = Date.now();
+  var list = progressList_(ctx);
+  T.list = Date.now() - tList;
 
   // 사본. **실패해도 여기서 끝나지 않는다** — 원장(시트)에는 이미 들어갔고,
   // 주기 동기화가 맞춘다. mirrorProgressPush_ 는 절대 던지지 않는다.
