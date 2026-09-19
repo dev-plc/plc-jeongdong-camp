@@ -12,9 +12,12 @@
  *       (둘 중 하나라도 비면 **아무 일도 하지 않는다** — 설정 전에도 안전하다)
  */
 
-/** 미러가 쓰는 테이블·행. 1단계는 한 행이면 충분하다. */
+/** 미러가 쓰는 테이블·행. 공개 데이터는 한 행이면 충분하다. */
 var MIRROR_TABLE = 'app_cache';
 var MIRROR_KEY = 'bootstrap';
+
+/** 진행 사본 테이블 (D-038). 조·지점 단위 행이라 JSONB 한 덩어리가 아니다. */
+var MIRROR_PROGRESS_TABLE = 'progress_cache';
 
 function mirrorConfig_() {
   var props = PropertiesService.getScriptProperties();
@@ -59,39 +62,93 @@ function mirrorEnabled_() {
  *
  * @return {boolean} 실제로 밀어 넣었으면 true
  */
-function mirrorPush() {
+/**
+ * 한 테이블에 행을 밀어 넣는다(upsert).
+ *
+ * 🔴 **실패해도 던지지 않는다.** 미러는 사본이고 원장은 시트다. 미러 때문에
+ * 사람이 시트를 고치거나 조장이 진행을 기록하는 일이 막히면 안 된다.
+ * 실패는 `Log` 시트에만 남긴다.
+ *
+ * `mirrorPush` 와 `mirrorProgressPush_` 가 같이 쓴다 — 같은 일을 하는 코드가
+ * 둘이면 하나는 반드시 낡는다.
+ *
+ * @return {boolean} 실제로 밀어 넣었으면 true
+ */
+function supabaseUpsert_(table, rows, tag, target) {
   if (!mirrorEnabled_()) return false;
+  if (!rows || !rows.length) return true;      // 보낼 것이 없으면 성공으로 친다
 
   var c = mirrorConfig_();
   try {
-    var res = UrlFetchApp.fetch(c.url + '/rest/v1/' + MIRROR_TABLE, {
+    var res = UrlFetchApp.fetch(c.url + '/rest/v1/' + table, {
       method: 'post',
       contentType: 'application/json',
       headers: (function () {
         var h = supabaseAuthHeaders_(c.key);
-        // 같은 key 가 이미 있으면 덮어쓴다. 없으면 만든다.
+        // 기본키가 같은 행이 이미 있으면 덮어쓴다. 없으면 만든다.
         h.Prefer = 'resolution=merge-duplicates';
         return h;
       })(),
-      payload: JSON.stringify([{
-        key: MIRROR_KEY,
-        value: bootstrap_(),            // 앱이 받는 것과 **같은 것**을 보낸다
-        updated_at: nowIso_()           // 앱이 신선도를 판단하는 근거
-      }]),
+      payload: JSON.stringify(rows),
       muteHttpExceptions: true
     });
 
     var code = res.getResponseCode();
     if (code >= 200 && code < 300) return true;
 
-    logEvent_('mirror.push', 'SYSTEM', MIRROR_KEY, 'HTTP_' + code,
+    logEvent_(tag, 'SYSTEM', str_(target), 'HTTP_' + code,
       String(res.getContentText()).slice(0, 300));
     return false;
 
   } catch (e) {
-    logEvent_('mirror.push', 'SYSTEM', MIRROR_KEY, 'ERROR', String(e && e.message));
+    logEvent_(tag, 'SYSTEM', str_(target), 'ERROR', String(e && e.message));
     return false;
   }
+}
+
+function mirrorPush() {
+  return supabaseUpsert_(MIRROR_TABLE, [{
+    key: MIRROR_KEY,
+    value: bootstrap_(),            // 앱이 받는 것과 **같은 것**을 보낸다
+    updated_at: nowIso_()           // 앱이 신선도를 판단하는 근거
+  }], 'mirror.push', MIRROR_KEY);
+}
+
+/**
+ * 한 조의 진행을 DB 사본에 밀어 넣는다 (D-038).
+ *
+ * **원장은 시트다.** 이 함수는 시트에 이미 들어간 값을 사본에 옮길 뿐이고,
+ * 실패해도 `progress.set` 은 성공이다 — 단계 C 의 주기 동기화가 맞춘다.
+ *
+ * 🔴 **반드시 락 밖에서 부른다.** `withLock_` 은 `getScriptLock()` 이라
+ * 스크립트 전체를 직렬화한다. 락 안에서 네트워크를 기다리면 캠프 당일
+ * 다른 조장 여덟 명이 그만큼 줄을 선다.
+ *
+ * @param {string} session 회차 라벨
+ * @param {string} team 조 이름
+ * @param {Array} rows `progressList_` 가 돌려준 목록 그대로
+ */
+function mirrorProgressPush_(session, team, rows) {
+  if (!mirrorEnabled_()) return false;
+
+  var now = nowIso_();
+  var payload = (rows || []).map(function (p) {
+    return {
+      session: str_(session),
+      team: str_(team),
+      checkpoint: str_(p.checkpoint),
+      status: str_(p.status) || '대기',
+      // 🔴 빈 시각은 '' 가 아니라 null 이다. timestamptz 에 '' 를 넣으면 거절당한다.
+      arrived_at: str_(p.arrivedAt) || null,
+      completed_at: str_(p.completedAt) || null,
+      score: (p.score === undefined || p.score === '') ? null : p.score,
+      memo: str_(p.memo),
+      updated_at: now
+    };
+  });
+
+  return supabaseUpsert_(MIRROR_PROGRESS_TABLE, payload,
+    'mirror.progress', str_(session) + '/' + str_(team));
 }
 
 /**
