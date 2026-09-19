@@ -1552,6 +1552,11 @@ window.APP_CONFIG = {
         return mirrored || call('progress.list');
       });
     },
+    /** 여러 지점을 **한 요청**으로 (D-045). 서버는 단건도 그대로 받는다. */
+    progressSetBatch: function (items) {
+      return call('progress.set', { items: items })
+        .then(function (list) { lastProgressWrite = Date.now(); return list; });
+    },
     progressSet: function (checkpoint, status, score, memo) {
       return call('progress.set', { checkpoint: checkpoint, status: status, score: score, memo: memo })
         .then(function (list) {
@@ -2119,6 +2124,7 @@ window.APP_CONFIG = {
     API.progressList(state.me && state.me.team)
       .then(function (list) {
         state.progress = list;
+        lastServerList = list;              // 되돌림 기준
         paintCourse();
       })
       .catch(function (err) {
@@ -2200,8 +2206,6 @@ window.APP_CONFIG = {
   // 대신 누르는 즉시 반영하고, **실패하면 되돌린다.** 화면이 거짓말한 채로
   // 남지 않는 것이 이 구조의 전제다.
 
-  var progressSeq = 0;      // 늦게 온 옛 응답이 새 화면을 덮지 않게 한다
-
   /**
    * 서버가 할 일을 **그대로** 흉내 낸다 (gas/Code.gs 의 progressSet_).
    * 규칙이 어긋나면 응답이 왔을 때 화면이 튄다.
@@ -2227,32 +2231,73 @@ window.APP_CONFIG = {
     });
   }
 
+  // ---------------------------------------------------------------- 보내기 큐
+  //
+  // 🔴 **앞 요청이 도는 동안 모은다** (D-045).
+  //
+  // 예전에는 버튼 하나에 요청 하나였다. 실측에서 연타하면 서버의 `lock` 이
+  // 126 → 1,464 → 2,978 → 4,541ms 로 **쌓였다** — 각 요청이 락을 쥔 만큼 다음이
+  // 줄을 선다. 요청당 고정비(스프레드시트 열기·인증·읽기)도 2.5~4초씩 따로 냈다.
+  //
+  // 🔴 고정 디바운스(예: 800ms)를 두지 않는다. 한가할 때 공연히 느려지고 바쁠 때는
+  // 여전히 모자란다. "앞 요청이 끝날 때까지 모은다" 는 **한가하면 0ms, 느리면
+  // 최대한 묶는다** 를 알아서 한다 — 왕복 3초 동안 탭이 쌓이는 지금 문제에 맞는다.
+
+  var sendQueue = {};        // 지점코드 → 상태. 같은 지점을 두 번 누르면 마지막만 남는다
+  var sending = false;       // 요청이 도는 중인가
+
+  // 🔴 되돌릴 곳은 **마지막 서버 응답**이다. 화면 스냅샷이 아니다.
+  //
+  // 처음에는 배치 직전의 화면을 찍어 뒀는데, 그 화면에 **앞 배치의 '저장 중'
+  // 표시가 남아 있으면** 되돌릴 때 그것까지 복원돼 영영 안 지워진다.
+  // 테스트가 이걸 잡았다. 서버가 준 목록은 언제나 깨끗하다.
+  var lastServerList = [];
+
+  function queueProgress(code, status) {
+    sendQueue[code] = status;
+    state.progress = applyProgressLocal(state.progress, code, status);
+    paintCourse();
+
+    if (!sending) flushProgress();
+  }
+
+  function flushProgress() {
+    var codes = Object.keys(sendQueue);
+    if (!codes.length) { sending = false; return; }
+
+    var items = codes.map(function (c) { return { checkpoint: c, status: sendQueue[c] }; });
+    sendQueue = {};
+    sending = true;
+
+    API.progressSetBatch(items)
+      .then(function (list) {
+        state.progress = list;              // 권위는 서버다
+        lastServerList = list;
+        paintCourse();
+        toast(items.length === 1
+          ? '기록했습니다: ' + items[0].status
+          : items.length + '곳을 기록했습니다.');
+      })
+      .catch(function (err) {
+        // 🔴 배치 전체를 되돌린다. 일부만 남기면 화면이 거짓말한다.
+        state.progress = lastServerList;
+        sendQueue = {};                     // 실패한 뒤 쌓인 것까지 버린다 — 화면도 그 이전이다
+        paintCourse();
+        toast(err.message, 'error');
+      })
+      .then(function () { sending = false; flushProgress(); });
+  }
+
+  // 🔴 앱이 닫히거나 가려질 때 큐가 남아 있으면 기록이 날아간다.
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden' && !sending) flushProgress();
+  });
+
   function onProgressClick(e) {
     var btn = e.target.closest('[data-status]');
     if (!btn) return;
     var wrap = btn.closest('[data-cp]');
-    var code = wrap.getAttribute('data-cp');
-    var status = btn.getAttribute('data-status');
-
-    var previous = state.progress;          // 롤백용
-    var seq = ++progressSeq;
-
-    state.progress = applyProgressLocal(state.progress, code, status);
-    paintCourse();
-
-    API.progressSet(code, status)
-      .then(function (list) {
-        if (seq !== progressSeq) return;    // 더 최신 요청이 있다 → 옛 응답은 버린다
-        state.progress = list;              // 권위는 서버다
-        paintCourse();
-        toast('기록했습니다: ' + status);
-      })
-      .catch(function (err) {
-        if (seq !== progressSeq) return;
-        state.progress = previous;          // 🔴 되돌린다
-        paintCourse();
-        toast(err.message, 'error');
-      });
+    queueProgress(wrap.getAttribute('data-cp'), btn.getAttribute('data-status'));
   }
 
   function statusClass(status) {
