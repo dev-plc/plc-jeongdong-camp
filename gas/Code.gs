@@ -333,7 +333,7 @@ function progressSet_(ctx, body) {
       if (rowTeamKey_(r) === ctx.teamKey && str_(r['지점코드']) === code) existing = r;
     });
 
-    var now = nowIso_();
+    var now = nowStamp_();
     // `updateRow_` 는 현재 행을 먼저 읽고 patch 에 있는 키만 덮어쓴다.
     // 그래서 **키를 빼면 기존 값이 그대로 남는다.**
     var patch = {
