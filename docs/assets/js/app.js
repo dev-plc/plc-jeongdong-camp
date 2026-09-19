@@ -241,7 +241,11 @@
         : 'https://map.kakao.com/link/search/' + encodeURIComponent(cp.name);
 
       // 화면은 이미 바뀌었지만 아직 서버에 안 갔다 — 그 사실을 숨기지 않는다.
-      return '<article class="cp cp--' + statusClass(p.status) + (p.pending ? ' is-saving' : '') + '">' +
+      // data-score 는 **표시가 아니라 확인용**이다. 점수·메모는 화면에 안 나와서
+      // 상태 변경이 그 값을 지우던 버그가 오래 드러나지 않았다(D-039).
+      // 테스트와 현장 점검이 값을 볼 수 있게 속성 하나만 싣는다.
+      return '<article class="cp cp--' + statusClass(p.status) + (p.pending ? ' is-saving' : '') + '"' +
+        ' data-score="' + esc(p.score === null || p.score === undefined ? '' : p.score) + '">' +
         '<header class="cp__head">' +
           '<span class="cp__no">' + p.visitOrder + '</span>' +
           '<div><h3 class="cp__name">' + esc(cp.name) + '</h3>' +
@@ -307,15 +311,14 @@
    *
    * · 도착·완료는 **최초 시각만** 남긴다 (되돌렸다 다시 눌러도 처음 시각 유지)
    * · 대기는 둘 다 비운다
-   * · 점수·메모는 서버가 함께 덮어쓴다 — 여기서도 똑같이 비운다
+   * · 🔴 점수·메모는 **건드리지 않는다.** 보내지 않았으니 서버도 손대지 않는다.
+   *   (예전에는 서버가 덮어써서 여기서도 비웠다 — 그 손실을 서버에서 고쳤다.)
    */
   function applyProgressLocal(list, code, status) {
     var now = UI.localIso();
     return list.map(function (p) {
       if (p.checkpoint !== code) return p;
-      var next = Object.assign({}, p, {
-        status: status, score: null, memo: '', pending: true
-      });
+      var next = Object.assign({}, p, { status: status, pending: true });
       if (status === '대기') {
         next.arrivedAt = '';
         next.completedAt = '';
