@@ -13,9 +13,13 @@
  */
 function fixTimeFormats() {
   var n = applyTimeFormats_();
+  // 서식만 입히면 **새로 기록되는 값부터** 바뀐다. 이미 쌓인 ISO 글자도 같이 바꿔야
+  // 한 칸에 두 가지가 섞이지 않는다.
+  var converted = convertTimeTextToDates_();
   var msg = n
     ? '✅ 시각 칸 ' + n + '개의 표기를 통일했습니다.\n형식: ' + TIME_FORMAT +
-      '\n\n이미 들어 있던 값이 글자로 남아 있으면, 그 칸은 새로 기록될 때부터 바뀝니다.'
+      '\n\n예전 형식(2026-09-19T10:12:31+09:00)으로 적혀 있던 ' + converted +
+      '칸을 날짜로 바꿨습니다.\n가리키는 시점은 그대로이고 표기만 바뀝니다.'
     : '⚠ 시각 칸을 찾지 못했습니다. 먼저 "초기 세팅 실행" 을 해 주세요.';
   try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
   return n;

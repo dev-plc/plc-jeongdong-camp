@@ -584,6 +584,58 @@ function applyTimeFormats_() {
   return touched;
 }
 
+/** `2026-09-19T10:12:31+09:00` 처럼 우리가 예전에 써 넣던 ISO 글자인가. */
+var ISO_TEXT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z)?$/;
+
+/**
+ * 이미 들어 있는 ISO **글자**를 진짜 Date 로 바꾼다 (D-040 보강).
+ *
+ * 서식만 입히면 **새로 기록되는 값부터** 바뀐다. 그런데 이미 쌓인 값이 계속
+ * 글자로 남아 있으면 그건 통일이 아니다 — 같은 칸에 두 가지가 섞인다.
+ * 그래서 한 번에 바꾼다.
+ *
+ * 🔴 **모양만 바꾸는 것이 아니라 값의 型을 바꾸는 것**이라 원장을 건드린다.
+ * 안전하게 두는 조건 셋:
+ *   · ISO 형식에 **정확히** 맞는 글자만 건드린다. 운영진이 손으로 적은 메모는 그대로 둔다
+ *   · 가리키는 시점은 **똑같다** — 표기만 바뀐다
+ *   · 여러 번 돌려도 같다 (Date 는 건너뛴다)
+ */
+function convertTimeTextToDates_() {
+  var ss = getSpreadsheet_();
+  var changed = 0;
+
+  Object.keys(TIME_COLUMNS).forEach(function (name) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) return;
+    var last = sh.getLastRow();
+    if (last < 2) return;
+    var idx = headerIndex_(name);
+
+    TIME_COLUMNS[name].forEach(function (col) {
+      if (!idx[col]) return;
+      var range = sh.getRange(2, idx[col], last - 1, 1);
+      var values = range.getValues();
+      var hit = 0;
+
+      for (var i = 0; i < values.length; i++) {
+        var v = values[i][0];
+        if (typeof v !== 'string') continue;          // 이미 Date 거나 빈 칸
+        var t = v.trim();
+        if (!ISO_TEXT.test(t)) continue;              // 우리가 쓴 형식이 아니다 → 손대지 않는다
+        var d = new Date(t);
+        if (isNaN(d.getTime())) continue;             // 파싱이 안 되면 그대로 둔다
+        values[i][0] = d;
+        hit++;
+      }
+
+      if (hit) { range.setValues(values); changed += hit; }
+    });
+  });
+
+  if (changed) invalidateHeaders_();
+  return changed;
+}
+
 /** 시트 셀에서 읽은 값(Date 또는 문자열)을 ISO 문자열로 정규화한다. */
 function toIso_(value) {
   if (!value && value !== 0) return '';
