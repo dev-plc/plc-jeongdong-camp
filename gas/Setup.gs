@@ -5,6 +5,22 @@
  * 이미 있는 탭은 헤더만 보강하고 데이터는 건드리지 않는다(여러 번 실행해도 안전).
  */
 
+/**
+ * 시각 칸 서식만 다시 입힌다 (D-040).
+ *
+ * 이미 쓰던 시트는 그 칸들이 ISO 문자열을 담고 있어 '일반'·'텍스트' 서식이다.
+ * 초기 세팅을 다시 돌리지 않고 이것만 눌러 통일할 수 있게 메뉴에 둔다.
+ */
+function fixTimeFormats() {
+  var n = applyTimeFormats_();
+  var msg = n
+    ? '✅ 시각 칸 ' + n + '개의 표기를 통일했습니다.\n형식: ' + TIME_FORMAT +
+      '\n\n이미 들어 있던 값이 글자로 남아 있으면, 그 칸은 새로 기록될 때부터 바뀝니다.'
+    : '⚠ 시각 칸을 찾지 못했습니다. 먼저 "초기 세팅 실행" 을 해 주세요.';
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
+  return n;
+}
+
 function setupSpreadsheet() {
   var ss = getSpreadsheet_();
   ss.setSpreadsheetTimeZone(TZ);
@@ -23,6 +39,7 @@ function setupSpreadsheet() {
   seedCourses_();
   seedTimeline_();
   applyValidation_();
+  applyTimeFormats_();     // 시각 칸을 사람이 읽을 수 있게 (D-040)
   autoResize_();
 
   // 토큰 서명 키가 없으면 만들어 둔다.
@@ -474,7 +491,7 @@ function fillParticipantIds() {
       var range = getSheet_(SHEETS.PARTICIPANTS)
         .getRange(first, from, last - first + 1, to - from + 1);
       var block = range.getValues();
-      var now = nowIso_();
+      var now = nowStamp_();
 
       targets.forEach(function (r) {
         var line = block[r.__row - first];
@@ -821,6 +838,7 @@ function onOpen() {
     .addItem('회차 추가 (사전답사 등)', 'addSession')
     .addItem('일정 변경 (회차 날짜)', 'changeSchedule')
     .addItem('캐시 비우기 (설정·공지·일정)', 'clearConfigCache')
+    .addItem('시각 표기 통일', 'fixTimeFormats')
     .addSeparator()
     .addItem('미러 지금 갱신 (Supabase)', 'mirrorPushNow')
     .addItem('미러 자동 갱신 켜기 (하루 1회)', 'installMirrorTrigger')

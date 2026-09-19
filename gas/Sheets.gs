@@ -523,8 +523,65 @@ function confInt_(key, fallback) {
 
 // ---------------------------------------------------------------- 유틸
 
+/**
+ * **통신용** 시각. 앱과 미러가 파싱하는 값이라 ISO 를 유지한다.
+ * 시트 셀에는 쓰지 않는다 — 그쪽은 `nowStamp_()` 다.
+ */
 function nowIso_() {
   return Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd'T'HH:mm:ssXXX");
+}
+
+/**
+ * **시트용** 시각. 문자열이 아니라 **진짜 Date** 를 넣는다 (D-040).
+ *
+ * 예전에는 `2026-09-19T10:12:31+09:00` 이라는 ISO 문자열을 셀에 그대로 넣었다.
+ * 읽기 어렵고, 텍스트라 정렬·필터·수식이 전부 안 먹었다.
+ *
+ * Date 로 넣으면 셀 서식(`TIME_FORMAT`)대로 보이고 진짜 날짜로 동작한다.
+ * 읽는 쪽은 전부 `toIso_` 를 거치므로 통신 형식은 하나도 바뀌지 않는다.
+ */
+function nowStamp_() {
+  return new Date();
+}
+
+/** 시각 칸의 표시 서식. 모든 탭에서 **같아야** 한다. */
+var TIME_FORMAT = 'yyyy-mm-dd hh:mm:ss';
+
+/** 탭별 시각 칸. 여기 없는 칸은 서식을 건드리지 않는다. */
+var TIME_COLUMNS = {
+  Participants: ['등록일시'],
+  Progress: ['도착시각', '완료시각', '수정일시'],
+  Journal: ['작성일시', '수정일시', '검토일시'],
+  Notices: ['게시일시', '종료일시'],
+  Log: ['일시']
+};
+
+/**
+ * 시각 칸에 표시 서식을 입힌다.
+ *
+ * 🔴 **이미 쓰던 시트에도 돌려야 한다.** 그 칸들은 예전에 ISO 문자열이 들어가
+ * 있어서 '일반' 또는 '텍스트' 서식이다. 서식을 안 고치면 Date 를 넣어도
+ * 엉뚱하게 보인다. 그래서 메뉴에도 넣는다.
+ *
+ * `Timeline` 의 시작·종료는 **시각(HH:mm)** 이지 시점이 아니므로 대상이 아니다.
+ */
+function applyTimeFormats_() {
+  var ss = getSpreadsheet_();
+  var touched = 0;
+
+  Object.keys(TIME_COLUMNS).forEach(function (name) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) return;
+    var idx = headerIndex_(name);
+    var rows = Math.max(sh.getMaxRows() - 1, 1);
+
+    TIME_COLUMNS[name].forEach(function (col) {
+      if (!idx[col]) return;
+      sh.getRange(2, idx[col], rows, 1).setNumberFormat(TIME_FORMAT);
+      touched++;
+    });
+  });
+  return touched;
 }
 
 /** 시트 셀에서 읽은 값(Date 또는 문자열)을 ISO 문자열로 정규화한다. */
@@ -598,7 +655,7 @@ function withLock_(fn) {
 function logEvent_(action, actor, target, result, detail) {
   try {
     appendRow_(SHEETS.LOG, {
-      '일시': nowIso_(),
+      '일시': nowStamp_(),
       '액션': action,
       '행위자': str_(actor),
       '대상': str_(target),

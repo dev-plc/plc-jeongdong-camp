@@ -186,7 +186,7 @@ function journalCreate_(ctx, body) {
 
   return withLock_(function () {
     var id = nextId_(SHEETS.JOURNAL, '일지ID', 'J', 4);
-    var now = nowIso_();
+    var now = nowStamp_();
     appendRow_(SHEETS.JOURNAL, {
       '일지ID': id,
       [COL.SESSION]: ctx.session,
@@ -227,7 +227,7 @@ function journalUpdate_(ctx, body) {
     throw new AppError('CLOSED', '탐험일지 수정이 마감되었습니다.');
   }
 
-  var patch = { '수정일시': nowIso_(), '수정자ID': ctx.pid };
+  var patch = { '수정일시': nowStamp_(), '수정자ID': ctx.pid };
 
   if (body.text !== undefined) {
     var text = str_(body.text);
@@ -285,7 +285,7 @@ function journalDelete_(ctx, body) {
   return withLock_(function () {
     updateRow_(SHEETS.JOURNAL, row.__row, {
       '상태': '삭제',
-      '수정일시': nowIso_(),
+      '수정일시': nowStamp_(),
       '수정자ID': ctx.pid
     });
     trashPhoto_(row['사진ID']);
@@ -316,7 +316,7 @@ function journalReview_(ctx, body) {
       '상태': decision,
       '반려사유': decision === '반려' ? str_(body.reason) : '',
       '검토자': str_(body.reviewer) || 'ADMIN',
-      '검토일시': nowIso_()
+      '검토일시': nowStamp_()
     });
     logEvent_('journal.review', 'ADMIN', str_(row['일지ID']), decision, str_(body.reason));
     return serializeJournal_(findJournalById_(row['일지ID']), ctx);
