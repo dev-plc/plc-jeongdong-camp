@@ -921,6 +921,15 @@ body { padding-top: var(--demobar-h, 76px); }
         return { items: pending, total: pending.length };
       }
 
+      // 운영콘솔은 전체 목록을 한 번 받아 두고, 상태 거르기는 앱이 한다 (D-046).
+      case 'admin.journal.list': {
+        var all = journals.filter(function (j) { return j.status !== '삭제'; })
+          .slice()
+          .sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); })
+          .map(function (j) { return Object.assign({}, j, { isMine: false, canEdit: true }); });
+        return { items: all, total: all.length };
+      }
+
       case 'admin.journal.review': {
         var t2 = journals.filter(function (j) { return j.id === body.id; })[0];
         if (!t2) return { __error: { code: 'NOT_FOUND', message: '찾을 수 없습니다.' } };
@@ -982,6 +991,8 @@ body { padding-top: var(--demobar-h, 76px); }
     }
   }
 
+  window.__DEMO_CALLS = [];
+
   // fetch 만 가로챈다. 앱 코드는 손대지 않는다.
   var realFetch = window.fetch ? window.fetch.bind(window) : null;
   window.fetch = function (url, options) {
@@ -990,6 +1001,7 @@ body { padding-top: var(--demobar-h, 76px); }
     }
     var body = {};
     try { body = JSON.parse((options && options.body) || '{}'); } catch (e) { /* 무시 */ }
+    window.__DEMO_CALLS.push(body.action);   // 데모에서 요청 수를 눈으로 셀 수 있게
     var data = handle(body);
     var payload = (data && data.__error) ? { ok: false, error: data.__error } : { ok: true, data: data };
     return new Promise(function (resolve) {
@@ -2010,8 +2022,31 @@ window.APP_CONFIG = {
 
   // ------------------------------------------------------------ 로그인
 
+  // ---------------------------------------------------------------- 로그인 기억
+  //
+  // 토큰 TTL 이 12시간이라 **캠프 당일 아침에 조장 전원이 다시 로그인**한다.
+  // 그때 이름과 뒷 4자리를 다시 치게 하지 않는다.
+  //
+  // 🔴 뒷 4자리는 사실상 비밀번호다. 개인 폰을 전제로 저장하되,
+  // **로그아웃하면 지운다** — 로그아웃은 "이 기기를 남에게 넘긴다" 는 신호다.
+  // 토큰 만료로 다시 로그인하는 경우에는 그대로 남는다.
+  var REMEMBER_KEY = 'plc_jd_login';
+
+  function rememberedLogin() {
+    try { return JSON.parse(localStorage.getItem(REMEMBER_KEY) || 'null') || {}; }
+    catch (e) { return {}; }
+  }
+  function rememberLogin(name, last4) {
+    try { localStorage.setItem(REMEMBER_KEY, JSON.stringify({ name: name, last4: last4 })); }
+    catch (e) { /* 시크릿 모드 등 */ }
+  }
+  function forgetLogin() {
+    try { localStorage.removeItem(REMEMBER_KEY); } catch (e) { /* 무시 */ }
+  }
+
   function renderLogin() {
     var c = (state.boot && state.boot.config) || {};
+    var saved = rememberedLogin();
     setView(
       '<section class="hero">' +
         '<p class="hero__eyebrow">역사와 신앙의 현장을 직접 걸으며 배우는</p>' +
@@ -2023,10 +2058,12 @@ window.APP_CONFIG = {
         '<p class="hint">신청하신 ' + esc(L('name', '이름')) + '과(와) ' +
           esc(L('phone', '연락처')) + ' 뒷 4자리로 들어갑니다.</p>' +
         '<label class="field"><span class="field__label">' + esc(L('name', '이름')) + '</span>' +
-          '<input class="input" type="text" name="name" placeholder="홍길동" required></label>' +
+          '<input class="input" type="text" name="name" placeholder="홍길동" required' +
+          ' value="' + esc(saved.name || '') + '"></label>' +
         '<label class="field"><span class="field__label">' + esc(L('phone', '연락처')) + ' 뒷 4자리</span>' +
           '<input class="input" type="tel" name="last4" inputmode="numeric" pattern="[0-9]{4}" ' +
-          'maxlength="4" placeholder="5678" required></label>' +
+          'maxlength="4" placeholder="5678" required' +
+          ' value="' + esc(saved.last4 || '') + '"></label>' +
         '<button class="btn btn--primary btn--block" type="submit">입장하기</button>' +
         '<p class="hint hint--center">명단에서 찾지 못하면 운영진에게 문의해 주세요.</p>' +
       '</form>'
@@ -2040,12 +2077,12 @@ window.APP_CONFIG = {
 
       // 회차는 보내지 않는다. 로그인은 이름 + 뒷 4자리로 하고,
       // 참여 일자는 명단에서 읽는다 (D-027).
-      API.login(
-        '',
-        form.name.value.trim(),
-        form.last4.value.trim()
-      )
+      var name = form.name.value.trim();
+      var last4 = form.last4.value.trim();
+
+      API.login('', name, last4)
         .then(function (data) {
+          rememberLogin(name, last4);   // 성공한 값만 기억한다
           state.me = data.me;
           state.view = 'home';
           render();
@@ -2676,6 +2713,7 @@ window.APP_CONFIG = {
       UI.confirmDialog('로그아웃할까요?', '로그아웃').then(function (yes) {
         if (!yes) return;
         API.logout();
+        forgetLogin();          // 기기를 넘기는 신호로 본다
         state.me = null;
         state.view = 'home';
         render();
@@ -2725,7 +2763,14 @@ window.APP_CONFIG = {
 
   var $ = UI.$, esc = UI.esc, nl2br = UI.nl2br, toast = UI.toast;
 
-  var state = { boot: null, view: 'review', authed: false, audience: '전체', session: '전체' };
+  var state = {
+    boot: null, view: 'review', authed: false,
+    audience: '전체', session: '전체',
+    jstatus: '대기',        // 일지 관리의 상태 필터. 기본은 지금 하던 일(검수대기)
+    // 🔴 화면당 한 번만 가져오고, 필터는 **이 데이터로** 돈다 (D-046).
+    //    예전에는 필터를 누를 때마다 서버를 다시 불렀다.
+    cache: { review: null, progress: null, fee: null }
+  };
 
   /** 항목 이름은 서버가 내려주는 마스터시트 헤더를 그대로 쓴다(bootstrap.labels). */
   function L(key, fallback) {
@@ -2738,7 +2783,9 @@ window.APP_CONFIG = {
     $('#tabbar').addEventListener('click', function (e) {
       var btn = e.target.closest('[data-view]');
       if (!btn) return;
+      // 🔴 탭을 옮기면 그 화면 캐시를 버린다. "다시 보려고 눌렀는데 옛 값" 이면 안 된다.
       state.view = btn.getAttribute('data-view');
+      state.cache[state.view] = null;
       render();
     });
 
@@ -2768,6 +2815,27 @@ window.APP_CONFIG = {
   }
 
   function setView(html) { $('#view').innerHTML = html; }
+
+  /**
+   * 🔴 **가져오기와 그리기를 나눈다** (D-046).
+   *
+   * 예전에는 필터 버튼이 `renderProgress`(가져오기 + 그리기)를 불러서, 부서를
+   * 바꿀 때마다 서버를 다시 쳤다. 이제 화면당 한 번만 가져오고 필터는 캐시로 돈다.
+   *
+   * @param {string} key   state.cache 의 키 (화면 이름)
+   * @param {string} action 서버 액션
+   * @param {Function} paint 캐시를 받아 그리는 함수
+   */
+  function loadThenPaint(key, action, paint) {
+    if (state.cache[key]) { paint(state.cache[key]); return; }
+    setView('<p class="loading">불러오는 중…</p>');
+    API.call(action)
+      .then(function (data) { state.cache[key] = data; paint(data); })
+      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+  }
+
+  /** 쓰기 뒤에는 캐시를 버린다. 옛 목록을 그리면 화면이 거짓말한다. */
+  function invalidate(key) { state.cache[key] = null; }
 
   /**
    * 부서 필터.
@@ -2872,38 +2940,78 @@ window.APP_CONFIG = {
 
   // ------------------------------------------------------------ 일지 검수
 
-  function renderReview() {
-    setView('<p class="loading">불러오는 중…</p>');
-    API.call('admin.journal.pending')
-      .then(function (data) {
-        setView(
-          '<section class="section-head"><h2>승인 대기 ' + data.total + '건</h2>' +
-            '<p class="hint">승인해야 갤러리에 보입니다. 초상권·개인정보가 드러나는 사진은 반려해 주세요.</p></section>' +
-          (data.items.length
-            ? '<div class="grid">' + data.items.map(reviewCard).join('') + '</div>'
-            : '<p class="empty">대기 중인 일지가 없습니다.</p>')
-        );
-        $('#view').addEventListener('click', onReviewClick);
-      })
-      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+  // 🔴 예전에는 `admin.journal.pending`(대기만)을 불러서 **승인·반려된 글을 아예
+  // 볼 수 없었다.** 잘못 올라간 사진을 뒤늦게 지우려 해도 방법이 없었다 (D-046).
+  var JSTATUS = [['대기', '검수 대기'], ['전체', '전체'], ['승인', '승인'], ['반려', '반려']];
+
+  function statusFilterHtml() {
+    // 회차·부서 필터와 **같은 모양**으로. 새 스타일을 만들지 않는다.
+    return '<div class="tabs" id="statusFilter">' +
+      JSTATUS.map(function (pair) {
+        return '<button type="button" class="tab' +
+          (state.jstatus === pair[0] ? ' is-active' : '') +
+          '" data-jstatus="' + esc(pair[0]) + '">' + esc(pair[1]) + '</button>';
+      }).join('') + '</div>';
+  }
+
+  function bindStatusFilter(repaint) {
+    var el = $('#statusFilter');
+    if (!el) return;
+    el.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-jstatus]');
+      if (!btn) return;
+      state.jstatus = btn.getAttribute('data-jstatus');
+      repaint();
+    });
+  }
+
+  function renderReview() { loadThenPaint('review', 'admin.journal.list', paintReview); }
+
+  function paintReview(data) {
+    var items = data.items.filter(function (it) {
+      return state.jstatus === '전체' || it.status === state.jstatus;
+    });
+    var waiting = data.items.filter(function (it) { return it.status === '대기'; }).length;
+
+    setView(
+      '<section class="section-head"><h2>탐험일지 관리</h2>' +
+        '<p class="hint">검수 대기 ' + waiting + '건 · 전체 ' + data.total + '건. ' +
+        '승인해야 갤러리에 보입니다. 초상권·개인정보가 드러나는 사진은 반려해 주세요.</p></section>' +
+      statusFilterHtml() +
+      (items.length
+        ? '<div class="grid">' + items.map(reviewCard).join('') + '</div>'
+        : '<p class="empty">해당하는 일지가 없습니다.</p>')
+    );
+    bindStatusFilter(function () { paintReview(data); });
+    $('#view').addEventListener('click', onReviewClick);
   }
 
   function reviewCard(item) {
-    return '<article class="jcard" data-id="' + esc(item.id) + '">' +
+    // 상태에 따라 할 수 있는 일이 다르다. 승인된 글에 '승인' 버튼을 또 두지 않는다.
+    var acts = [];
+    if (item.status !== '승인') {
+      acts.push('<button type="button" class="btn btn--primary btn--sm" data-act="approve">승인</button>');
+    }
+    if (item.status !== '반려') {
+      acts.push('<button type="button" class="btn btn--ghost btn--sm btn--danger-text" data-act="reject">반려</button>');
+    }
+    acts.push('<button type="button" class="btn btn--ghost btn--sm btn--danger-text" data-act="delete">삭제</button>');
+
+    return '<article class="jcard" data-id="' + esc(item.id) + '" data-status="' + esc(item.status) + '">' +
       (item.photoUrl
         ? '<a class="jcard__photo" href="' + esc(item.photoUrl) + '" target="_blank" rel="noopener">' +
-          '<img loading="lazy" src="' + esc(item.photoUrl) + '" alt="검수 대기 사진"></a>'
+          '<img loading="lazy" src="' + esc(item.photoUrl) + '" alt="일지 사진"></a>'
         : '') +
       '<div class="jcard__body">' +
         '<p class="jcard__meta"><strong>' + esc(item.authorName) + '</strong> · ' +
           esc(item.session) + ' ' + esc(item.group) + ' · ' +
-          '<time>' + esc(UI.prettyDateTime(item.createdAt)) + '</time></p>' +
+          '<time>' + esc(UI.prettyDateTime(item.createdAt)) + '</time> · ' +
+          '<span class="chip chip--' + (item.status === '승인' ? 'done'
+            : item.status === '반려' ? 'reject' : 'wait') + '">' + esc(item.status) + '</span></p>' +
         (item.text ? '<p class="jcard__text">' + nl2br(esc(item.text)) + '</p>' : '') +
-        '<div class="jcard__actions">' +
-          '<button type="button" class="btn btn--primary btn--sm" data-act="approve">승인</button>' +
-          '<button type="button" class="btn btn--ghost btn--sm btn--danger-text" data-act="reject">반려</button>' +
-          '<button type="button" class="btn btn--ghost btn--sm btn--danger-text" data-act="delete">삭제</button>' +
-        '</div>' +
+        (item.status === '반려' && item.rejectReason
+          ? '<p class="jcard__reject">반려 사유: ' + esc(item.rejectReason) + '</p>' : '') +
+        '<div class="jcard__actions">' + acts.join('') + '</div>' +
       '</div>' +
     '</article>';
   }
@@ -2925,7 +3033,7 @@ window.APP_CONFIG = {
       UI.confirmDialog('이 일지를 삭제할까요?\n사진도 함께 휴지통으로 갑니다.', '삭제').then(function (yes) {
         if (!yes) return;
         API.call('admin.journal.delete', { id: id })
-          .then(function () { card.remove(); toast('삭제했습니다.'); })
+          .then(function () { invalidate('review'); renderReview(); toast('삭제했습니다.'); })
           .catch(function (err) { toast(err.message, 'error'); });
       });
     }
@@ -2934,16 +3042,20 @@ window.APP_CONFIG = {
   function submitReview(card, btn, payload) {
     UI.setBusy(btn, true, '처리 중…');
     API.call('admin.journal.review', payload)
-      .then(function () { card.remove(); toast(payload.decision + ' 처리했습니다.'); })
+      .then(function () {
+        // 🔴 캐시를 버리고 다시 불러온다. 상태가 바뀌었으니 옛 목록을 그리면 거짓말이다.
+        invalidate('review');
+        renderReview();
+        toast(payload.decision + ' 처리했습니다.');
+      })
       .catch(function (err) { UI.setBusy(btn, false); toast(err.message, 'error'); });
   }
 
   // ------------------------------------------------------------ 진행 현황
 
-  function renderProgress() {
-    setView('<p class="loading">불러오는 중…</p>');
-    API.call('admin.progress.board')
-      .then(function (board) {
+  function renderProgress() { loadThenPaint('progress', 'admin.progress.board', paintProgress); }
+
+  function paintProgress(board) {
         var teams = board.teams.filter(function (t) {
           return matchesAudience(t.audience) && matchesSession(t.session);
         });
@@ -2984,18 +3096,15 @@ window.APP_CONFIG = {
                 ? '명단에 조가 배정된 참가자가 아직 없습니다.'
                 : esc(state.audience) + '에 배정된 조가 없습니다.') + '</p>')
         );
-        bindSessionFilter(renderProgress);
-        bindAudienceFilter(renderProgress);
-      })
-      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+        bindSessionFilter(function () { paintProgress(board); });
+        bindAudienceFilter(function () { paintProgress(board); });
   }
 
   // ------------------------------------------------------------ 회비
 
-  function renderFee() {
-    setView('<p class="loading">불러오는 중…</p>');
-    API.call('admin.fee.board')
-      .then(function (data) {
+  function renderFee() { loadThenPaint('fee', 'admin.fee.board', paintFee); }
+
+  function paintFee(data) {
         var sum = data.summary;
         var teams = data.teams.filter(function (t) {
           return matchesAudience(t.audience) && matchesSession(t.session);
@@ -3029,10 +3138,8 @@ window.APP_CONFIG = {
             }).join('') +
           '</tbody></table></div></div>'
         );
-        bindSessionFilter(renderFee);
-        bindAudienceFilter(renderFee);
-      })
-      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+        bindSessionFilter(function () { paintFee(data); });
+        bindAudienceFilter(function () { paintFee(data); });
   }
 
   function won(n) {
@@ -3116,6 +3223,8 @@ window.APP_CONFIG = {
       .then(function (config) {
         state.boot.config = config;
         try { sessionStorage.removeItem('plc_jd_bootstrap'); } catch (e) { /* 무시 */ }
+        // 설정이 바뀌면 다른 화면의 표도 달라질 수 있다(마감 여부·라벨 등).
+        invalidate('review'); invalidate('progress'); invalidate('fee');
         renderSettings();
         toast(message || '저장했습니다.');
       })

@@ -12,7 +12,14 @@
 
   var $ = UI.$, esc = UI.esc, nl2br = UI.nl2br, toast = UI.toast;
 
-  var state = { boot: null, view: 'review', authed: false, audience: '전체', session: '전체' };
+  var state = {
+    boot: null, view: 'review', authed: false,
+    audience: '전체', session: '전체',
+    jstatus: '대기',        // 일지 관리의 상태 필터. 기본은 지금 하던 일(검수대기)
+    // 🔴 화면당 한 번만 가져오고, 필터는 **이 데이터로** 돈다 (D-046).
+    //    예전에는 필터를 누를 때마다 서버를 다시 불렀다.
+    cache: { review: null, progress: null, fee: null }
+  };
 
   /** 항목 이름은 서버가 내려주는 마스터시트 헤더를 그대로 쓴다(bootstrap.labels). */
   function L(key, fallback) {
@@ -25,7 +32,9 @@
     $('#tabbar').addEventListener('click', function (e) {
       var btn = e.target.closest('[data-view]');
       if (!btn) return;
+      // 🔴 탭을 옮기면 그 화면 캐시를 버린다. "다시 보려고 눌렀는데 옛 값" 이면 안 된다.
       state.view = btn.getAttribute('data-view');
+      state.cache[state.view] = null;
       render();
     });
 
@@ -55,6 +64,27 @@
   }
 
   function setView(html) { $('#view').innerHTML = html; }
+
+  /**
+   * 🔴 **가져오기와 그리기를 나눈다** (D-046).
+   *
+   * 예전에는 필터 버튼이 `renderProgress`(가져오기 + 그리기)를 불러서, 부서를
+   * 바꿀 때마다 서버를 다시 쳤다. 이제 화면당 한 번만 가져오고 필터는 캐시로 돈다.
+   *
+   * @param {string} key   state.cache 의 키 (화면 이름)
+   * @param {string} action 서버 액션
+   * @param {Function} paint 캐시를 받아 그리는 함수
+   */
+  function loadThenPaint(key, action, paint) {
+    if (state.cache[key]) { paint(state.cache[key]); return; }
+    setView('<p class="loading">불러오는 중…</p>');
+    API.call(action)
+      .then(function (data) { state.cache[key] = data; paint(data); })
+      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+  }
+
+  /** 쓰기 뒤에는 캐시를 버린다. 옛 목록을 그리면 화면이 거짓말한다. */
+  function invalidate(key) { state.cache[key] = null; }
 
   /**
    * 부서 필터.
@@ -159,38 +189,78 @@
 
   // ------------------------------------------------------------ 일지 검수
 
-  function renderReview() {
-    setView('<p class="loading">불러오는 중…</p>');
-    API.call('admin.journal.pending')
-      .then(function (data) {
-        setView(
-          '<section class="section-head"><h2>승인 대기 ' + data.total + '건</h2>' +
-            '<p class="hint">승인해야 갤러리에 보입니다. 초상권·개인정보가 드러나는 사진은 반려해 주세요.</p></section>' +
-          (data.items.length
-            ? '<div class="grid">' + data.items.map(reviewCard).join('') + '</div>'
-            : '<p class="empty">대기 중인 일지가 없습니다.</p>')
-        );
-        $('#view').addEventListener('click', onReviewClick);
-      })
-      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+  // 🔴 예전에는 `admin.journal.pending`(대기만)을 불러서 **승인·반려된 글을 아예
+  // 볼 수 없었다.** 잘못 올라간 사진을 뒤늦게 지우려 해도 방법이 없었다 (D-046).
+  var JSTATUS = [['대기', '검수 대기'], ['전체', '전체'], ['승인', '승인'], ['반려', '반려']];
+
+  function statusFilterHtml() {
+    // 회차·부서 필터와 **같은 모양**으로. 새 스타일을 만들지 않는다.
+    return '<div class="tabs" id="statusFilter">' +
+      JSTATUS.map(function (pair) {
+        return '<button type="button" class="tab' +
+          (state.jstatus === pair[0] ? ' is-active' : '') +
+          '" data-jstatus="' + esc(pair[0]) + '">' + esc(pair[1]) + '</button>';
+      }).join('') + '</div>';
+  }
+
+  function bindStatusFilter(repaint) {
+    var el = $('#statusFilter');
+    if (!el) return;
+    el.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-jstatus]');
+      if (!btn) return;
+      state.jstatus = btn.getAttribute('data-jstatus');
+      repaint();
+    });
+  }
+
+  function renderReview() { loadThenPaint('review', 'admin.journal.list', paintReview); }
+
+  function paintReview(data) {
+    var items = data.items.filter(function (it) {
+      return state.jstatus === '전체' || it.status === state.jstatus;
+    });
+    var waiting = data.items.filter(function (it) { return it.status === '대기'; }).length;
+
+    setView(
+      '<section class="section-head"><h2>탐험일지 관리</h2>' +
+        '<p class="hint">검수 대기 ' + waiting + '건 · 전체 ' + data.total + '건. ' +
+        '승인해야 갤러리에 보입니다. 초상권·개인정보가 드러나는 사진은 반려해 주세요.</p></section>' +
+      statusFilterHtml() +
+      (items.length
+        ? '<div class="grid">' + items.map(reviewCard).join('') + '</div>'
+        : '<p class="empty">해당하는 일지가 없습니다.</p>')
+    );
+    bindStatusFilter(function () { paintReview(data); });
+    $('#view').addEventListener('click', onReviewClick);
   }
 
   function reviewCard(item) {
-    return '<article class="jcard" data-id="' + esc(item.id) + '">' +
+    // 상태에 따라 할 수 있는 일이 다르다. 승인된 글에 '승인' 버튼을 또 두지 않는다.
+    var acts = [];
+    if (item.status !== '승인') {
+      acts.push('<button type="button" class="btn btn--primary btn--sm" data-act="approve">승인</button>');
+    }
+    if (item.status !== '반려') {
+      acts.push('<button type="button" class="btn btn--ghost btn--sm btn--danger-text" data-act="reject">반려</button>');
+    }
+    acts.push('<button type="button" class="btn btn--ghost btn--sm btn--danger-text" data-act="delete">삭제</button>');
+
+    return '<article class="jcard" data-id="' + esc(item.id) + '" data-status="' + esc(item.status) + '">' +
       (item.photoUrl
         ? '<a class="jcard__photo" href="' + esc(item.photoUrl) + '" target="_blank" rel="noopener">' +
-          '<img loading="lazy" src="' + esc(item.photoUrl) + '" alt="검수 대기 사진"></a>'
+          '<img loading="lazy" src="' + esc(item.photoUrl) + '" alt="일지 사진"></a>'
         : '') +
       '<div class="jcard__body">' +
         '<p class="jcard__meta"><strong>' + esc(item.authorName) + '</strong> · ' +
           esc(item.session) + ' ' + esc(item.group) + ' · ' +
-          '<time>' + esc(UI.prettyDateTime(item.createdAt)) + '</time></p>' +
+          '<time>' + esc(UI.prettyDateTime(item.createdAt)) + '</time> · ' +
+          '<span class="chip chip--' + (item.status === '승인' ? 'done'
+            : item.status === '반려' ? 'reject' : 'wait') + '">' + esc(item.status) + '</span></p>' +
         (item.text ? '<p class="jcard__text">' + nl2br(esc(item.text)) + '</p>' : '') +
-        '<div class="jcard__actions">' +
-          '<button type="button" class="btn btn--primary btn--sm" data-act="approve">승인</button>' +
-          '<button type="button" class="btn btn--ghost btn--sm btn--danger-text" data-act="reject">반려</button>' +
-          '<button type="button" class="btn btn--ghost btn--sm btn--danger-text" data-act="delete">삭제</button>' +
-        '</div>' +
+        (item.status === '반려' && item.rejectReason
+          ? '<p class="jcard__reject">반려 사유: ' + esc(item.rejectReason) + '</p>' : '') +
+        '<div class="jcard__actions">' + acts.join('') + '</div>' +
       '</div>' +
     '</article>';
   }
@@ -212,7 +282,7 @@
       UI.confirmDialog('이 일지를 삭제할까요?\n사진도 함께 휴지통으로 갑니다.', '삭제').then(function (yes) {
         if (!yes) return;
         API.call('admin.journal.delete', { id: id })
-          .then(function () { card.remove(); toast('삭제했습니다.'); })
+          .then(function () { invalidate('review'); renderReview(); toast('삭제했습니다.'); })
           .catch(function (err) { toast(err.message, 'error'); });
       });
     }
@@ -221,16 +291,20 @@
   function submitReview(card, btn, payload) {
     UI.setBusy(btn, true, '처리 중…');
     API.call('admin.journal.review', payload)
-      .then(function () { card.remove(); toast(payload.decision + ' 처리했습니다.'); })
+      .then(function () {
+        // 🔴 캐시를 버리고 다시 불러온다. 상태가 바뀌었으니 옛 목록을 그리면 거짓말이다.
+        invalidate('review');
+        renderReview();
+        toast(payload.decision + ' 처리했습니다.');
+      })
       .catch(function (err) { UI.setBusy(btn, false); toast(err.message, 'error'); });
   }
 
   // ------------------------------------------------------------ 진행 현황
 
-  function renderProgress() {
-    setView('<p class="loading">불러오는 중…</p>');
-    API.call('admin.progress.board')
-      .then(function (board) {
+  function renderProgress() { loadThenPaint('progress', 'admin.progress.board', paintProgress); }
+
+  function paintProgress(board) {
         var teams = board.teams.filter(function (t) {
           return matchesAudience(t.audience) && matchesSession(t.session);
         });
@@ -271,18 +345,15 @@
                 ? '명단에 조가 배정된 참가자가 아직 없습니다.'
                 : esc(state.audience) + '에 배정된 조가 없습니다.') + '</p>')
         );
-        bindSessionFilter(renderProgress);
-        bindAudienceFilter(renderProgress);
-      })
-      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+        bindSessionFilter(function () { paintProgress(board); });
+        bindAudienceFilter(function () { paintProgress(board); });
   }
 
   // ------------------------------------------------------------ 회비
 
-  function renderFee() {
-    setView('<p class="loading">불러오는 중…</p>');
-    API.call('admin.fee.board')
-      .then(function (data) {
+  function renderFee() { loadThenPaint('fee', 'admin.fee.board', paintFee); }
+
+  function paintFee(data) {
         var sum = data.summary;
         var teams = data.teams.filter(function (t) {
           return matchesAudience(t.audience) && matchesSession(t.session);
@@ -316,10 +387,8 @@
             }).join('') +
           '</tbody></table></div></div>'
         );
-        bindSessionFilter(renderFee);
-        bindAudienceFilter(renderFee);
-      })
-      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+        bindSessionFilter(function () { paintFee(data); });
+        bindAudienceFilter(function () { paintFee(data); });
   }
 
   function won(n) {
@@ -403,6 +472,8 @@
       .then(function (config) {
         state.boot.config = config;
         try { sessionStorage.removeItem('plc_jd_bootstrap'); } catch (e) { /* 무시 */ }
+        // 설정이 바뀌면 다른 화면의 표도 달라질 수 있다(마감 여부·라벨 등).
+        invalidate('review'); invalidate('progress'); invalidate('fee');
         renderSettings();
         toast(message || '저장했습니다.');
       })

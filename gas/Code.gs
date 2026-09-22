@@ -64,6 +64,7 @@ function route_(action, body) {
 
     // ---- 관리자
     case 'admin.journal.pending': return journalPending_(requireAdmin_(body));
+    case 'admin.journal.list':    return journalAll_(requireAdmin_(body));
     case 'admin.journal.review':  return journalReview_(requireAdmin_(body), body);
     case 'admin.journal.update':  return journalUpdate_(requireAdmin_(body), body);
     case 'admin.journal.delete':  return journalDelete_(requireAdmin_(body), body);

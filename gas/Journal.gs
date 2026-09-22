@@ -256,11 +256,21 @@ function journalUpdate_(ctx, body) {
     throw new AppError('BAD_REQUEST', '소감이나 사진 중 하나는 남겨야 합니다. 지우려면 삭제를 눌러 주세요.');
   }
 
-  // 승인 후 내용 교체로 검수를 우회하는 경로를 막는다.
-  if (!ctx.isAdmin && confBool_('JOURNAL_REQUIRE_APPROVAL', true) && str_(row['상태']) === '승인') {
+  // 🔴 **이미 검수를 거친 글**은 고치면 다시 검수를 받는다 (D-046).
+  //
+  // 두 가지를 동시에 한다.
+  //  · 승인 후 내용을 갈아 검수를 우회하는 길을 막는다
+  //  · **반려된 글을 고치면 다시 올라간다** — 예전에는 `승인` 일 때만 되돌려서,
+  //    반려된 글은 고쳐도 계속 `반려` 였다. 검수대기 목록에 다시 뜨지 않으니
+  //    운영진은 고친 줄도 몰랐고, 참가자는 다시 낼 방법이 없었다.
+  var reviewed = str_(row['상태']);
+  if (!ctx.isAdmin && confBool_('JOURNAL_REQUIRE_APPROVAL', true) &&
+      (reviewed === '승인' || reviewed === '반려')) {
     patch['상태'] = '대기';
     patch['검토자'] = '';
     patch['검토일시'] = '';
+    // 옛 반려 사유를 지운다. 안 그러면 새로 낸 글에 지난 사유가 붙어 있다.
+    patch['반려사유'] = '';
   }
 
   return withLock_(function () {
@@ -295,6 +305,20 @@ function journalDelete_(ctx, body) {
 }
 
 // ---------------------------------------------------------------- 관리자 검수
+
+/**
+ * 운영콘솔용 **전체 목록** (D-046). 삭제만 뺀다.
+ *
+ * `journalPending_` 는 `대기` 만 돌려줘서, 승인·반려된 글은 운영콘솔에서 **아예 볼 수
+ * 없었다.** 잘못 올라간 사진을 뒤늦게 지우려 해도 방법이 없었다.
+ * 상태 거르기는 앱이 한다 — 한 번 받아 두고 필터는 그 데이터로 돈다.
+ */
+function journalAll_(ctx) {
+  var rows = readTable_(SHEETS.JOURNAL)
+    .filter(function (r) { return str_(r['상태']) !== '삭제'; })
+    .sort(function (a, b) { return toIso_(b['작성일시']).localeCompare(toIso_(a['작성일시'])); });
+  return { items: rows.map(function (r) { return serializeJournal_(r, ctx); }), total: rows.length };
+}
 
 function journalPending_(ctx) {
   var rows = readTable_(SHEETS.JOURNAL)
