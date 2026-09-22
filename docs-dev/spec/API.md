@@ -158,7 +158,9 @@ fetch(API_BASE, {
   "photo": { ... },      // 새 사진으로 교체
   "removePhoto": true }  // 사진만 삭제
 ```
-승인 상태였다면 `대기` 로 되돌아갑니다(관리자 수정 제외).
+**승인 또는 반려** 상태였다면 `대기` 로 되돌아가고 옛 `반려사유` 는 지워집니다
+(관리자 수정과 `JOURNAL_REQUIRE_APPROVAL=FALSE` 는 제외). 반려된 글을 고쳐 다시 내는
+길입니다 — 예전에는 `승인` 일 때만 되돌려서 반려본은 다시 낼 수 없었습니다 (D-046).
 
 #### `journal.delete` — 작성자 본인 / 소속 조장 / 관리자 (D-009)
 ```jsonc
@@ -185,7 +187,8 @@ fetch(API_BASE, {
 |---|---|
 | `admin.login` | `{ pin }` → 관리자 토큰 |
 | | 관리자 토큰은 참가자 앱과 저장 키가 분리되어 있어 한 브라우저에서 동시에 쓸 수 있습니다 |
-| `admin.journal.pending` | 승인 대기 목록 |
+| `admin.journal.pending` | 승인 대기 목록 (`상태 = 대기`) |
+| `admin.journal.list` | **삭제를 뺀 전체 목록**, 최신순 (D-046). 상태 거르기는 앱이 받아 둔 데이터로 합니다 |
 | `admin.journal.review` | `{ id, decision: "승인"\|"반려", reason }` |
 | `admin.journal.update` / `admin.journal.delete` | 참가자용과 동일하나 전 범위 |
 | `admin.progress.board` | 전 조 진행 현황 보드 — 조는 Teams 가 아니라 **명단에 실제로 존재하는 (참여 일자, 조 배정) 조합**에서 뽑습니다 |
