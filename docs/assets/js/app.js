@@ -109,8 +109,31 @@
 
   // ------------------------------------------------------------ 로그인
 
+  // ---------------------------------------------------------------- 로그인 기억
+  //
+  // 토큰 TTL 이 12시간이라 **캠프 당일 아침에 조장 전원이 다시 로그인**한다.
+  // 그때 이름과 뒷 4자리를 다시 치게 하지 않는다.
+  //
+  // 🔴 뒷 4자리는 사실상 비밀번호다. 개인 폰을 전제로 저장하되,
+  // **로그아웃하면 지운다** — 로그아웃은 "이 기기를 남에게 넘긴다" 는 신호다.
+  // 토큰 만료로 다시 로그인하는 경우에는 그대로 남는다.
+  var REMEMBER_KEY = 'plc_jd_login';
+
+  function rememberedLogin() {
+    try { return JSON.parse(localStorage.getItem(REMEMBER_KEY) || 'null') || {}; }
+    catch (e) { return {}; }
+  }
+  function rememberLogin(name, last4) {
+    try { localStorage.setItem(REMEMBER_KEY, JSON.stringify({ name: name, last4: last4 })); }
+    catch (e) { /* 시크릿 모드 등 */ }
+  }
+  function forgetLogin() {
+    try { localStorage.removeItem(REMEMBER_KEY); } catch (e) { /* 무시 */ }
+  }
+
   function renderLogin() {
     var c = (state.boot && state.boot.config) || {};
+    var saved = rememberedLogin();
     setView(
       '<section class="hero">' +
         '<p class="hero__eyebrow">역사와 신앙의 현장을 직접 걸으며 배우는</p>' +
@@ -122,10 +145,12 @@
         '<p class="hint">신청하신 ' + esc(L('name', '이름')) + '과(와) ' +
           esc(L('phone', '연락처')) + ' 뒷 4자리로 들어갑니다.</p>' +
         '<label class="field"><span class="field__label">' + esc(L('name', '이름')) + '</span>' +
-          '<input class="input" type="text" name="name" placeholder="홍길동" required></label>' +
+          '<input class="input" type="text" name="name" placeholder="홍길동" required' +
+          ' value="' + esc(saved.name || '') + '"></label>' +
         '<label class="field"><span class="field__label">' + esc(L('phone', '연락처')) + ' 뒷 4자리</span>' +
           '<input class="input" type="tel" name="last4" inputmode="numeric" pattern="[0-9]{4}" ' +
-          'maxlength="4" placeholder="5678" required></label>' +
+          'maxlength="4" placeholder="5678" required' +
+          ' value="' + esc(saved.last4 || '') + '"></label>' +
         '<button class="btn btn--primary btn--block" type="submit">입장하기</button>' +
         '<p class="hint hint--center">명단에서 찾지 못하면 운영진에게 문의해 주세요.</p>' +
       '</form>'
@@ -139,12 +164,12 @@
 
       // 회차는 보내지 않는다. 로그인은 이름 + 뒷 4자리로 하고,
       // 참여 일자는 명단에서 읽는다 (D-027).
-      API.login(
-        '',
-        form.name.value.trim(),
-        form.last4.value.trim()
-      )
+      var name = form.name.value.trim();
+      var last4 = form.last4.value.trim();
+
+      API.login('', name, last4)
         .then(function (data) {
+          rememberLogin(name, last4);   // 성공한 값만 기억한다
           state.me = data.me;
           state.view = 'home';
           render();
@@ -775,6 +800,7 @@
       UI.confirmDialog('로그아웃할까요?', '로그아웃').then(function (yes) {
         if (!yes) return;
         API.logout();
+        forgetLogin();          // 기기를 넘기는 신호로 본다
         state.me = null;
         state.view = 'home';
         render();
