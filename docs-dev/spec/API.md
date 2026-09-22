@@ -191,6 +191,9 @@ fetch(API_BASE, {
 | `admin.journal.list` | **삭제를 뺀 전체 목록**, 최신순 (D-046). 상태 거르기는 앱이 받아 둔 데이터로 합니다 |
 | `admin.journal.review` | `{ id, decision: "승인"\|"반려", reason }` |
 | `admin.journal.update` / `admin.journal.delete` | 참가자용과 동일하나 전 범위 |
+| `admin.notice.list` | 공지 **전부** — 예약·종료된 것까지, `targets`(고를 수 있는 대상) 동봉 (D-048) |
+| `admin.notice.save` | `{ id?, target, title, body, pinned, endsAt? }` — `id` 가 없으면 만들고 있으면 고칩니다. `게시일시` 는 만들 때만 찍고 이후 건드리지 않습니다 |
+| `admin.notice.delete` | `{ id }` — 행을 **실제로 지웁니다**(일지와 달리 소프트 삭제가 아닙니다) |
 | `admin.progress.board` | 전 조 진행 현황 보드 — 조는 Teams 가 아니라 **명단에 실제로 존재하는 (참여 일자, 조 배정) 조합**에서 뽑습니다 |
 | `admin.fee.board` | 회비·보험 현황 집계 (읽기). 수납액/예상수입 합계 포함 |
 | `admin.config.set` | `{ key, value, note?, allowNew? }` — `Config` 값 변경. `note` 는 `설명` 열에 함께 기록됩니다. 반환: `publicConfig_()` (반영 후 공개 설정 전체). 설정·부트스트랩 캐시를 함께 비웁니다.<br>**없는 키는 거절됩니다** — 오타로 새 키가 조용히 생기는 것을 막기 위해서입니다(비슷한 키를 제안). 새 키를 정말 추가하려면 `allowNew: true` |
