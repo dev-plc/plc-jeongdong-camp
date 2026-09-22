@@ -634,6 +634,11 @@ function addSession() {
   // 드롭다운에 새 라벨을 넣는다. 이게 이 메뉴의 존재 이유다.
   applyValidation_();
 
+  // 🔴 사본도 민다 (D-047). `writeTimeline_` 은 스크립트 편집이라 `onEdit` 이
+  // **애초에 안 걸린다** — 구글시트의 단순 트리거는 스크립트가 만든 변경에 반응하지
+  // 않는다. 이걸 빠뜨려서 사전답사 일정표가 앱에 안 떴다.
+  mirrorPush();
+
   var out = ['✅ 회차를 추가했습니다.', '',
     'SESSION_' + n + ' = ' + label + (date ? ' (' + date + ')' : ''),
     '끝나면 Config 의 SESSION_' + n + '_ACTIVE 를 FALSE 로 바꾸면 로그인이 막힙니다.'];
@@ -746,19 +751,24 @@ function changeSchedule() {
 
   if (ui.alert('일정 변경', lines.join('\n'), ui.ButtonSet.OK_CANCEL) !== ui.Button.OK) return;
 
-  var changed = withLock_(function () {
-    var done = targets.map(function (name) {
-      return { name: name, n: renameSessionIn_(name, rename) };
+  // 사본 밀기는 이 묶음이 끝난 뒤 한 번만 한다 (D-047).
+  // `configSet_` 가 스스로 밀게 두면 락 안에서 네트워크가 네 번 나간다.
+  var changed = withoutMirrorPush_(function () {
+    return withLock_(function () {
+      var done = targets.map(function (name) {
+        return { name: name, n: renameSessionIn_(name, rename) };
+      });
+      // allowNew: 키가 지워졌더라도 이 내부 호출은 통과해야 한다(오타 방어는 콘솔 입력용).
+      next.forEach(function (x) {
+        configSet_({ isAdmin: true }, { key: 'SESSION_' + x.n, value: x.label, allowNew: true });
+        configSet_({ isAdmin: true }, { key: 'SESSION_' + x.n + '_DATE', value: x.date, allowNew: true });
+      });
+      return done;
     });
-    // allowNew: 키가 지워졌더라도 이 내부 호출은 통과해야 한다(오타 방어는 콘솔 입력용).
-    next.forEach(function (x) {
-      configSet_({ isAdmin: true }, { key: 'SESSION_' + x.n, value: x.label, allowNew: true });
-      configSet_({ isAdmin: true }, { key: 'SESSION_' + x.n + '_DATE', value: x.date, allowNew: true });
-    });
-    return done;
   });
 
   clearConfigCache();
+  mirrorPush();          // 락 밖, 한 번 (D-044 · D-047)
 
   var out = ['✅ 일정을 바꿨습니다.', ''];
   next.forEach(function (x, i) { out.push((i + 1) + '차: ' + x.label + ' (' + x.date + ')'); });
