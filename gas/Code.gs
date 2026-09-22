@@ -643,7 +643,7 @@ function configSet_(ctx, body) {
   var key = str_(body.key);
   if (!key) throw new AppError('BAD_REQUEST', '키를 입력해 주세요.');
 
-  return withLock_(function () {
+  var out = withLock_(function () {
     var rows = readTable_(SHEETS.CONFIG);
     var target = null;
     rows.forEach(function (r) { if (str_(r['키']) === key) target = r; });
@@ -670,4 +670,16 @@ function configSet_(ctx, body) {
     logEvent_('admin.config.set', 'ADMIN', key, 'OK', str_(body.value));
     return publicConfig_();
   });
+
+  // 🔴 **사본도 함께 민다** (D-047).
+  //
+  // 앱은 bootstrap 을 **미러 → GAS** 순으로 읽는다. 시트 쪽 캐시만 비우면
+  // 참가자 화면은 최대 26시간 동안 옛 설정을 그린다 — 일지를 닫았는데 화면엔
+  // 작성 폼이 그대로 있고, 올리면 그제서야 `CLOSED` 가 뜬다.
+  //
+  // 락 **밖**이다. `withLock_` 은 스크립트 전체를 직렬화하므로 그 안에서
+  // 네트워크를 기다리면 다른 사람이 그만큼 줄을 선다 (D-044).
+  mirrorPush();
+
+  return out;
 }
