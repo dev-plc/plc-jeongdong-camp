@@ -398,6 +398,15 @@ body { padding-top: var(--demobar-h, 76px); }
         return { items: pending, total: pending.length };
       }
 
+      // 운영콘솔은 전체 목록을 한 번 받아 두고, 상태 거르기는 앱이 한다 (D-046).
+      case 'admin.journal.list': {
+        var all = journals.filter(function (j) { return j.status !== '삭제'; })
+          .slice()
+          .sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); })
+          .map(function (j) { return Object.assign({}, j, { isMine: false, canEdit: true }); });
+        return { items: all, total: all.length };
+      }
+
       case 'admin.journal.review': {
         var t2 = journals.filter(function (j) { return j.id === body.id; })[0];
         if (!t2) return { __error: { code: 'NOT_FOUND', message: '찾을 수 없습니다.' } };
@@ -459,6 +468,8 @@ body { padding-top: var(--demobar-h, 76px); }
     }
   }
 
+  window.__DEMO_CALLS = [];
+
   // fetch 만 가로챈다. 앱 코드는 손대지 않는다.
   var realFetch = window.fetch ? window.fetch.bind(window) : null;
   window.fetch = function (url, options) {
@@ -467,6 +478,7 @@ body { padding-top: var(--demobar-h, 76px); }
     }
     var body = {};
     try { body = JSON.parse((options && options.body) || '{}'); } catch (e) { /* 무시 */ }
+    window.__DEMO_CALLS.push(body.action);   // 데모에서 요청 수를 눈으로 셀 수 있게
     var data = handle(body);
     var payload = (data && data.__error) ? { ok: false, error: data.__error } : { ok: true, data: data };
     return new Promise(function (resolve) {
