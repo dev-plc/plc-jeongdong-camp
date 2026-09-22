@@ -135,7 +135,28 @@ function supabaseDelete_(table, query, tag, target) {
   }
 }
 
+/**
+ * 설정을 **여러 개 한꺼번에** 바꾸는 동안 사본 밀기를 멈춘다 (D-047).
+ *
+ * `changeSchedule` 은 `configSet_` 를 네 번 부른다. 그대로 두면 한 번의 일정 변경에
+ * 네트워크가 네 번 나가고, 더 나쁘게는 그게 **락 안**이라 다른 사람이 그만큼 줄을 선다
+ * (`withLock_` 은 중첩을 막지 않아 안쪽 호출이 바깥 락 안에서 돈다).
+ * 묶음이 끝난 뒤 부르는 쪽이 **한 번만** 민다.
+ */
+var __mirrorSuppressed = false;
+
+function withoutMirrorPush_(fn) {
+  __mirrorSuppressed = true;
+  try { return fn(); } finally { __mirrorSuppressed = false; }
+}
+
 function mirrorPush() {
+  if (__mirrorSuppressed) return false;
+
+  // 미러를 안 쓰면 여기서 끝낸다. `bootstrap_()` 은 탭을 여럿 읽으므로,
+  // 어차피 못 보낼 값을 만드는 데 그 비용을 쓰지 않는다 (D-047).
+  if (!mirrorEnabled_()) return false;
+
   return supabaseUpsert_(MIRROR_TABLE, [{
     key: MIRROR_KEY,
     value: bootstrap_(),            // 앱이 받는 것과 **같은 것**을 보낸다
