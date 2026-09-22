@@ -66,6 +66,11 @@ python3 -m http.server 8080 --directory docs   # → http://localhost:8080/demo.
 데모는 실제 `app.css` / `api.js` / `ui.js` / `app.js` / `admin.js` 를 그대로 인라인하고
 `fetch` 만 가짜 백엔드에 물리므로, 화면이 실제와 어긋나지 않습니다.
 
+이 데모는 **아티팩트로도 올라가 있습니다** — 운영진에게는 이 링크를 보냅니다.
+<https://claude.ai/artifact/DQQvR4awqr3iAXfcYZHdTM>
+다시 만들었으면 **거기에도 다시 올려야 합니다.** 안 그러면 링크만 옛 화면으로 남습니다
+(실제로 3주간 그랬습니다 — D-046).
+
 ## 시작하기
 
 1. **[`docs-dev/ops/DEPLOY.md`](docs-dev/ops/DEPLOY.md)** 를 따라 GAS 를 배포하고
