@@ -26,7 +26,8 @@ PLC 정동 가을캠프 "신앙탐험대" 현장 앱. 설계 결정은 `docs-dev
 
 고친 뒤 반드시: `node tools/check-versions.js` — 어긋나면 1 로 끝난다.
 
-**현재 배포**: GAS **v15** (2026-09-26, health 7개 파일 모두 v15 확인). 다음 `.gs` 변경은 **v16**.
+**현재 배포**: GAS **v16** (2026-09-26, health — Auth·Code·Journal·Setup·Sheets v16, MasterSync·Mirror v15). 다음 `.gs` 변경은 **v17**
+(C 단계가 `claude/plc-jeongdong-camp-c-next` 에 v17 로 준비돼 있다 — 11/07 본 캠프 뒤).
 배포 번호가 예상과 다르게 나왔다고 운영자가 알려 주면 이 줄과 헤더를 그 번호로 맞춘다.
 
 ## 🔴 GAS 배포를 안내할 때
