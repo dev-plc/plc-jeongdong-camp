@@ -764,7 +764,7 @@ ${adminJs}
   // 탭바 구성은 모드마다 다르다.
   var tabs = (mode === 'admin')
     ? [['review', '✅', '일지 검수'], ['notice', '📢', '공지'], ['progress', '🧭', '진행 현황'],
-       ['fee', '💳', '회비'], ['settings', '⚙️', '설정']]
+       ['awards', '🏆', '시상'], ['fee', '💳', '회비'], ['settings', '⚙️', '설정']]
     : [['home', '🏛', '홈'], ['course', '🧭', '코스'], ['journal', '📓', '탐험일지'], ['me', '👤', '내 정보']];
 
   document.getElementById('tabbar').innerHTML = tabs.map(function (t, i) {
