@@ -919,8 +919,132 @@ function onOpen() {
     .addItem('미러 자동 갱신 켜기 (하루 1회)', 'installMirrorTrigger')
     .addItem('캠프 모드 켜기 (10분 동기화)', 'installCampSync')
     .addItem('캠프 모드 끄기', 'stopCampSync')
+    .addSeparator()
+    .addItem('새 캠프 시작 (보관 후 비우기)', 'startNewCamp')
     .addToUi();
 
   // 행정팀 탭 동기화 도구 (MasterSync.gs). 그 파일을 안 넣었으면 조용히 건너뛴다.
   if (typeof addMasterSyncMenu_ === 'function') addMasterSyncMenu_(ui);
+}
+
+
+// ---------------------------------------------------------------- 새 캠프 시작 (D-053)
+//
+// 다음 캠프도 **같은 스프레드시트**로 한다(운영자 결정). 앱 주소·GAS 배포·PIN·Supabase 키를
+// 다시 만들지 않기 위해서다. 대신 지난 캠프는 **통째로 보관 사본**을 먼저 떠 둔다.
+//
+// 🔴 순서가 전부다 — 보관 사본이 **만들어진 뒤에만** 지운다. 사본에 실패하면 아무것도 안 지운다.
+// 🔴 명단(`마스터`)은 건드리지 않는다(운영자 결정) — 행정팀이 설문지·동기화로 관리하는 탭이다.
+//    지점·코스·일정·Config 도 그대로 둔다. 다음 캠프에서 사람이 고친다(가이드 참고).
+
+/** 새 캠프 시작 때 비우는 **운영 탭**. 헤더는 남긴다. */
+var RESET_SHEETS = [SHEETS.PROGRESS, SHEETS.JOURNAL, SHEETS.NOTICES, SHEETS.LOG, SHEETS.TEAMS];
+
+/** 메뉴. 확인 문구를 **직접 타이핑**해야 진행한다 — 실수로 누를 수 있는 버튼 하나로 두지 않는다. */
+function startNewCamp() {
+  var ui = SpreadsheetApp.getUi();
+  var camp = confStr_('CAMP_NAME', '캠프');
+  var counts = RESET_SHEETS.map(function (name) {
+    return resolveSheetName_(name) + ' ' + Math.max(getSheet_(name).getLastRow() - 1, 0) + '행';
+  });
+  var today = todayStr_();
+  var ahead = sessions_().filter(function (x) { return x.active && x.date && x.date >= today; });
+
+  var msg = [
+    '"' + camp + '" 을(를) 보관하고 다음 캠프를 준비합니다.',
+    '',
+    '① 이 스프레드시트 전체를 보관 사본으로 복사합니다 (같은 폴더).',
+    '② 운영 탭을 비웁니다: ' + counts.join(', '),
+    '③ 로그인을 모두 끊고(토큰 초기화), Supabase 진행 사본을 비웁니다.',
+    '',
+    '명단(' + resolveSheetName_('Participants') + ')·지점·코스·일정·Config 는 그대로 둡니다.'
+  ];
+  if (ahead.length) {
+    msg.push('', '⚠ 아직 끝나지 않은 회차가 있습니다: ' +
+      ahead.map(function (x) { return x.label + '(' + x.date + ')'; }).join(', '),
+      '   캠프 중이라면 여기서 멈추세요.');
+  }
+  msg.push('', '계속하려면 아래에 새 캠프 라고 입력하세요.');
+
+  var res = ui.prompt('새 캠프 시작', msg.join('\n'), ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK || str_(res.getResponseText()) !== '새 캠프') {
+    ui.alert('취소했습니다. 아무것도 바뀌지 않았습니다.');
+    return null;
+  }
+
+  var out = resetCamp_();
+  ui.alert([
+    '✅ 새 캠프 준비가 끝났습니다.',
+    '',
+    '보관 사본: ' + out.archiveName,
+    out.archiveUrl,
+    '비운 탭: ' + out.cleared.join(', '),
+    out.mirror === null ? '' : (out.mirror ? '사본(Supabase): 비움' : '⚠ 사본(Supabase) 비우기 실패 — Log 탭 확인'),
+    '',
+    '다음 할 일 (운영자 가이드 "다음 캠프" 절):',
+    '  1. Config — CAMP_NAME · CAMP_SUBTITLE · CAMP_TAGLINE · AUDIENCES',
+    '  2. 메뉴 "일정 변경" 으로 회차·날짜, Timeline 탭 일정',
+    '  3. Checkpoints · Courses 탭 — 지점·코스',
+    '  4. 명단은 행정팀이 정리 → 참가자ID 채우기 → 조 목록 동기화 → 명단 점검',
+    '  5. JOURNAL_OPEN · PROGRESS_OPEN 을 TRUE 로, (선택) 새 사진 폴더 DRIVE_FOLDER_ID',
+    '  6. 보관 사본의 공유 범위를 확인하세요 — 명단(개인정보)이 들어 있습니다'
+  ].filter(function (l) { return l !== null; }).join('\n'));
+  return out;
+}
+
+/**
+ * 실제 작업. UI 없이도 돈다(테스트).
+ * 반환: { archiveName, archiveUrl, cleared: ['Progress 12행', …], mirror: true|false|null }
+ */
+function resetCamp_() {
+  var ss = getSpreadsheet_();
+  var camp = confStr_('CAMP_NAME', '캠프');
+  var name = '[보관] ' + camp + ' ' + todayStr_();
+
+  // ① 보관 사본 — 🔴 실패하면 여기서 던진다. 아래는 하나도 실행되지 않는다.
+  var archive;
+  try {
+    var file = DriveApp.getFileById(ss.getId());
+    var parents = file.getParents();
+    archive = parents.hasNext() ? file.makeCopy(name, parents.next()) : file.makeCopy(name);
+  } catch (e) {
+    throw new AppError('SERVER_ERROR', '보관 사본을 만들지 못해 아무것도 지우지 않았습니다: ' + (e && e.message));
+  }
+
+  // 캠프 모드(10분 동기화)가 켜져 있으면 평소(하루 1회)로 — 빈 시트를 10분마다 밀 이유가 없다.
+  if (mirrorEnabled_()) {
+    clearMirrorTriggers_();
+    ScriptApp.newTrigger('mirrorDaily').timeBased().everyDays(1).atHour(4).create();
+  }
+
+  // ② 운영 탭 비우기 — 헤더(1행)는 남긴다.
+  var cleared = [];
+  withLock_(function () {
+    RESET_SHEETS.forEach(function (logical) {
+      var sh = getSheet_(logical);
+      var last = sh.getLastRow();
+      var rows = Math.max(last - 1, 0);
+      if (rows) sh.getRange(2, 1, rows, Math.max(sh.getLastColumn(), 1)).clearContent();
+      invalidateTable_(logical);
+      cleared.push(resolveSheetName_(logical) + ' ' + rows + '행');
+    });
+  });
+
+  // ③ 로그인 끊기 — 서명 키를 바꾸면 지난 캠프 토큰이 전부 무효다.
+  //    새 명단에서 참가자ID(P0001…)가 **다른 사람에게** 다시 붙을 수 있어서다.
+  PropertiesService.getScriptProperties().setProperty('TOKEN_SECRET',
+    Utilities.getUuid() + Utilities.getUuid());
+
+  // ④ 사본 — 진행 사본을 비우고 공개 데이터(공지 없음·일정)를 다시 민다. 사본은 없어도 된다.
+  var mirror = null;
+  if (mirrorEnabled_()) {
+    var del = supabaseDelete_(MIRROR_PROGRESS_TABLE, 'session=not.is.null', 'mirror.reset', 'progress_cache');
+    clearConfigCache();
+    mirror = del && mirrorPush();
+  }
+  clearConfigCache();
+
+  logEvent_('camp.reset', 'ADMIN', archive.getName ? archive.getName() : name, 'OK',
+    cleared.join(', ') + (mirror === false ? ' · 사본 실패' : ''));
+  return { archiveName: name, archiveUrl: archive.getUrl ? archive.getUrl() : '', cleared: cleared, mirror: mirror };
 }
