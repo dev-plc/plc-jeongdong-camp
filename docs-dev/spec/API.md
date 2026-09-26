@@ -248,7 +248,7 @@ fetch(API_BASE, {
 | `admin.notice.save` | `{ id?, target, title, body, pinned, endsAt? }` — `id` 가 없으면 만들고 있으면 고칩니다. `게시일시` 는 만들 때만 찍고 이후 건드리지 않습니다 |
 | `admin.notice.delete` | `{ id }` — 행을 **실제로 지웁니다**(일지와 달리 소프트 삭제가 아닙니다) |
 | `admin.progress.board` | 전 조 진행 현황 보드 — 조는 Teams 가 아니라 **명단에 실제로 존재하는 (참여 일자, 조 배정) 조합**에서 뽑습니다. 칸에 `scoreSource` (v16) |
-| (공개 설정) | `bootstrap.config` 에 `CAMP_TAGLINE` (문자열, 비면 숨김) · `AUDIENCES` (배열) 가 실립니다 (v17, D-053) |
+| (공개 설정) | `bootstrap.config` 에 `CAMP_TAGLINE` (문자열, 비면 숨김) · `AUDIENCES` (배열) 가 실립니다 (v18, D-053) |
 | `admin.progress.set` | `{ session, group, checkpoint, status?, score? }` (v16) — 칸 정정. 출처 `관리자`, 스태프 점수도 고칩니다. 사본까지 밀고 갱신된 보드를 돌려줍니다 |
 | `admin.fee.board` | 회비·보험 현황 집계 (읽기). 수납액/예상수입 합계 포함 |
 | `admin.config.set` | `{ key, value, note?, allowNew? }` — `Config` 값 변경. `note` 는 `설명` 열에 함께 기록됩니다. 반환: `publicConfig_()` (반영 후 공개 설정 전체). 설정·부트스트랩 캐시를 함께 비웁니다.<br>**없는 키는 거절됩니다** — 오타로 새 키가 조용히 생기는 것을 막기 위해서입니다(비슷한 키를 제안). 새 키를 정말 추가하려면 `allowNew: true` |
