@@ -1,4 +1,22 @@
 /**
+ * ────────────────────────────────────────────────────────────────
+ * Code.gs · v15 · 2026-09-26
+ * ────────────────────────────────────────────────────────────────
+ * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v15   2026-09-26  파일 버전 표시 · health 가 파일별 버전을 알려 준다
+ *  v13   2026-09-22  공지를 운영콘솔에서 쓴다
+ *  v13   2026-09-22  설정을 바꾸면 사본도 민다
+ *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
+ *  —     2026-09-19  진행 기록을 묶어서 보낸다
+ *
+ * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
+ *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
+ * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
+ * ────────────────────────────────────────────────────────────────
+ */
+var VERSION_CODE = 'v15';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+
+/**
  * Code.gs — 웹앱 진입점 및 라우팅
  *
  * PLC 정동 가을캠프 · 신앙탐험대
@@ -20,7 +38,7 @@ function doGet(e) {
       return jsonOk_(bootstrap_());
     }
     if (params.action === 'health') {
-      return jsonOk_({ ok: true, serverTime: nowIso_() });
+      return jsonOk_({ ok: true, serverTime: nowIso_(), versions: fileVersions_() });
     }
     throw new AppError('BAD_REQUEST', 'GET 으로는 지원하지 않는 액션입니다: ' + params.action);
   } catch (err) {
@@ -41,6 +59,28 @@ function doPost(e) {
   } catch (err) {
     return jsonErr_(err);
   }
+}
+
+/**
+ * 붙여넣은 `.gs` 파일들의 버전 (D-049).
+ *
+ * 🔴 **파일 하나를 빠뜨리고 배포하는 일을 잡으려고 둔다.** v13 은 `Sheets.gs` 가 빠진 채
+ * 나갔고, 공지 삭제만 `deleteRow_ is not defined` 로 터질 뻔했다 — 나머지는 멀쩡해서
+ * 늦게 발견되는 종류다. 배포 뒤 `?action=health` 를 열면 파일마다 버전이 보인다.
+ *
+ * 값이 `null` 이면 그 파일은 **버전 표시가 생기기 전의 옛 파일**이다. 다시 붙여넣는다.
+ * `typeof` 로 묻는 이유: 옛 파일에는 상수 자체가 없어 그냥 읽으면 여기서 터진다.
+ */
+function fileVersions_() {
+  return {
+    'Auth.gs':       typeof VERSION_AUTH       !== 'undefined' ? VERSION_AUTH       : null,
+    'Code.gs':       typeof VERSION_CODE       !== 'undefined' ? VERSION_CODE       : null,
+    'Journal.gs':    typeof VERSION_JOURNAL    !== 'undefined' ? VERSION_JOURNAL    : null,
+    'MasterSync.gs': typeof VERSION_MASTERSYNC !== 'undefined' ? VERSION_MASTERSYNC : null,
+    'Mirror.gs':     typeof VERSION_MIRROR     !== 'undefined' ? VERSION_MIRROR     : null,
+    'Setup.gs':      typeof VERSION_SETUP      !== 'undefined' ? VERSION_SETUP      : null,
+    'Sheets.gs':     typeof VERSION_SHEETS     !== 'undefined' ? VERSION_SHEETS     : null
+  };
 }
 
 // ---------------------------------------------------------------- 라우팅
