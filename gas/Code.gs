@@ -111,6 +111,8 @@ function route_(action, body) {
     case 'admin.journal.review':  return journalReview_(requireAdmin_(body), body);
     case 'admin.journal.update':  return journalUpdate_(requireAdmin_(body), body);
     case 'admin.journal.delete':  return journalDelete_(requireAdmin_(body), body);
+    case 'admin.journal.reviewBatch': return journalReviewBatch_(requireAdmin_(body), body);
+    case 'admin.journal.award':   return journalAward_(requireAdmin_(body), body);
     case 'admin.notice.list':     return noticeAll_(requireAdmin_(body));
     case 'admin.notice.save':     return noticeSave_(requireAdmin_(body), body);
     case 'admin.notice.delete':   return noticeDelete_(requireAdmin_(body), body);
