@@ -49,7 +49,12 @@
    > 독립형 스크립트로 만들면 `spreadsheets.currentonly` 권한으로는 시트를 찾지 못해
    > `스프레드시트를 찾을 수 없습니다` 로 실패합니다.
 3. `gas/` 안의 파일을 같은 이름으로 붙여넣기
-   (`Code.gs` `Auth.gs` `Sheets.gs` `Journal.gs` `Setup.gs` `MasterSync.gs`, 그리고 `appsscript.json`)
+   (`Code.gs` `Auth.gs` `Sheets.gs` `Journal.gs` `Setup.gs` `MasterSync.gs` `Mirror.gs`, 그리고 `appsscript.json`)
+
+   > 🔴 **GitHub 의 Raw 화면에서 복사하세요**(파일 화면 오른쪽 위 `Raw` → 전체 선택 → 복사).
+   > 코드 화면에서 전체 선택하면 긴 파일은 **보이는 부분만** 복사돼 끝이 잘립니다. 함수 경계에서 잘리면
+   > 저장·배포·`health` 가 모두 멀쩡해 보이는데 뒤쪽 함수만 없습니다 — v16 때 `Setup.gs` 끝의
+   > `onOpen` 이 빠져 **시트 메뉴가 사라졌습니다.** 붙여넣은 뒤 **마지막 줄 번호**를 안내된 줄 수와 대조하세요.
 
    > 🔴 **시트에 이미 있던 동기화 스크립트는 지우고 `MasterSync.gs` 하나만 두세요.**
    > Apps Script 는 파일이 달라도 전역 스코프를 공유해서, 같은 이름의 함수가 둘이면
