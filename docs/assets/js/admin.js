@@ -274,6 +274,7 @@
       statusFilterHtml() +
       '<div class="review-tools">' +
         '<button type="button" class="tab' + (state.photoOnly ? ' is-active' : '') + '" data-act="photoOnly">📷 사진 있는 글만</button>' +
+        '<button type="button" class="btn btn--ghost btn--sm" data-act="slides">🖼 슬라이드쇼</button>' +
         (shownWaiting.length > 1
           ? '<button type="button" class="btn btn--primary btn--sm" data-act="bulk" data-count="' + shownWaiting.length + '">' +
               '보이는 대기 ' + shownWaiting.length + '건 모두 승인</button>'
@@ -323,6 +324,7 @@
     var act0 = btn.getAttribute('data-act');
     if (act0 === 'photoOnly') { state.photoOnly = !state.photoOnly; paintReview(state.cache.review); return; }
     if (act0 === 'bulk') { bulkApprove(btn); return; }
+    if (act0 === 'slides') { slideshow(state.cache.review.items); return; }
     var card = btn.closest('[data-id]');
     var id = card.getAttribute('data-id');
     var act = btn.getAttribute('data-act');
@@ -770,6 +772,7 @@
         '<button type="button" class="btn btn--sm ' + (state.present ? 'btn--primary' : 'btn--ghost') + '" data-present>' +
           (state.present ? '닫기' : '크게 보기') + '</button>' +
         (state.present ? '' : '<button type="button" class="btn btn--ghost btn--sm" data-reload>새로고침</button>') +
+        '<button type="button" class="btn btn--ghost btn--sm" data-slides>🖼 슬라이드쇼</button>' +
       '</div>' +
       '<section class="card award"><h3 class="card__title">🧩 퀴즈 점수</h3>' + quizHtml + '</section>' +
       '<section class="card award"><h3 class="card__title">⏱ 소요 시간</h3>' + timeHtml + '</section>' +
@@ -788,6 +791,7 @@
       return;
     }
     if (e.target.closest('[data-reload]')) { invalidate('awards'); renderAwards(); return; }
+    if (e.target.closest('[data-slides]')) { slideshow(state.cache.awards.journals); return; }
     var btn = e.target.closest('[data-award]');
     if (!btn) return;
     var id = btn.closest('[data-id]').getAttribute('data-id');
@@ -803,6 +807,90 @@
         toast(on ? '★ 수상작으로 지정했습니다.' : '지정을 풀었습니다.');
       })
       .catch(function (err) { UI.setBusy(btn, false); toast(err.message, 'error'); });
+  }
+
+  // ------------------------------------------------------------ 🖼 슬라이드쇼 (D-053)
+  //
+  // 마무리 카페에서 **승인된 사진**을 큰 화면에 돌린다. 운영 콘솔을 켠 노트북을 빔에 물리면 된다.
+  // 🔴 승인된 글만 — 검수 전 사진이 화면에 뜨면 안 된다. 회차 필터를 따른다.
+
+  var SLIDE_MS = 6000;
+
+  function slideshow(journals) {
+    var list = (journals || []).filter(function (j) {
+      return j.status === '승인' && j.photoUrl && matchesSession(j.session);
+    }).sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+    if (!list.length) { toast('보여 줄 승인된 사진이 없습니다.', 'error'); return; }
+
+    var i = 0, playing = true, timer = null;
+    var wrap = document.createElement('div');
+    wrap.className = 'slides';
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-label', '사진 슬라이드쇼');
+    wrap.innerHTML =
+      '<img class="slides__img" alt="">' +
+      '<div class="slides__bar">' +
+        '<p class="slides__cap"></p>' +
+        '<div class="slides__ctl">' +
+          '<button type="button" data-s="prev" aria-label="이전">◀</button>' +
+          '<button type="button" data-s="play">멈춤</button>' +
+          '<button type="button" data-s="next" aria-label="다음">▶</button>' +
+          '<span class="slides__count"></span>' +
+          '<button type="button" data-s="close" aria-label="닫기">✕</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+
+    function show() {
+      var j = list[i];
+      var img = wrap.querySelector('.slides__img');
+      img.src = j.photoUrl;
+      img.alt = j.authorName + ' 사진';
+      wrap.querySelector('.slides__cap').innerHTML =
+        '<strong>' + esc(j.group) + ' · ' + esc(j.authorName) + '</strong>' +
+        (j.award ? ' <span class="slides__star">★</span>' : '') +
+        (j.text ? '<span>' + esc(j.text.length > 80 ? j.text.slice(0, 80) + '…' : j.text) + '</span>' : '');
+      wrap.querySelector('.slides__count').textContent = (i + 1) + ' / ' + list.length;
+      wrap.setAttribute('data-index', String(i));
+    }
+    function step(d) { i = (i + d + list.length) % list.length; show(); restart(); }
+    function restart() {
+      if (timer) clearInterval(timer);
+      timer = playing ? setInterval(function () { i = (i + 1) % list.length; show(); }, SLIDE_MS) : null;
+    }
+    function toggle() {
+      playing = !playing;
+      var b = wrap.querySelector('[data-s="play"]');
+      b.textContent = playing ? '멈춤' : '재생';
+      wrap.classList.toggle('is-paused', !playing);
+      restart();
+    }
+    function close() {
+      if (timer) clearInterval(timer);
+      document.removeEventListener('keydown', onKey);
+      try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) { /* 무시 */ }
+      wrap.remove();
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') close();
+      else if (e.key === 'ArrowRight') step(1);
+      else if (e.key === 'ArrowLeft') step(-1);
+      else if (e.key === ' ') { e.preventDefault(); toggle(); }
+    }
+    wrap.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-s]');
+      if (!b) return;
+      var a = b.getAttribute('data-s');
+      if (a === 'close') close();
+      else if (a === 'prev') step(-1);
+      else if (a === 'next') step(1);
+      else if (a === 'play') toggle();
+    });
+    document.addEventListener('keydown', onKey);
+    // 전체 화면은 되면 좋고 안 되면 그만이다(브라우저·권한에 따라 막힌다).
+    try { if (wrap.requestFullscreen) wrap.requestFullscreen().catch(function () {}); } catch (e) { /* 무시 */ }
+    show();
+    restart();
   }
 
   // ------------------------------------------------------------ 회비
