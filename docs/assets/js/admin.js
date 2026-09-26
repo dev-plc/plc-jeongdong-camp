@@ -18,7 +18,8 @@
     jstatus: '대기',        // 일지 관리의 상태 필터. 기본은 지금 하던 일(검수대기)
     // 🔴 화면당 한 번만 가져오고, 필터는 **이 데이터로** 돈다 (D-046).
     //    예전에는 필터를 누를 때마다 서버를 다시 불렀다.
-    cache: { review: null, progress: null, fee: null }
+    editingNotice: null,   // 수정 중인 공지 id (null 이면 새로 쓰기)
+    cache: { review: null, progress: null, fee: null, notice: null }
   };
 
   /** 항목 이름은 서버가 내려주는 마스터시트 헤더를 그대로 쓴다(bootstrap.labels). */
@@ -35,6 +36,7 @@
       // 🔴 탭을 옮기면 그 화면 캐시를 버린다. "다시 보려고 눌렀는데 옛 값" 이면 안 된다.
       state.view = btn.getAttribute('data-view');
       state.cache[state.view] = null;
+      state.editingNotice = null;
       render();
     });
 
@@ -58,12 +60,29 @@
     });
 
     if (state.view === 'review') renderReview();
+    else if (state.view === 'notice') renderNotice();
     else if (state.view === 'progress') renderProgress();
     else if (state.view === 'fee') renderFee();
     else if (state.view === 'settings') renderSettings();
   }
 
-  function setView(html) { $('#view').innerHTML = html; }
+  /**
+   * 🔴 **클릭 핸들러는 `setView` 가 소유한다** (D-048).
+   *
+   * `#view` 는 살아남고 `innerHTML` 만 갈리므로, 그릴 때마다 `addEventListener` 를
+   * 부르면 리스너가 **쌓인다.** 일지 검수에서 상태 필터를 세 번 누르고 승인을
+   * 누르면 승인 요청이 세 번 나갔다 — 공지 삭제 테스트가 모달 두 개로 이것을 잡았다.
+   * 이전 것을 떼고 새로 단다.
+   */
+  var viewClick = null;
+
+  function setView(html, onClick) {
+    var v = $('#view');
+    if (viewClick) v.removeEventListener('click', viewClick);
+    viewClick = onClick || null;
+    v.innerHTML = html;
+    if (viewClick) v.addEventListener('click', viewClick);
+  }
 
   /**
    * 🔴 **가져오기와 그리기를 나눈다** (D-046).
@@ -229,10 +248,10 @@
       statusFilterHtml() +
       (items.length
         ? '<div class="grid">' + items.map(reviewCard).join('') + '</div>'
-        : '<p class="empty">해당하는 일지가 없습니다.</p>')
+        : '<p class="empty">해당하는 일지가 없습니다.</p>'),
+      onReviewClick
     );
     bindStatusFilter(function () { paintReview(data); });
-    $('#view').addEventListener('click', onReviewClick);
   }
 
   function reviewCard(item) {
@@ -298,6 +317,150 @@
         toast(payload.decision + ' 처리했습니다.');
       })
       .catch(function (err) { UI.setBusy(btn, false); toast(err.message, 'error'); });
+  }
+
+  // ------------------------------------------------------------ 공지 (D-048)
+  //
+  // 예전에는 `Config` 의 **상단 한 줄 공지**만 콘솔에서 고칠 수 있었다. 홈의 공지 카드는
+  // `Notices` 탭에서 오는데, 그걸 쓰려면 시트를 열어야 했다 — 캠프 당일 폰으로는 무리다.
+
+  function renderNotice() { loadThenPaint('notice', 'admin.notice.list', paintNotice); }
+
+  function paintNotice(data) {
+    var editing = state.editingNotice
+      ? data.items.filter(function (n) { return n.id === state.editingNotice; })[0]
+      : null;
+
+    setView(
+      '<section class="section-head"><h2>공지</h2>' +
+        '<p class="hint">참가자 홈 화면에 카드로 뜹니다. 앱바 아래 <strong>한 줄 띠</strong>는 ' +
+        '설정 탭의 "상단 한 줄 공지" 로 따로 관리합니다.</p></section>' +
+      noticeFormHtml(data.targets, editing) +
+      (data.items.length
+        ? '<div class="grid">' + data.items.map(noticeCard).join('') + '</div>'
+        : '<p class="empty">아직 올린 공지가 없습니다.</p>'),
+      onNoticeClick
+    );
+
+    bindNoticeForm(data);
+  }
+
+  function noticeFormHtml(targets, editing) {
+    var n = editing || {};
+    return '<form id="noticeForm" class="card card--form">' +
+      '<h2 class="card__title">' + (editing ? '공지 수정' : '새 공지') + '</h2>' +
+      '<label class="field"><span class="field__label">대상</span>' +
+        '<select class="input" name="target">' +
+          (targets || ['전체']).map(function (t) {
+            return '<option value="' + esc(t) + '"' +
+              ((n.target || '전체') === t ? ' selected' : '') + '>' + esc(t) + '</option>';
+          }).join('') +
+        '</select></label>' +
+      '<label class="field"><span class="field__label">제목</span>' +
+        '<input class="input" type="text" name="title" maxlength="60" ' +
+        'value="' + esc(n.title || '') + '" placeholder="점심 도시락 안내"></label>' +
+      '<label class="field"><span class="field__label">내용</span>' +
+        '<textarea class="input" name="body" rows="3" maxlength="500">' + esc(n.body || '') + '</textarea></label>' +
+      '<label class="check"><input type="checkbox" name="pinned"' + (n.pinned ? ' checked' : '') + '> ' +
+        '맨 위에 고정</label>' +
+      '<label class="field"><span class="field__label">종료일시 <em>(비우면 무기한)</em></span>' +
+        '<input class="input" type="datetime-local" name="endsAt" ' +
+        'value="' + esc(toLocalInput(n.endsAt)) + '"></label>' +
+      '<button class="btn btn--primary btn--block" type="submit">' +
+        (editing ? '저장' : '올리기') + '</button>' +
+      (editing
+        ? '<button type="button" class="btn btn--ghost btn--block" data-act="cancel">취소</button>'
+        : '') +
+      // 🔴 대상은 앱에서 한 번 더 걸린다. 이걸 모르면 "올렸는데 안 보인다" 가 된다.
+      '<p class="hint">대상이 <strong>전체</strong>가 아니면 그 ' +
+        esc(L('session', '참여 일자')) + ' · ' + esc(L('audience', '캠프 대상')) +
+        ' 참가자에게만 보입니다.</p>' +
+      '</form>';
+  }
+
+  /** '2026-09-30T10:00:00+09:00' → '2026-09-30T10:00' (datetime-local 이 받는 모양) */
+  function toLocalInput(iso) {
+    var m = String(iso || '').match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+    return m ? m[1] + 'T' + m[2] : '';
+  }
+
+  function noticeCard(n) {
+    var cls = n.status === '게시중' ? 'done' : n.status === '예약' ? 'wait' : 'reject';
+    return '<article class="jcard" data-id="' + esc(n.id) + '" data-status="' + esc(n.status) + '">' +
+      '<div class="jcard__body">' +
+        '<p class="jcard__meta">' +
+          '<span class="chip chip--' + cls + '">' + esc(n.status) + '</span> ' +
+          '<strong>' + esc(n.target) + '</strong>' +
+          (n.pinned ? ' · 📌 고정' : '') +
+          (n.endsAt ? ' · ~' + esc(UI.prettyDateTime(n.endsAt)) : '') +
+        '</p>' +
+        (n.title ? '<h3 class="card__title">' + esc(n.title) + '</h3>' : '') +
+        (n.body ? '<p class="jcard__text">' + nl2br(esc(n.body)) + '</p>' : '') +
+        '<div class="jcard__actions">' +
+          '<button type="button" class="btn btn--ghost btn--sm" data-act="edit">수정</button>' +
+          '<button type="button" class="btn btn--ghost btn--sm btn--danger-text" data-act="delete">삭제</button>' +
+        '</div>' +
+      '</div>' +
+    '</article>';
+  }
+
+  function bindNoticeForm(data) {
+    var form = $('#noticeForm');
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var btn = form.querySelector('button[type="submit"]');
+      UI.setBusy(btn, true, '저장 중…');
+      API.call('admin.notice.save', {
+        id: state.editingNotice || '',
+        target: form.target.value,
+        title: form.title.value.trim(),
+        body: form.body.value.trim(),
+        pinned: form.pinned.checked,
+        endsAt: form.endsAt.value          // 빈 문자열이면 무기한으로 되돌린다
+      })
+        .then(function () {
+          state.editingNotice = null;
+          invalidate('notice');            // 옛 목록을 그리면 화면이 거짓말한다 (D-046)
+          renderNotice();
+          toast('공지를 올렸습니다.');
+        })
+        .catch(function (err) { UI.setBusy(btn, false); toast(err.message, 'error'); });
+    });
+  }
+
+  function onNoticeClick(e) {
+    var btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    var act = btn.getAttribute('data-act');
+
+    if (act === 'cancel') {
+      state.editingNotice = null;
+      paintNotice(state.cache.notice);     // 서버를 다시 부르지 않는다
+      return;
+    }
+    var card = btn.closest('[data-id]');
+    if (!card) return;
+    var id = card.getAttribute('data-id');
+
+    if (act === 'edit') {
+      state.editingNotice = id;
+      paintNotice(state.cache.notice);
+      $('#view').scrollTop = 0;
+      return;
+    }
+    if (act === 'delete') {
+      UI.confirmDialog('이 공지를 지울까요?\n참가자 화면에서 바로 사라집니다.', '삭제').then(function (yes) {
+        if (!yes) return;
+        API.call('admin.notice.delete', { id: id })
+          .then(function () {
+            if (state.editingNotice === id) state.editingNotice = null;
+            invalidate('notice');
+            renderNotice();
+            toast('지웠습니다.');
+          })
+          .catch(function (err) { toast(err.message, 'error'); });
+      });
+    }
   }
 
   // ------------------------------------------------------------ 진행 현황
@@ -430,6 +593,8 @@
         }).join('') + '</ul></section>' +
 
       '<section class="card"><h2 class="card__title">상단 한 줄 공지</h2>' +
+        '<p class="hint">앱바 바로 아래 띠입니다. 홈 화면의 <strong>공지 카드</strong>는 ' +
+          '<strong>공지</strong> 탭에서 따로 관리합니다.</p>' +
         '<label class="field"><input class="input" id="tickerInput" type="text" maxlength="120" ' +
           'value="' + esc(c.NOTICE_TICKER || '') + '" placeholder="비우면 숨겨집니다"></label>' +
         '<button type="button" class="btn btn--primary btn--block" id="tickerSave">저장</button>' +
@@ -473,7 +638,7 @@
         state.boot.config = config;
         try { sessionStorage.removeItem('plc_jd_bootstrap'); } catch (e) { /* 무시 */ }
         // 설정이 바뀌면 다른 화면의 표도 달라질 수 있다(마감 여부·라벨 등).
-        invalidate('review'); invalidate('progress'); invalidate('fee');
+        invalidate('review'); invalidate('progress'); invalidate('fee'); invalidate('notice');
         renderSettings();
         toast(message || '저장했습니다.');
       })

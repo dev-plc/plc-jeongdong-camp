@@ -419,6 +419,44 @@ body { padding-top: var(--demobar-h, 76px); }
         journals = journals.filter(function (j) { return j.id !== body.id; });
         return { id: body.id, status: '삭제' };
 
+      // 공지 관리 (D-048). 이미 있는 NOTICES 배열을 원장으로 쓴다.
+      case 'admin.notice.list': {
+        var nlist = NOTICES.map(function (n) {
+          return Object.assign({ endsAt: '', status: '게시중' }, n);
+        });
+        return { items: nlist, total: nlist.length,
+                 targets: ['전체', '청년부', '장년부'].concat(SESSIONS.map(function (s) { return s.label; })) };
+      }
+
+      case 'admin.notice.save': {
+        var saved;
+        if (body.id) {
+          saved = NOTICES.filter(function (n) { return n.id === body.id; })[0];
+          if (!saved) return { __error: { code: 'NOT_FOUND', message: '찾을 수 없습니다.' } };
+        } else {
+          saved = { id: 'N' + (++seq), publishedAt: '2026-10-24T15:30:00+09:00' };
+          NOTICES.unshift(saved);
+        }
+        saved.target = body.target || '전체';
+        saved.title = body.title || '';
+        saved.body = body.body || '';
+        saved.pinned = !!body.pinned;
+        saved.endsAt = body.endsAt || '';
+        if (!saved.title && !saved.body) {
+          return { __error: { code: 'BAD_REQUEST', message: '제목이나 내용 중 하나는 있어야 합니다.' } };
+        }
+        return Object.assign({ status: '게시중' }, saved);
+      }
+
+      case 'admin.notice.delete': {
+        var before = NOTICES.length;
+        NOTICES = NOTICES.filter(function (n) { return n.id !== body.id; });
+        if (NOTICES.length === before) {
+          return { __error: { code: 'NOT_FOUND', message: '찾을 수 없습니다.' } };
+        }
+        return { id: body.id };
+      }
+
       case 'admin.progress.board':
         return {
           checkpoints: CHECKPOINTS.map(function (c) { return { code: c.code, name: c.name }; }),
@@ -567,7 +605,8 @@ ${adminJs}
 
   // 탭바 구성은 모드마다 다르다.
   var tabs = (mode === 'admin')
-    ? [['review', '✅', '일지 검수'], ['progress', '🧭', '진행 현황'], ['fee', '💳', '회비'], ['settings', '⚙️', '설정']]
+    ? [['review', '✅', '일지 검수'], ['notice', '📢', '공지'], ['progress', '🧭', '진행 현황'],
+       ['fee', '💳', '회비'], ['settings', '⚙️', '설정']]
     : [['home', '🏛', '홈'], ['course', '🧭', '코스'], ['journal', '📓', '탐험일지'], ['me', '👤', '내 정보']];
 
   document.getElementById('tabbar').innerHTML = tabs.map(function (t, i) {
