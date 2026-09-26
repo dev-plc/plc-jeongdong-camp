@@ -267,6 +267,20 @@ function invalidateTable_(name) {
   delete __tableCache[name];
 }
 
+/**
+ * 행을 **실제로** 지운다 (D-048).
+ *
+ * 🔴 지우면 뒤 행의 번호가 한 칸씩 당겨진다. 캐시에 든 `__row` 가 전부 어긋나므로
+ * 반드시 버린다. 부르는 쪽은 이 뒤에 들고 있던 행 번호를 쓰면 안 된다.
+ *
+ * 일지는 `상태=삭제` 로 남기지만(D-009) `Notices` 에는 `상태` 칸이 없고,
+ * 잘못 올린 공지가 흔적으로 남을 이유도 없다.
+ */
+function deleteRow_(sheetName, rowIndex) {
+  getSheet_(sheetName).deleteRow(rowIndex);
+  invalidateTable_(sheetName);
+}
+
 /** 헤더를 새로 쓴 뒤(setupSpreadsheet) 호출한다. */
 function invalidateHeaders_() {
   __headerCache = {};

@@ -68,6 +68,9 @@ function route_(action, body) {
     case 'admin.journal.review':  return journalReview_(requireAdmin_(body), body);
     case 'admin.journal.update':  return journalUpdate_(requireAdmin_(body), body);
     case 'admin.journal.delete':  return journalDelete_(requireAdmin_(body), body);
+    case 'admin.notice.list':     return noticeAll_(requireAdmin_(body));
+    case 'admin.notice.save':     return noticeSave_(requireAdmin_(body), body);
+    case 'admin.notice.delete':   return noticeDelete_(requireAdmin_(body), body);
     case 'admin.progress.board':  return progressBoard_(requireAdmin_(body));
     case 'admin.fee.board':       return feeBoard_(requireAdmin_(body));
     case 'admin.config.set':      return configSet_(requireAdmin_(body), body);
@@ -230,6 +233,124 @@ function activeNotices_() {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
       return b.publishedAt.localeCompare(a.publishedAt);
     });
+}
+
+// ---------------------------------------------------------------- 공지 관리 (D-048)
+//
+// `activeNotices_` 는 **지금 보이는 것만** 준다. 운영콘솔은 예약·종료된 것까지 봐야
+// 고치고 지울 수 있다 — `journalPending_` 과 `journalAll_` 의 관계와 같다 (D-046).
+
+/** 공지 하나를 앱이 쓰는 모양으로. `activeNotices_` 와 같은 칸을 쓴다. */
+function serializeNotice_(r, now) {
+  var from = r['게시일시'] ? new Date(toIso_(r['게시일시'])) : null;
+  var to = r['종료일시'] ? new Date(toIso_(r['종료일시'])) : null;
+
+  // 상태는 **서버가 정한다.** 화면이 날짜를 다시 해석하면 둘이 어긋난다.
+  var status = '게시중';
+  if (from && !isNaN(from) && from > now) status = '예약';
+  else if (to && !isNaN(to) && to < now) status = '종료';
+
+  return {
+    id: str_(r['공지ID']),
+    target: str_(r['대상']) || '전체',
+    title: str_(r['제목']),
+    body: str_(r['내용']),
+    pinned: bool_(r['고정']),
+    publishedAt: toIso_(r['게시일시']),
+    endsAt: toIso_(r['종료일시']),
+    status: status
+  };
+}
+
+/** 앱에서 고를 수 있는 대상. 시트 드롭다운(`applyValidation_`)과 **같은 목록**이다. */
+function noticeTargets_() {
+  return ['전체'].concat(ENUM.AUDIENCE).concat(sessionLabels_());
+}
+
+function noticeAll_(ctx) {
+  var now = new Date();
+  var items = readTable_(SHEETS.NOTICES)
+    .filter(function (r) { return str_(r['제목']) || str_(r['내용']); })
+    .map(function (r) { return serializeNotice_(r, now); })
+    .sort(function (a, b) {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      return b.publishedAt.localeCompare(a.publishedAt);
+    });
+  return { items: items, total: items.length, targets: noticeTargets_() };
+}
+
+/** `id` 가 없으면 새로 만들고, 있으면 고친다. */
+function noticeSave_(ctx, body) {
+  var title = str_(body.title);
+  var text = str_(body.body);
+  // 제목도 내용도 없으면 `activeNotices_` 가 걸러 버려 **보이지 않는 유령 행**이 된다.
+  if (!title && !text) throw new AppError('BAD_REQUEST', '제목이나 내용 중 하나는 있어야 합니다.');
+
+  var target = str_(body.target) || '전체';
+  if (noticeTargets_().indexOf(target) < 0) {
+    throw new AppError('BAD_REQUEST', '대상이 올바르지 않습니다: ' + target);
+  }
+
+  var id = str_(body.id);
+  var patch = {
+    '대상': target,
+    '제목': title,
+    '내용': text,
+    '고정': body.pinned ? 'TRUE' : 'FALSE'
+  };
+  // 🔴 `종료일시` 는 **보냈을 때만** 건드린다. 안 보낸 키를 덮어쓰지 않는 규칙 그대로다
+  //    (D-037). 빈 문자열은 "무기한으로 되돌린다" 는 뜻이라 그대로 넣는다.
+  if (body.endsAt !== undefined) {
+    patch['종료일시'] = str_(body.endsAt) ? new Date(str_(body.endsAt)) : '';
+  }
+
+  var saved = withLock_(function () {
+    if (id) {
+      var row = null;
+      readTable_(SHEETS.NOTICES).forEach(function (r) { if (str_(r['공지ID']) === id) row = r; });
+      if (!row) throw new AppError('NOT_FOUND', '해당 공지를 찾을 수 없습니다.');
+      // `게시일시` 는 패치에 없다 → 시트에 넣어 둔 예약 시각이 그대로 남는다.
+      updateRow_(SHEETS.NOTICES, row.__row, patch);
+      logEvent_('admin.notice.save', 'ADMIN', id, 'UPDATE', title);
+    } else {
+      id = nextId_(SHEETS.NOTICES, '공지ID', 'N', 3);
+      patch['공지ID'] = id;
+      patch['게시일시'] = nowStamp_();      // 만들면 바로 게시다. 예약은 시트에서.
+      appendRow_(SHEETS.NOTICES, patch);
+      logEvent_('admin.notice.save', 'ADMIN', id, 'CREATE', title);
+    }
+    // 🔴 `bootstrap_` 은 300초 캐시다. 이걸 안 비우면 **낡은 사본을 밀어 버린다** —
+    //    테스트가 빈 공지 목록이 나가는 것을 잡았다 (D-047 과 같은 실수).
+    clearConfigCache();
+    var out = null;
+    readTable_(SHEETS.NOTICES).forEach(function (r) { if (str_(r['공지ID']) === id) out = r; });
+    return serializeNotice_(out, new Date());
+  });
+
+  // 🔴 공지는 bootstrap 에 실려 간다. 안 밀면 참가자 화면은 최대 26시간 옛 공지를
+  //    본다 (D-047). 락 **밖**이다 (D-044).
+  mirrorPush();
+  return saved;
+}
+
+function noticeDelete_(ctx, body) {
+  var id = str_(body.id);
+  if (!id) throw new AppError('BAD_REQUEST', '공지를 지정해 주세요.');
+
+  var out = withLock_(function () {
+    var row = null;
+    readTable_(SHEETS.NOTICES).forEach(function (r) { if (str_(r['공지ID']) === id) row = r; });
+    if (!row) throw new AppError('NOT_FOUND', '해당 공지를 찾을 수 없습니다.');
+    // 일지와 달리 소프트 삭제가 아니다 — `Notices` 에는 `상태` 칸이 없고,
+    // 잘못 올린 공지가 흔적으로 남을 이유도 없다.
+    deleteRow_(SHEETS.NOTICES, row.__row);
+    clearConfigCache();        // 낡은 bootstrap 을 밀지 않는다 (D-047)
+    logEvent_('admin.notice.delete', 'ADMIN', id, 'OK', str_(row['제목']));
+    return { id: id };
+  });
+
+  mirrorPush();          // 락 밖 (D-047)
+  return out;
 }
 
 /** 참여 일자별 타임라인. { '10/31(토)': [...], '11/07(토)': [...] } */
