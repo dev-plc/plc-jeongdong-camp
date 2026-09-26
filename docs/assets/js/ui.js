@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v15 · 2026-09-26
+ * ui.js · v15.1 · 2026-09-26
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v15.1 2026-09-26  상대 시각 도우미 (N분 전 · 오늘 날짜 · HH:MM→분) (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  —     2026-09-18  진행 기록을 낙관적으로 반영하고, 실패하면 되돌린다
  *  —     2026-09-18  실패에 이름을, 왕복 시간에 서버 시간을 붙인다
  *  —     2026-09-17  응답 시간 실측 붙이기 (?perf=1)
- *  —     2026-09-17  폰에서 갤러리 사진 선택 / 로그인 화면 날짜 선택 제거
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -172,6 +172,41 @@
       sign + p2(Math.floor(Math.abs(off) / 60)) + ':' + p2(Math.abs(off) % 60);
   }
 
+  // ---------------------------------------------------------------- 지금 기준 (D-050)
+  //
+  // 🔴 **"지금" 은 폰 시계로 판단한다.** bootstrap 의 `serverTime` 을 쓰면 안 된다 —
+  // 미러에서 받은 bootstrap 은 **마지막 푸시 시각**을 싣고 있어 몇 시간 전일 수 있다.
+  // 폰 시계는 통신사 시각에 맞춰져 있어 이 용도로는 충분하다.
+
+  /** 기기 기준 오늘 'YYYY-MM-DD'. 회차 날짜(`sessions[].date`)와 견준다. */
+  function localDate(date) {
+    return localIso(date).slice(0, 10);
+  }
+
+  /** '09:30' → 570 (자정부터 분). 형식이 아니면 null. */
+  function hmToMin(hm) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(hm || '').trim());
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  }
+
+  /** ISO 시각이 지금부터 몇 분 전인지. 폰 시계가 조금 늦어 미래로 나오면 0. */
+  function minutesSince(iso, nowMs) {
+    if (!iso) return null;
+    var t = new Date(iso).getTime();
+    if (isNaN(t)) return null;
+    var d = Math.floor(((nowMs === undefined ? Date.now() : nowMs) - t) / 60000);
+    return d < 0 ? 0 : d;
+  }
+
+  /** 12 → '12분 전', 75 → '1시간 15분 전' */
+  function agoText(min) {
+    if (min === null || min === undefined) return '';
+    if (min < 1) return '방금';
+    if (min < 60) return min + '분 전';
+    var h = Math.floor(min / 60), r = min % 60;
+    return h + '시간 ' + (r ? r + '분 ' : '') + '전';
+  }
+
   /** '2026-10-31T14:05:00+09:00' → '10월 31일 14:05' */
   function prettyDateTime(iso) {
     if (!iso) return '';
@@ -331,6 +366,7 @@
     $: $, $$: $$, esc: esc, nl2br: nl2br,
     toast: toast, confirmDialog: confirmDialog, setBusy: setBusy,
     resizePhoto: resizePhoto, hhmm: hhmm, localIso: localIso, prettyDateTime: prettyDateTime,
+    localDate: localDate, hmToMin: hmToMin, minutesSince: minutesSince, agoText: agoText,
     perfPanel: perfPanel, perfEnabled: perfEnabled
   };
 })(window);
