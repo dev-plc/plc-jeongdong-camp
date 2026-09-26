@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v15.1 · 2026-09-26
+ * admin.js · v16 · 2026-09-26
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v16   2026-09-26  진행 칸 정정, 🏆 시상, 일지 일괄 승인 (D-052)
  *  v15.1 2026-09-26  진행표를 조별 카드로 + 40분 무소식 ⚠ (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v14   2026-09-22  공지를 운영콘솔에서 쓴다
  *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
- *  —     2026-09-17  회차 활성/비활성 스위치 + 관리자 콘솔 회차 필터
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -18,7 +18,7 @@
 /**
  * admin.js — 운영 콘솔 (관리자 PIN)
  *
- * 화면: 일지 검수 / 진행 현황 / 회비 / 설정
+ * 화면: 일지 검수 / 공지 / 진행 현황 / 시상 / 회비 / 설정
  * 참가자 앱과 같은 브라우저에서 동시에 쓰는 일이 많으므로 토큰 저장 키를 분리한다.
  * (api.js 가 APP_CONFIG.TOKEN_KEY 를 호출 시점에 읽으므로 여기서 덮어써도 안전하다.)
  */
@@ -36,7 +36,9 @@
     // 🔴 화면당 한 번만 가져오고, 필터는 **이 데이터로** 돈다 (D-046).
     //    예전에는 필터를 누를 때마다 서버를 다시 불렀다.
     editingNotice: null,   // 수정 중인 공지 id (null 이면 새로 쓰기)
-    cache: { review: null, progress: null, fee: null, notice: null }
+    photoOnly: false,      // 일지 관리 — 사진 있는 글만 (D-052)
+    present: false,        // 시상 — 크게 보기(발표용)
+    cache: { review: null, progress: null, fee: null, notice: null, awards: null }
   };
 
   /** 항목 이름은 서버가 내려주는 마스터시트 헤더를 그대로 쓴다(bootstrap.labels). */
@@ -54,6 +56,8 @@
       state.view = btn.getAttribute('data-view');
       state.cache[state.view] = null;
       state.editingNotice = null;
+      state.present = false;
+      document.body.classList.remove('is-present');
       render();
     });
 
@@ -79,6 +83,7 @@
     if (state.view === 'review') renderReview();
     else if (state.view === 'notice') renderNotice();
     else if (state.view === 'progress') renderProgress();
+    else if (state.view === 'awards') renderAwards();
     else if (state.view === 'fee') renderFee();
     else if (state.view === 'settings') renderSettings();
   }
@@ -254,15 +259,25 @@
 
   function paintReview(data) {
     var items = data.items.filter(function (it) {
-      return state.jstatus === '전체' || it.status === state.jstatus;
+      return (state.jstatus === '전체' || it.status === state.jstatus) &&
+        (!state.photoOnly || it.photoUrl);
     });
     var waiting = data.items.filter(function (it) { return it.status === '대기'; }).length;
+    // 🔴 일괄 승인은 **지금 보이는** 대기 글만 — 필터로 걸러 둔 글까지 승인하면 안 된다 (D-052)
+    var shownWaiting = items.filter(function (it) { return it.status === '대기'; });
 
     setView(
       '<section class="section-head"><h2>탐험일지 관리</h2>' +
         '<p class="hint">검수 대기 ' + waiting + '건 · 전체 ' + data.total + '건. ' +
         '승인해야 갤러리에 보입니다. 초상권·개인정보가 드러나는 사진은 반려해 주세요.</p></section>' +
       statusFilterHtml() +
+      '<div class="review-tools">' +
+        '<button type="button" class="tab' + (state.photoOnly ? ' is-active' : '') + '" data-act="photoOnly">📷 사진 있는 글만</button>' +
+        (shownWaiting.length > 1
+          ? '<button type="button" class="btn btn--primary btn--sm" data-act="bulk" data-count="' + shownWaiting.length + '">' +
+              '보이는 대기 ' + shownWaiting.length + '건 모두 승인</button>'
+          : '') +
+      '</div>' +
       (items.length
         ? '<div class="grid">' + items.map(reviewCard).join('') + '</div>'
         : '<p class="empty">해당하는 일지가 없습니다.</p>'),
@@ -304,6 +319,9 @@
   function onReviewClick(e) {
     var btn = e.target.closest('[data-act]');
     if (!btn) return;
+    var act0 = btn.getAttribute('data-act');
+    if (act0 === 'photoOnly') { state.photoOnly = !state.photoOnly; paintReview(state.cache.review); return; }
+    if (act0 === 'bulk') { bulkApprove(btn); return; }
     var card = btn.closest('[data-id]');
     var id = card.getAttribute('data-id');
     var act = btn.getAttribute('data-act');
@@ -322,6 +340,25 @@
           .catch(function (err) { toast(err.message, 'error'); });
       });
     }
+  }
+
+  /** 보이는 대기 글을 한 번에 승인 (D-052). 요청 하나 · 락 한 번. */
+  function bulkApprove(btn) {
+    var ids = UI.$$('#view .jcard[data-status="대기"]').map(function (el) { return el.getAttribute('data-id'); });
+    if (!ids.length) return;
+    UI.confirmDialog('보이는 대기 글 ' + ids.length + '건을 모두 승인할까요?\n승인하면 갤러리에 보입니다.', '모두 승인')
+      .then(function (yes) {
+        if (!yes) return;
+        UI.setBusy(btn, true, '승인 중…');
+        API.call('admin.journal.reviewBatch', { ids: ids, decision: '승인' })
+          .then(function (r) {
+            invalidate('review');
+            renderReview();
+            toast(r.approved.length + '건 승인했습니다.' +
+              (r.skipped.length ? ' (' + r.skipped.length + '건은 이미 처리돼 건너뜀)' : ''));
+          })
+          .catch(function (err) { UI.setBusy(btn, false); toast(err.message, 'error'); });
+      });
   }
 
   function submitReview(card, btn, payload) {
@@ -484,57 +521,8 @@
 
   function renderProgress() { loadThenPaint('progress', 'admin.progress.board', paintProgress); }
 
-  // 🔴 **완주 전인데 이만큼 새 기록이 없으면 ⚠** (D-050).
-  //    업무계획서 일정이 지점 체류 25분 + 이동 10분이다. 그걸 넘기면 늦거나 길을 잃은 조다.
-  var STALE_MIN = 40;
-
-  /**
-   * 조별 카드 (D-050).
-   *
-   * 🔴 예전 표는 폰에서 **진행 칸이 화면 밖**이었다 — 일자·대상·조·조장·인원 다섯 칸이 폭을
-   * 먹었다. 당일 운영진은 폰을 본다. 카드 한 장에 조의 네 지점을 코스 순서대로 한 줄에 놓고,
-   * 마지막 기록이 몇 분 전인지 보인다. 표는 "표로 보기" 로 남긴다(넓은 화면·인쇄용).
-   */
-  function teamCard(t, checkpoints, showSession, nowMs) {
-    var nameOf = {};
-    checkpoints.forEach(function (c) { nameOf[c.code] = c.name; });
-
-    var done = 0, last = '';
-    var steps = t.route.map(function (code, i) {
-      var cell = t.cells[code] || {};
-      var status = cell.status || '대기';
-      if (status === '완료') done++;
-      [cell.arrivedAt, cell.completedAt].forEach(function (x) { if (x && x > last) last = x; });
-      var cls = status === '완료' ? 'done' : status === '도착' ? 'here' : 'wait';
-      var time = UI.hhmm(cell.completedAt || cell.arrivedAt);
-      return '<li class="step step--' + cls + '" title="' + esc((nameOf[code] || code) + ' · ' + status) + '">' +
-        '<span class="step__top">' + (i + 1) + (time ? ' · ' + esc(time) : '') + '</span>' +
-        '<span class="step__name">' + esc(nameOf[code] || code) + '</span></li>';
-    }).join('');
-
-    var total = t.route.length;
-    var finished = total > 0 && done === total;
-    var ago = UI.minutesSince(last, nowMs);
-    var stale = !finished && ago !== null && ago >= STALE_MIN;
-
-    return '<article class="team-card' + (stale ? ' is-stale' : '') + (finished ? ' is-done' : '') + '"' +
-      ' data-team="' + esc(t.session + ' ' + t.group) + '">' +
-      '<header class="team-card__head">' +
-        '<div><strong>' + esc(t.name) + '</strong>' +
-          '<span class="team-card__meta">' +
-            (showSession ? esc(t.session) + ' · ' : '') +
-            '조장 ' + esc(t.leaderName || '—') + ' · ' + t.memberCount + '명</span></div>' +
-        '<span class="chip chip--' + (finished ? 'done' : done ? 'here' : 'wait') + '">' +
-          done + '/' + total + '</span>' +
-      '</header>' +
-      (total ? '<ol class="steps">' + steps + '</ol>' : '<p class="hint">배정 코스가 없습니다.</p>') +
-      '<p class="team-card__last">' +
-        (last
-          ? (stale ? '⚠ ' : '') + '마지막 기록 ' + esc(UI.hhmm(last)) + ' · ' + esc(UI.agoText(ago))
-          : '아직 기록 없음') +
-      '</p>' +
-    '</article>';
-  }
+  // 조별 카드는 교역자 화면과 같이 쓰므로 ui.js 에 있다 (UI.teamGrid, D-051).
+  var STALE_MIN = UI.STALE_MIN;
 
   function progressTable(board, teams) {
     return '<div class="table-scroll"><table class="admin-table">' +
@@ -569,31 +557,251 @@
         var teams = board.teams.filter(function (t) {
           return matchesAudience(t.audience) && matchesSession(t.session);
         });
-        var nowMs = Date.now();
-        var stale = 0;
-        var cards = teams.map(function (t) {
-          var html = teamCard(t, board.checkpoints, state.session === '전체', nowMs);
-          if (html.indexOf(' is-stale') > 0) stale++;
-          return html;
-        }).join('');
+        var grid = UI.teamGrid(teams, board.checkpoints, { showSession: state.session === '전체', editable: true });
 
         setView(
           '<section class="section-head"><h2>' + esc(L('group', '조 배정')) + '별 진행 현황</h2>' +
             '<p class="hint">조마다 배정 코스 순서대로 보입니다. 완주 전인데 ' + STALE_MIN +
-            '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다.</p></section>' +
+            '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다. 점수 옆 ✓ 는 스태프가 확인한 점수 · 칸을 누르면 고칠 수 있습니다.</p></section>' +
           sessionFilterHtml() +
           audienceFilterHtml() +
           (teams.length
-            ? (stale ? '<p class="team-alert">⚠ ' + stale + '개 조가 ' + STALE_MIN + '분 넘게 소식이 없습니다.</p>' : '') +
-              '<div class="team-grid">' + cards + '</div>' +
+            ? grid.html +
               '<details class="card board-table"><summary>표로 보기</summary>' +
                 progressTable(board, teams) + '</details>'
             : '<p class="empty">' + (state.audience === '전체'
                 ? '명단에 조가 배정된 참가자가 아직 없습니다.'
-                : esc(state.audience) + '에 배정된 조가 없습니다.') + '</p>')
+                : esc(state.audience) + '에 배정된 조가 없습니다.') + '</p>'),
+          onProgressEdit
         );
         bindSessionFilter(function () { paintProgress(board); });
         bindAudienceFilter(function () { paintProgress(board); });
+  }
+
+  /**
+   * 진행 칸 정정 (D-052). 예전에는 시트에서만 고칠 수 있었고, 시트 편집은 사본에 안 가서
+   * 조장 화면이 옛 값을 보였다(캠프 모드가 필요했다). 여기서 고치면 사본까지 밀린다.
+   */
+  function onProgressEdit(e) {
+    var btn = e.target.closest('[data-edit-code]');
+    if (!btn) return;
+    var board = state.cache.progress;
+    var session = btn.getAttribute('data-edit-session');
+    var group = btn.getAttribute('data-edit-group');
+    var code = btn.getAttribute('data-edit-code');
+    var team = board.teams.filter(function (t) { return t.session === session && t.group === group; })[0];
+    var cp = board.checkpoints.filter(function (c) { return c.code === code; })[0] || { name: code };
+    if (!team) return;
+    var cell = team.cells[code] || {};
+    var cur = cell.status || '대기';
+    var hasScore = cell.score !== null && cell.score !== undefined && cell.score !== '';
+
+    var wrap = document.createElement('div');
+    wrap.className = 'modal';
+    wrap.innerHTML =
+      '<form class="modal__panel" id="cellForm" role="dialog" aria-modal="true">' +
+        '<p class="modal__msg"><strong>' + esc(team.name) + '</strong> · ' + esc(cp.name) + '<br>' +
+          '<span class="hint">' + esc(session) + ' · 지금 ' + esc(cur) +
+          (hasScore ? ' · ' + esc(cell.score) + '점(' + esc(cell.scoreSource || '?') + ')' : '') + '</span></p>' +
+        '<div class="seg">' + ['대기', '도착', '완료'].map(function (st) {
+          return '<label class="seg__item"><input type="radio" name="status" value="' + st + '"' +
+            (st === cur ? ' checked' : '') + '><span>' + st + '</span></label>';
+        }).join('') + '</div>' +
+        '<label class="field" style="margin-top:14px"><span class="field__label">퀴즈 점수 <em>(비우면 지웁니다)</em></span>' +
+          '<input class="input" name="score" type="number" inputmode="numeric" min="0" max="100" value="' +
+          (hasScore ? esc(cell.score) : '') + '"></label>' +
+        '<p class="hint">여기서 넣은 점수는 "관리자" 출처로 남고, 조장·스태프 화면에도 바로 반영됩니다.</p>' +
+        '<div class="modal__actions">' +
+          '<button type="button" class="btn btn--ghost" data-act="cancel">취소</button>' +
+          '<button type="submit" class="btn btn--primary">저장</button>' +
+        '</div>' +
+      '</form>';
+    document.body.appendChild(wrap);
+
+    function close() { wrap.remove(); }
+    wrap.addEventListener('click', function (ev) {
+      if (ev.target === wrap || ev.target.getAttribute('data-act') === 'cancel') close();
+    });
+    wrap.querySelector('#cellForm').addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var f = ev.target;
+      var status = (f.querySelector('input[name="status"]:checked') || {}).value;
+      var raw = String(f.score.value).trim();
+      var payload = { session: session, group: group, checkpoint: code };
+      if (status && status !== cur) payload.status = status;
+      var oldScore = hasScore ? String(cell.score) : '';
+      if (raw !== oldScore) {
+        var n = Number(raw);
+        if (raw !== '' && (isNaN(n) || n < 0 || n > 100)) { toast('점수는 0~100 사이로 넣어 주세요.', 'error'); return; }
+        payload.score = raw === '' ? '' : n;
+      }
+      if (payload.status === undefined && payload.score === undefined) { close(); return; }
+      var submit = f.querySelector('button[type="submit"]');
+      UI.setBusy(submit, true, '저장 중…');
+      API.call('admin.progress.set', payload)
+        .then(function (data) {
+          close();
+          state.cache.progress = data;
+          paintProgress(data);
+          toast(team.name + ' · ' + cp.name + ' 고쳤습니다.');
+        })
+        .catch(function (err) { UI.setBusy(submit, false); toast(err.message, 'error'); });
+    });
+  }
+
+  // ------------------------------------------------------------ 🏆 시상 (D-052)
+  //
+  // 시상은 분야별이다(운영자 결정): 퀴즈 점수 · 소요 시간 · 사진(운영진이 ★ 지정).
+  // 새 서버 집계를 만들지 않는다 — 진행 보드와 일지 목록을 **그대로** 받아 여기서 센다.
+  // 같은 데이터를 두 곳에서 집계하면 하나는 반드시 어긋난다.
+
+  function renderAwards() {
+    if (state.cache.awards) { paintAwards(state.cache.awards); return; }
+    setView('<p class="loading">불러오는 중…</p>');
+    Promise.all([API.call('admin.progress.board'), API.call('admin.journal.list')])
+      .then(function (r) {
+        state.cache.awards = { board: r[0], journals: r[1].items || [] };
+        paintAwards(state.cache.awards);
+      })
+      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+  }
+
+  /** 동점은 같은 순위 (1, 2, 2, 4). */
+  function withRanks(list, key) {
+    var rank = 0, prev = null;
+    return list.map(function (x, i) {
+      if (prev === null || x[key] !== prev) { rank = i + 1; prev = x[key]; }
+      return Object.assign({ rank: rank }, x);
+    });
+  }
+
+  function quizRanking(teams) {
+    return withRanks(teams.map(function (t) {
+      var sum = 0, n = 0, src = {};
+      t.route.forEach(function (code) {
+        var c = t.cells[code];
+        if (!c || c.score === null || c.score === undefined || c.score === '') return;
+        sum += Number(c.score); n++;
+        var s = c.scoreSource || '미상';
+        src[s] = (src[s] || 0) + 1;
+      });
+      return { team: t, sum: sum, n: n, total: t.route.length, src: src };
+    }).filter(function (x) { return x.n > 0; })
+      .sort(function (a, b) { return (b.sum - a.sum) || (b.n - a.n); }), 'sum');
+  }
+
+  /** 첫 지점 도착 → 마지막 지점 완료. **네 곳 모두 완료한 조만** — 출발 시차와 무관하다. */
+  function timeRanking(teams) {
+    return withRanks(teams.map(function (t) {
+      var first = '', last = '', done = 0;
+      t.route.forEach(function (code) {
+        var c = t.cells[code] || {};
+        if (c.status === '완료') done++;
+        if (c.arrivedAt && (!first || c.arrivedAt < first)) first = c.arrivedAt;
+        if (c.completedAt && c.completedAt > last) last = c.completedAt;
+      });
+      var ok = t.route.length > 0 && done === t.route.length && first && last;
+      var min = ok ? Math.round((new Date(last) - new Date(first)) / 60000) : null;
+      return { team: t, min: min, first: first, last: last };
+    }).filter(function (x) { return x.min !== null && x.min >= 0; })
+      .sort(function (a, b) { return a.min - b.min; }), 'min');
+  }
+
+  function durText(min) {
+    var h = Math.floor(min / 60), m = min % 60;
+    return (h ? h + '시간 ' : '') + m + '분';
+  }
+
+  function paintAwards(data) {
+    var teams = data.board.teams.filter(function (t) { return matchesSession(t.session); });
+    var showSession = state.session === '전체';
+    var quiz = quizRanking(teams);
+    var time = timeRanking(teams);
+    var photos = data.journals.filter(function (j) {
+      return j.status === '승인' && j.photoUrl && matchesSession(j.session);
+    }).sort(function (a, b) { return (b.award ? 1 : 0) - (a.award ? 1 : 0); });
+    var starred = photos.filter(function (j) { return j.award; });
+    var top = state.present ? 3 : Infinity;
+    var label = function (t) { return (showSession ? esc(t.session) + ' ' : '') + esc(t.name); };
+
+    var quizHtml = quiz.length
+      ? '<ol class="rank">' + quiz.filter(function (x) { return x.rank <= top; }).map(function (x) {
+          var needCheck = Object.keys(x.src).some(function (k) { return k !== '스태프'; });
+          return '<li class="rank__row"><span class="rank__no">' + x.rank + '</span>' +
+            '<span class="rank__name">' + label(x.team) + '</span>' +
+            '<span class="rank__val">' + x.sum + '점</span>' +
+            (state.present ? '' : '<span class="rank__meta">' + x.n + '/' + x.total + '곳 · ' +
+              Object.keys(x.src).map(function (k) { return esc(k) + ' ' + x.src[k]; }).join(' · ') +
+              (needCheck ? ' · <strong>조장·관리자 입력 포함 — 확인</strong>' : '') + '</span>') +
+            '</li>';
+        }).join('') + '</ol>'
+      : '<p class="empty">아직 입력된 점수가 없습니다.</p>';
+
+    var timeHtml = time.length
+      ? '<ol class="rank">' + time.filter(function (x) { return x.rank <= top; }).map(function (x) {
+          return '<li class="rank__row"><span class="rank__no">' + x.rank + '</span>' +
+            '<span class="rank__name">' + label(x.team) + '</span>' +
+            '<span class="rank__val">' + durText(x.min) + '</span>' +
+            (state.present ? '' : '<span class="rank__meta">' + esc(UI.hhmm(x.first)) + ' → ' + esc(UI.hhmm(x.last)) + '</span>') +
+            '</li>';
+        }).join('') + '</ol>' +
+        (state.present ? '' : '<p class="hint">완주 전 ' + (teams.length - time.length) + '개 조는 순위에 없습니다.</p>')
+      : '<p class="empty">네 곳을 모두 마친 조가 아직 없습니다.</p>';
+
+    var shownPhotos = state.present ? starred : photos;
+    var photoHtml = shownPhotos.length
+      ? '<div class="award-grid">' + shownPhotos.map(function (j) {
+          return '<figure class="award-photo' + (j.award ? ' is-award' : '') + '" data-id="' + esc(j.id) + '">' +
+            '<img loading="lazy" src="' + esc(j.photoUrl) + '" alt="' + esc(j.authorName) + ' 사진">' +
+            '<figcaption>' + (showSession ? esc(j.session) + ' ' : '') + esc(j.group) + ' · ' + esc(j.authorName) +
+              (state.present ? '' : ' <button type="button" class="btn btn--sm ' + (j.award ? 'btn--primary' : 'btn--ghost') +
+                '" data-award="' + (j.award ? '0' : '1') + '">' + (j.award ? '★ 수상' : '☆ 지정') + '</button>') +
+            '</figcaption></figure>';
+        }).join('') + '</div>'
+      : '<p class="empty">' + (state.present ? '★ 수상작을 아직 고르지 않았습니다.' : '승인된 사진이 없습니다.') + '</p>';
+
+    setView(
+      '<section class="section-head"><h2>🏆 시상</h2>' +
+        (state.present ? '' : '<p class="hint">분야별 — 퀴즈 점수 합계 · 소요 시간(첫 도착 → 마지막 완료, 네 곳 모두 마친 조만) · ' +
+          '사진(★ 를 눌러 수상작 지정). 발표 때는 "크게 보기".</p>') + '</section>' +
+      (state.present ? '' : sessionFilterHtml()) +
+      '<div class="review-tools">' +
+        '<button type="button" class="btn btn--sm ' + (state.present ? 'btn--primary' : 'btn--ghost') + '" data-present>' +
+          (state.present ? '닫기' : '크게 보기') + '</button>' +
+        (state.present ? '' : '<button type="button" class="btn btn--ghost btn--sm" data-reload>새로고침</button>') +
+      '</div>' +
+      '<section class="card award"><h3 class="card__title">🧩 퀴즈 점수</h3>' + quizHtml + '</section>' +
+      '<section class="card award"><h3 class="card__title">⏱ 소요 시간</h3>' + timeHtml + '</section>' +
+      '<section class="card award"><h3 class="card__title">📷 사진' +
+        (state.present ? '' : ' <span class="hint">★ ' + starred.length + '장</span>') + '</h3>' + photoHtml + '</section>',
+      onAwardsClick
+    );
+    bindSessionFilter(function () { paintAwards(data); });
+  }
+
+  function onAwardsClick(e) {
+    if (e.target.closest('[data-present]')) {
+      state.present = !state.present;
+      document.body.classList.toggle('is-present', state.present);
+      paintAwards(state.cache.awards);
+      return;
+    }
+    if (e.target.closest('[data-reload]')) { invalidate('awards'); renderAwards(); return; }
+    var btn = e.target.closest('[data-award]');
+    if (!btn) return;
+    var id = btn.closest('[data-id]').getAttribute('data-id');
+    var on = btn.getAttribute('data-award') === '1';
+    UI.setBusy(btn, true, '…');
+    API.call('admin.journal.award', { id: id, award: on })
+      .then(function (j) {
+        state.cache.awards.journals = state.cache.awards.journals.map(function (x) {
+          return x.id === j.id ? Object.assign({}, x, { award: j.award }) : x;
+        });
+        invalidate('review');
+        paintAwards(state.cache.awards);
+        toast(on ? '★ 수상작으로 지정했습니다.' : '지정을 풀었습니다.');
+      })
+      .catch(function (err) { UI.setBusy(btn, false); toast(err.message, 'error'); });
   }
 
   // ------------------------------------------------------------ 회비

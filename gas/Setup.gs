@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Setup.gs · v15 · 2026-09-26
+ * Setup.gs · v16 · 2026-09-26
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v16   2026-09-26  담당 지점 드롭다운, 명단 점검(사역자·새 열) (D-051)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v13   2026-09-22  설정을 바꾸면 사본도 민다
  *  —     2026-09-19  이미 쌓인 ISO 글자도 날짜로 바꾼다
  *  —     2026-09-19  진행 사본 정합
- *  —     2026-09-19  시트에는 진짜 Date, 통신에는 ISO
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_SETUP = 'v15';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_SETUP = 'v16';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Setup.gs — 최초 1회 실행하는 시트 생성/점검 스크립트
@@ -293,6 +293,9 @@ function applyValidation_() {
   dropdown_(SHEETS.PARTICIPANTS, COL.FEE_STATUS, ENUM.FEE);
   dropdown_(SHEETS.PARTICIPANTS, COL.INSURANCE, ENUM.INSURANCE);
   dropdown_(SHEETS.PARTICIPANTS, COL.COURSE, courseList);
+  // 담당 지점은 지점코드로만 받는다 — 오타면 스태프가 지점 화면에 못 들어간다 (D-051)
+  dropdown_(SHEETS.PARTICIPANTS, COL.STATION,
+    readTable_(SHEETS.CHECKPOINTS).map(function (r) { return str_(r['지점코드']); }).filter(String));
   dropdown_(SHEETS.TEAMS, COL.SESSION, sessionList);
   dropdown_(SHEETS.PROGRESS, '상태', ENUM.PROGRESS);
   dropdown_(SHEETS.JOURNAL, '상태', ENUM.JOURNAL);
@@ -342,6 +345,9 @@ function checkDuplicates() {
   var seen = {};
   var dup = [], missing = [], badSession = [], noLeader = [], courseMismatch = [], badCourse = [];
   var inactive = [];
+  var roleIssues = [];
+  var dayOnly = [];             // 같은 이름·번호가 회차만 다르게 두 행 (D-051)          // 사역자 → 교역자, 담당 지점 오타 (D-051)
+  var cpCodes = checkpoints_().map(function (c) { return c.code; });
   var audienceBySession = {};   // 회차별 부서 분포 — 1:1 원칙과 어긋나는지 보기 위함
 
   // 같은 연락처가 여러 행에 반복되면 아직 채우지 않은 임시값으로 본다.
@@ -367,7 +373,23 @@ function checkDuplicates() {
       missing.push('행 ' + r.__row + ' (' + name + '): 참가자ID 없음 — "참가자ID 채우기" 실행 필요');
     }
     var session = str_(r[COL.SESSION]);
-    if (!session) {
+    var role = str_(r[COL.ROLE]);
+    // 조 없는 교역자·스태프는 공란 = 전 회차 (D-051) — 문제가 아니다.
+    var opsAll = !session && !str_(r[COL.GROUP]) && isOpsRole_(role);
+    if (role === '사역자') {
+      roleIssues.push('행 ' + r.__row + ' (' + name + '): 역할 "사역자" → "교역자" 로 바꾸세요 ' +
+        '(v16 부터 사역자는 조장 권한이 없습니다)');
+    }
+    var station = str_(r[COL.STATION]);
+    if (station && cpCodes.indexOf(station) < 0) {
+      roleIssues.push('행 ' + r.__row + ' (' + name + '): 담당 지점 "' + station +
+        '" 가 지점코드가 아님 (' + cpCodes.join(' / ') + ')');
+    } else if (station && role !== '스태프') {
+      roleIssues.push('행 ' + r.__row + ' (' + name + '): 담당 지점은 역할이 "스태프" 일 때만 쓰입니다');
+    }
+    if (opsAll) {
+      // 통과
+    } else if (!session) {
       badSession.push('행 ' + r.__row + ' (' + name + '): 참여 일자 미배정 — 로그인 불가');
     } else if (sessionList.indexOf(session) < 0) {
       badSession.push('행 ' + r.__row + ' (' + name + '): 참여 일자 "' + session +
@@ -398,11 +420,19 @@ function checkDuplicates() {
     });
     digits.forEach(function (d) {
       var key = parsed.base + '|' + d;
-      if (seen[key] && seen[key] !== r.__row) {
-        var line = '행 ' + seen[key] + ' 과 행 ' + r.__row + ': ' + parsed.base + ' / ****' + d;
-        if (dup.indexOf(line) < 0) dup.push(line);
+      if (seen[key] && seen[key].row !== r.__row) {
+        var line = '행 ' + seen[key].row + ' 과 행 ' + r.__row + ': ' + parsed.base + ' / ****' + d;
+        // 회차가 서로 다르면 **그 회차 날에는** 오늘 회차 행으로 들어간다 (D-051).
+        // 막히는 건 그 밖의 날뿐이라 충돌이 아니라 안내다.
+        var other = seen[key].session;
+        if (other && session && other !== session) {
+          line += ' — 회차가 달라 캠프 당일에만 로그인됩니다. 교역자·스태프는 참여 일자를 비운 한 행으로 두세요';
+          if (dayOnly.indexOf(line) < 0) dayOnly.push(line);
+        } else if (dup.indexOf(line) < 0) {
+          dup.push(line);
+        }
       } else {
-        seen[key] = r.__row;
+        seen[key] = { row: r.__row, session: session };
       }
     });
   });
@@ -444,6 +474,16 @@ function checkDuplicates() {
     loginNotes.push('LOGIN_ALLOW_NAME_DIGITS=FALSE — 연락처 뒷 4자리로만 로그인됩니다.');
   }
 
+  // 🔴 새 열이 없으면 쓰기가 **조용히 버려진다**(updateRow_ 는 모르는 열을 건너뛴다).
+  //    특히 `점수출처` 가 없으면 스태프 점수 우선이 깨진다 → 배포 뒤 `초기 세팅 실행` 을 다시 돈다.
+  var noColumn = [];
+  [[SHEETS.PARTICIPANTS, COL.STATION], [SHEETS.PROGRESS, '점수출처'], [SHEETS.JOURNAL, '수상']]
+    .forEach(function (pair) {
+      if (!headerIndex_(pair[0])[pair[1]]) {
+        noColumn.push(resolveSheetName_(pair[0]) + ' 탭에 "' + pair[1] + '" 열이 없음 — 메뉴 "초기 세팅 실행" 을 다시 실행하세요');
+      }
+    });
+
   var out = [];
   out.push('참가자 ' + rows.length + '명, 조 ' + Object.keys(groups).length + '개');
   out.push('');
@@ -451,12 +491,15 @@ function checkDuplicates() {
   loginNotes.forEach(function (n) { out.push('   · ' + n); });
   out.push('');
   block_(out, dup, '❌ 로그인 충돌 (해당 인원은 로그인 불가)', '✅ 로그인 충돌 없음');
+  if (dayOnly.length) block_(out, dayOnly, '⚠ 회차별로 두 행인 사람', '');
   block_(out, missing, '⚠ 필수값 누락', '✅ 필수값 누락 없음');
   block_(out, badSession, '⚠ 참여 일자 문제', '✅ 참여 일자 정상');
   block_(out, inactive, '⚠ 비활성 회차 인원 (로그인 불가)', '✅ 비활성 회차에 배정된 인원 없음');
   block_(out, badCourse, '⚠ 배정 코스 오타', '✅ 배정 코스 정상');
   block_(out, courseMismatch, '⚠ 조 안에서 배정 코스 불일치', '✅ 조별 배정 코스 일관됨');
   block_(out, noLeader, '⚠ 조장 없는 조', '✅ 모든 조에 조장 있음');
+  block_(out, roleIssues, '⚠ 역할·담당 지점', '✅ 역할·담당 지점 정상');
+  block_(out, noColumn, '❌ 새 열 없음 (v16)', '✅ 새 열(담당 지점·점수출처·수상) 있음');
 
   // 부서=일자 1:1 이 운영 원칙이지만 예외 인원이 있을 수 있다(D-016).
   // 그래서 **차단이 아니라 알림**이다. 섞였다는 사실만 보여 주고 판단은 사람이 한다.

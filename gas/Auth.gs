@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Auth.gs · v15 · 2026-09-26
+ * Auth.gs · v16 · 2026-09-26
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v16   2026-09-26  조 없는 교역자·스태프 모드, 공란 회차, 오늘 회차 행 (D-051)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  —     2026-09-19  쓰기 8.5초의 범인은 락 대기였다
  *  —     2026-09-17  회차 활성/비활성 스위치 + 관리자 콘솔 회차 필터
  *  —     2026-09-11  일정 변경·부서 분리·응답 속도 개선, Firebase 설계 문서화
- *  —     2026-08-29  로그인 인증 수단을 연락처 기준으로 전환할 수 있게 함
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_AUTH = 'v15';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_AUTH = 'v16';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Auth.gs — 인증 / 토큰 / 권한
@@ -181,21 +181,36 @@ function login_(body) {
     var narrowed = matches.filter(function (r) { return str_(r[COL.SESSION]) === hintSession; });
     if (narrowed.length === 1) matches = narrowed;
   }
+  // 🔴 그래도 여럿이면 **오늘 회차** 행으로 좁힌다 (D-051). 로그인 화면에서 날짜 선택을
+  // 뺀 뒤(D-027)로는 힌트가 오지 않아, 두 회차를 다 일하는 사람이 행 두 개면 막혔다.
+  if (matches.length > 1) {
+    var todayLabel = currentSessionLabel_();
+    var today = sessions_().filter(function (x) { return x.label === todayLabel; })[0];
+    if (today && today.date === todayStr_()) {
+      var onToday = matches.filter(function (r) { return str_(r[COL.SESSION]) === todayLabel; });
+      if (onToday.length === 1) matches = onToday;
+    }
+  }
   if (matches.length > 1) {
     logEvent_('auth.login', name, '', 'AMBIGUOUS', matches.length + '건');
     throw new AppError('AMBIGUOUS', '같은 이름·번호가 여러 건 등록되어 있습니다. 운영진에게 문의해 주세요.');
   }
 
   var p = matches[0];
-  if (!str_(p[COL.SESSION])) {
+  // 조 없는 교역자·스태프는 공란 = 전 회차 → 지금 회차 (D-051)
+  var session = effectiveSession_(p);
+  if (!session) {
+    if (!str_(p[COL.SESSION]) && isOpsRole_(p[COL.ROLE]) && !str_(p[COL.GROUP])) {
+      throw new AppError('FORBIDDEN', '지금 열려 있는 회차가 없습니다.\n운영진에게 문의해 주세요.');
+    }
     throw new AppError('BAD_REQUEST', '참여 일자가 아직 배정되지 않았습니다. 운영진에게 문의해 주세요.');
   }
   // 🔴 비활성 회차는 **로그인을 막는다.** 사전답사가 끝나면 이걸로 끈다 (D-031).
   // 명단은 그대로 두므로 되돌리는 것은 Config 한 칸이다.
-  if (!isActiveSession_(str_(p[COL.SESSION]))) {
-    logEvent_('auth.login', name, str_(p[COL.SESSION]), 'SESSION_INACTIVE', '');
+  if (!isActiveSession_(session)) {
+    logEvent_('auth.login', name, session, 'SESSION_INACTIVE', '');
     throw new AppError('FORBIDDEN',
-      '지금은 열려 있지 않은 회차입니다(' + str_(p[COL.SESSION]) + ').\n운영진에게 문의해 주세요.');
+      '지금은 열려 있지 않은 회차입니다(' + session + ').\n운영진에게 문의해 주세요.');
   }
   if (!str_(p['참가자ID'])) {
     throw new AppError('SERVER_ERROR', '참가자 ID가 비어 있습니다. 운영진에게 문의해 주세요. (fillParticipantIds 실행 필요)');
@@ -241,15 +256,22 @@ function requireUserInner_(body) {
   var p = findParticipantById_(payload.pid);
   if (!p) throw new AppError('UNAUTHORIZED', '명단에서 확인되지 않습니다. 운영진에게 문의해 주세요.');
 
+  var mode = userMode_(p);
+  var session = effectiveSession_(p);
+  var group = str_(p[COL.GROUP]);
   return {
     isAdmin: false,
-    isLeader: isLeaderRow_(p),
+    // 🔴 조장 권한은 **조가 있을 때만**이다. 조 없는 스태프·교역자가 조장으로 잡히면
+    //    '우리 조' 일지·조원 명단이 빈 키(`회차|`)로 엉뚱한 행을 모은다 (D-051).
+    isLeader: mode === 'leader',
+    mode: mode,
+    station: mode === 'station' ? str_(p[COL.STATION]) : '',
     pid: str_(p['참가자ID']),
     name: displayName_(p[COL.NAME]),
     audience: str_(p[COL.AUDIENCE]),
-    session: str_(p[COL.SESSION]),
-    group: str_(p[COL.GROUP]),
-    teamKey: rowTeamKey_(p),
+    session: session,
+    group: group,
+    teamKey: teamKey_(session, group),
     role: str_(p[COL.ROLE]),
     row: p
   };
@@ -308,6 +330,30 @@ function isLeaderRow_(participant) {
   return LEADER_ROLES.indexOf(str_(participant[COL.ROLE])) >= 0;
 }
 
+/**
+ * 앱 모드 (D-051).
+ *
+ *   station — 스태프 + `담당 지점`. 조가 있어도 지점 모드가 이긴다(지점을 맡겼다는 뜻이다).
+ *   leader  — 조가 있고 조장·스태프·교역자.   (지금 그대로)
+ *   member  — 조가 있는 일반, 또는 조 없는 일반(조 미배정).
+ *   ops     — 조 없는 교역자·스태프. 전체 진행을 **읽기만** 한다. 관리 기능은 PIN.
+ */
+function userMode_(p) {
+  var role = str_(p[COL.ROLE]);
+  if (role === '스태프' && str_(p[COL.STATION])) return 'station';
+  if (str_(p[COL.GROUP])) return isLeaderRow_(p) ? 'leader' : 'member';
+  if (isOpsRole_(role)) return 'ops';
+  return 'member';
+}
+
+/** 담당 지점 {code, name}. 지점코드가 틀렸으면 name 이 빈다(명단 점검이 알려 준다). */
+function stationOf_(p) {
+  var code = str_(p[COL.STATION]);
+  if (!code) return null;
+  var cp = checkpoints_().filter(function (c) { return c.code === code; })[0];
+  return { code: code, name: cp ? cp.name : '' };
+}
+
 /** 같은 (참여 일자, 조 배정) 에 속한 참가자들. */
 function teamMembers_(session, group) {
   var key = teamKey_(session, group);
@@ -317,10 +363,11 @@ function teamMembers_(session, group) {
 
 /** 참가자 응답 객체. 연락처는 어떤 경우에도 넣지 않는다(D-003). */
 function buildMe_(p) {
-  var session = str_(p[COL.SESSION]);
+  var session = effectiveSession_(p);
   var group = str_(p[COL.GROUP]);
   var team = findTeam_(session, group);
-  var leader = isLeaderRow_(p);
+  var mode = userMode_(p);
+  var leader = mode === 'leader';
   var members = teamMembers_(session, group);
 
   var out = {
@@ -334,7 +381,9 @@ function buildMe_(p) {
       feeStatus: str_(p[COL.FEE_STATUS]) || '미납',
       insurance: str_(p[COL.INSURANCE])
     },
-    team: group ? {
+    mode: mode,
+    station: mode === 'station' ? stationOf_(p) : null,
+    team: group && mode !== 'station' ? {
       session: session,
       group: group,
       name: team ? (str_(team['조이름']) || group) : group,
