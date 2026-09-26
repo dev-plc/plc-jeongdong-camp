@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Code.gs · v15 · 2026-09-26
+ * Code.gs · v16 · 2026-09-26
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v16   2026-09-26  점수출처·스태프 우선, 지점·운영·정정 액션 (D-051·052)
  *  v15   2026-09-26  파일 버전 표시 · health 가 파일별 버전을 알려 준다
  *  v13   2026-09-22  공지를 운영콘솔에서 쓴다
  *  v13   2026-09-22  설정을 바꾸면 사본도 민다
  *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
- *  —     2026-09-19  진행 기록을 묶어서 보낸다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_CODE = 'v15';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_CODE = 'v16';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Code.gs — 웹앱 진입점 및 라우팅
@@ -101,6 +101,9 @@ function route_(action, body) {
     case 'journal.update': return journalUpdate_(requireUser_(body), body);
     case 'journal.delete': return journalDelete_(requireUser_(body), body);
     case 'fee.status':     return feeStatus_(requireUser_(body));
+    case 'station.board':  return stationBoard_(requireUser_(body));
+    case 'station.set':    return stationSet_(requireUser_(body), body);
+    case 'ops.board':      return opsBoard_(requireUser_(body));
 
     // ---- 관리자
     case 'admin.journal.pending': return journalPending_(requireAdmin_(body));
@@ -108,10 +111,13 @@ function route_(action, body) {
     case 'admin.journal.review':  return journalReview_(requireAdmin_(body), body);
     case 'admin.journal.update':  return journalUpdate_(requireAdmin_(body), body);
     case 'admin.journal.delete':  return journalDelete_(requireAdmin_(body), body);
+    case 'admin.journal.reviewBatch': return journalReviewBatch_(requireAdmin_(body), body);
+    case 'admin.journal.award':   return journalAward_(requireAdmin_(body), body);
     case 'admin.notice.list':     return noticeAll_(requireAdmin_(body));
     case 'admin.notice.save':     return noticeSave_(requireAdmin_(body), body);
     case 'admin.notice.delete':   return noticeDelete_(requireAdmin_(body), body);
     case 'admin.progress.board':  return progressBoard_(requireAdmin_(body));
+    case 'admin.progress.set':    return adminProgressSet_(requireAdmin_(body), body);
     case 'admin.fee.board':       return feeBoard_(requireAdmin_(body));
     case 'admin.config.set':      return configSet_(requireAdmin_(body), body);
 
@@ -429,14 +435,26 @@ function meHandler_(body) {
 
 function progressList_(ctx) {
   if (ctx.isAdmin) throw new AppError('BAD_REQUEST', '관리자는 admin.progress.board 를 사용하세요.');
-  if (!ctx.group) throw new AppError('NOT_FOUND', '배정된 조가 없습니다. 운영진에게 문의해 주세요.');
+  if (!ctx.group) {
+    throw new AppError('NOT_FOUND', (ctx.mode === 'station' || ctx.mode === 'ops')
+      ? '스태프·교역자는 코스 대신 "내 지점"·"진행" 화면을 씁니다.'
+      : '배정된 조가 없습니다. 운영진에게 문의해 주세요.');
+  }
+  return progressListFor_(ctx.session, ctx.group, ctx.row);
+}
 
-  var members = teamMembers_(ctx.session, ctx.group);
-  var route = routeFor_(courseNameOf_(members, ctx.row));
+/**
+ * 한 조의 코스 순서대로 진행. 조장 화면·사본 푸시·지점 기록이 같이 쓴다.
+ * fallbackRow 는 조원 중 누구도 코스가 비어 있을 때 쓰는 본인 행(조장 화면)이다.
+ */
+function progressListFor_(session, group, fallbackRow) {
+  var members = teamMembers_(session, group);
+  var route = routeFor_(courseNameOf_(members, fallbackRow));
+  var key = teamKey_(session, group);
 
   var byCp = {};
   readTable_(SHEETS.PROGRESS).forEach(function (r) {
-    if (rowTeamKey_(r) === ctx.teamKey) byCp[str_(r['지점코드'])] = r;
+    if (rowTeamKey_(r) === key) byCp[str_(r['지점코드'])] = r;
   });
 
   return route.map(function (code, i) {
@@ -448,25 +466,31 @@ function progressList_(ctx) {
       arrivedAt: r ? toIso_(r['도착시각']) : '',
       completedAt: r ? toIso_(r['완료시각']) : '',
       score: r && r['퀴즈점수'] !== '' ? Number(r['퀴즈점수']) : null,
+      // 점수를 넣은 쪽 (D-052). 조장 화면은 '스태프' 면 칸을 잠근다.
+      // 🔴 사본(progress_cache)에는 이 열이 없다 — Supabase 스키마를 건드리지 않으려고.
+      scoreSource: r ? str_(r['점수출처']) : '',
       memo: r ? str_(r['메모']) : ''
     };
   });
 }
 
-/** 조장 전용. (참여 일자, 조 배정, 지점코드) 당 1행을 upsert 한다. */
 /**
  * 한 건의 변경을 검증해 정규화한다. **배치의 한 항목**도 이걸 거친다.
  *
  * 🔴 한 건이라도 걸리면 배치 전체를 거절한다(호출부에서 던진다). 일부만 들어가면
  * 화면과 시트가 어긋나고, 그걸 되돌릴 방법이 없다.
+ *
+ * statusOptional — 스태프·관리자는 **점수만** 고칠 수 있다(상태는 그대로).
  */
-function normalizeProgressItem_(item) {
+function normalizeProgressItem_(item, statusOptional) {
   var status = str_(item.status);
-  if (ENUM.PROGRESS.indexOf(status) < 0) {
-    throw new AppError('BAD_REQUEST', '상태는 대기/도착/완료 중 하나여야 합니다.');
+  if (status || !statusOptional) {
+    if (ENUM.PROGRESS.indexOf(status) < 0) {
+      throw new AppError('BAD_REQUEST', '상태는 대기/도착/완료 중 하나여야 합니다.');
+    }
   }
-  var code = normalizeCheckpoint_(item.checkpoint);
-  if (!code) throw new AppError('BAD_REQUEST', '지점을 선택해 주세요.');
+  var code = statusOptional && item.checkpoint === undefined ? '' : normalizeCheckpoint_(item.checkpoint);
+  if (!code && !statusOptional) throw new AppError('BAD_REQUEST', '지점을 선택해 주세요.');
 
   // 🔴 **안 보냄 ≠ 비우기** (D-039).
   //
@@ -482,8 +506,97 @@ function normalizeProgressItem_(item) {
     if (isNaN(n) || n < 0 || n > 100) throw new AppError('BAD_REQUEST', '점수는 0~100 사이여야 합니다.');
     score = n;
   }
+  if (!status && !hasScore && !hasMemo) throw new AppError('BAD_REQUEST', '바꿀 내용이 없습니다.');
   return { code: code, status: status, hasScore: hasScore, score: score,
            hasMemo: hasMemo, memo: str_(item.memo) };
+}
+
+/**
+ * 진행 행을 쓴다 — 조장·스태프·관리자가 **같은 규칙**으로 (D-052).
+ * entries: [{ session, group, code, status?, hasScore, score, hasMemo, memo }]
+ * actor:   '조장' | '스태프' | '관리자' — 점수를 넣으면 `점수출처` 에 남는다.
+ *
+ * 🔴 **스태프 점수가 우선이다.** 조장이 스태프가 넣은 점수를 바꾸려 하면 **점수만** 무시하고
+ *    상태는 기록한다. 거절(throw)하면 같은 배치로 보낸 도착·완료까지 날아간다 — 배치는
+ *    전부 아니면 전무다(D-045). 무시한 지점코드를 돌려주고, 응답 목록의 점수·출처로
+ *    앱이 칸을 잠근다.
+ *
+ * 락은 **행의 읽고-고치고-쓰기만** 잡는다. 목록·사본은 호출부가 락 밖에서 한다 (D-044).
+ */
+function writeProgress_(actor, pid, entries, T) {
+  var t0 = Date.now();
+  var ignored = [];
+
+  withLock_(function () {
+    var tLock = Date.now();
+    T.lock = tLock - t0;
+
+    // 🔴 `점수출처` 열이 없으면 updateRow_ 가 **조용히 버린다** → 스태프 우선이 깨진다.
+    //    배포 뒤 `초기 세팅 실행` 을 안 돌린 상태다. 점수 쓰기만 막고 알린다.
+    if (!headerIndex_(SHEETS.PROGRESS)['점수출처'] &&
+        entries.some(function (e) { return e.hasScore; })) {
+      throw new AppError('SERVER_ERROR',
+        'Progress 탭에 "점수출처" 열이 없습니다. 운영진이 메뉴 "초기 세팅 실행" 을 다시 실행해야 합니다.');
+    }
+
+    var rows = readTable_(SHEETS.PROGRESS);
+    var existingByKey = {};
+    rows.forEach(function (r) {
+      existingByKey[rowTeamKey_(r) + '#' + str_(r['지점코드'])] = r;
+    });
+    // 🔴 번호는 **이미 읽은 행에서** 한 번만 구한다.
+    //    `nextId_` 는 시트를 다시 읽고, `appendRow_` 가 캐시를 비우므로,
+    //    루프 안에서 부르면 새 행마다 **락을 쥔 채** 전량 재읽기가 생긴다 (D-044).
+    var seq = maxIdNumber_(rows, '기록ID', 'PR');
+    T.read = Date.now() - tLock;
+
+    var tWrite = Date.now();
+    var now = nowStamp_();
+
+    entries.forEach(function (e) {
+      var existing = existingByKey[teamKey_(e.session, e.group) + '#' + e.code];
+
+      // `updateRow_` 는 현재 행을 먼저 읽고 patch 에 있는 키만 덮어쓴다.
+      // 그래서 **키를 빼면 기존 값이 그대로 남는다.**
+      var patch = { '기록자ID': pid, '수정일시': now };
+      if (e.status) {
+        patch['상태'] = e.status;
+        // 최초 도착·완료 시각만 남긴다(되돌렸다 다시 눌러도 처음 시각 유지).
+        if (e.status === '도착' || e.status === '완료') {
+          if (!existing || !str_(existing['도착시각'])) patch['도착시각'] = now;
+        }
+        if (e.status === '완료') {
+          if (!existing || !str_(existing['완료시각'])) patch['완료시각'] = now;
+        }
+        if (e.status === '대기') {
+          patch['도착시각'] = '';
+          patch['완료시각'] = '';
+        }
+      }
+      if (e.hasScore) {
+        if (actor === '조장' && existing && str_(existing['점수출처']) === '스태프') {
+          ignored.push(e.code);
+        } else {
+          patch['퀴즈점수'] = e.score;
+          patch['점수출처'] = e.score === '' ? '' : actor;
+        }
+      }
+      if (e.hasMemo) patch['메모'] = e.memo;
+
+      if (existing) {
+        updateRow_(SHEETS.PROGRESS, existing.__row, patch);
+      } else {
+        if (!patch['상태']) patch['상태'] = '대기';     // 점수만 먼저 들어온 지점
+        patch['기록ID'] = padId_('PR', ++seq, 4);
+        patch[COL.SESSION] = e.session;
+        patch[COL.GROUP] = e.group;
+        patch['지점코드'] = e.code;
+        appendRow_(SHEETS.PROGRESS, patch);
+      }
+    });
+    T.write = Date.now() - tWrite;
+  });
+  return ignored;
 }
 
 /**
@@ -510,74 +623,21 @@ function progressSet_(ctx, body) {
   if (!raw.length) throw new AppError('BAD_REQUEST', '기록할 지점이 없습니다.');
 
   // 🔴 **전부 먼저 검증한다.** 쓰기 중간에 던지면 일부만 들어간 채로 끝난다.
-  var items = raw.map(normalizeProgressItem_);
+  var items = raw.map(function (it) { return normalizeProgressItem_(it, false); });
 
   // 같은 지점이 두 번 오면 **마지막이 이긴다.** 앱의 큐도 같은 규칙이다.
   var byCode = {};
   items.forEach(function (it) { byCode[it.code] = it; });
   var codes = Object.keys(byCode);
+  var entries = codes.map(function (code) {
+    return Object.assign({ session: ctx.session, group: ctx.group }, byCode[code]);
+  });
 
   var T = { auth: __authMs, n: codes.length };
   var t0 = Date.now();
 
   // 🔴 시트가 먼저, DB 가 나중 (D-038).
-  //    락은 **행의 읽고-고치고-쓰기만** 잡는다. 목록 만들기와 사본 밀어 넣기는
-  //    락을 놓은 뒤에 한다 (D-044).
-  withLock_(function () {
-    var tLock = Date.now();
-    T.lock = tLock - t0;
-
-    var rows = readTable_(SHEETS.PROGRESS);
-    var existingByCode = {};
-    rows.forEach(function (r) {
-      if (rowTeamKey_(r) === ctx.teamKey) existingByCode[str_(r['지점코드'])] = r;
-    });
-    // 🔴 번호는 **이미 읽은 행에서** 한 번만 구한다.
-    //    `nextId_` 는 시트를 다시 읽고, `appendRow_` 가 캐시를 비우므로,
-    //    루프 안에서 부르면 새 행마다 **락을 쥔 채** 전량 재읽기가 생긴다 (D-044).
-    var seq = maxIdNumber_(rows, '기록ID', 'PR');
-    T.read = Date.now() - tLock;
-
-    var tWrite = Date.now();
-    var now = nowStamp_();
-
-    codes.forEach(function (code) {
-      var it = byCode[code];
-      var existing = existingByCode[code];
-
-      // `updateRow_` 는 현재 행을 먼저 읽고 patch 에 있는 키만 덮어쓴다.
-      // 그래서 **키를 빼면 기존 값이 그대로 남는다.**
-      var patch = {
-        '상태': it.status,
-        '기록자ID': ctx.pid,
-        '수정일시': now
-      };
-      if (it.hasScore) patch['퀴즈점수'] = it.score;
-      if (it.hasMemo) patch['메모'] = it.memo;
-      // 최초 도착·완료 시각만 남긴다(되돌렸다 다시 눌러도 처음 시각 유지).
-      if (it.status === '도착' || it.status === '완료') {
-        if (!existing || !str_(existing['도착시각'])) patch['도착시각'] = now;
-      }
-      if (it.status === '완료') {
-        if (!existing || !str_(existing['완료시각'])) patch['완료시각'] = now;
-      }
-      if (it.status === '대기') {
-        patch['도착시각'] = '';
-        patch['완료시각'] = '';
-      }
-
-      if (existing) {
-        updateRow_(SHEETS.PROGRESS, existing.__row, patch);
-      } else {
-        patch['기록ID'] = padId_('PR', ++seq, 4);
-        patch[COL.SESSION] = ctx.session;
-        patch[COL.GROUP] = ctx.group;
-        patch['지점코드'] = code;
-        appendRow_(SHEETS.PROGRESS, patch);
-      }
-    });
-    T.write = Date.now() - tWrite;
-  });
+  var ignored = writeProgress_('조장', ctx.pid, entries, T);
 
   // 목록 만들기는 그냥 읽기다 — 락이 지켜야 할 것이 아니다 (D-044).
   var tList = Date.now();
@@ -595,9 +655,154 @@ function progressSet_(ctx, body) {
   //    다른 조장이 그만큼 더 기다린다 (D-038 과 같은 이유).
   T.total = Date.now() - t0;
   logEvent_('progress.set', ctx.pid, ctx.teamKey + '/' + codes.join(','),
-    codes.length === 1 ? byCode[codes[0]].status : codes.length + '건', timingText_(T));
+    (codes.length === 1 ? (byCode[codes[0]].status || '점수') : codes.length + '건') +
+      (ignored.length ? ' · 스태프 점수 유지 ' + ignored.join(',') : ''),
+    timingText_(T));
 
   return list;
+}
+
+// ---------------------------------------------------------------- 거점 스태프 (D-051·052)
+
+/** 담당 지점. 지점코드가 틀렸으면 명확히 알린다 — 조용히 빈 화면이면 현장에서 못 고친다. */
+function stationCheckpoint_(ctx) {
+  if (ctx.mode !== 'station') {
+    throw new AppError('FORBIDDEN', '담당 지점이 있는 스태프만 쓸 수 있습니다.');
+  }
+  var cp = checkpoints_().filter(function (c) { return c.code === ctx.station; })[0];
+  if (!cp) {
+    throw new AppError('BAD_REQUEST', '담당 지점 "' + ctx.station + '" 이 지점 목록에 없습니다. 운영진에게 문의해 주세요.');
+  }
+  return cp;
+}
+
+function naturalGroupCmp_(a, b) {
+  var na = parseInt(a, 10), nb = parseInt(b, 10);
+  if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+  return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+}
+
+/**
+ * 내 지점 기준 — 내 회차의 **이 지점을 지나는 모든 조**를, 이 지점에 오는 순서대로.
+ * 직전 지점 상태를 같이 준다: 직전 지점을 끝냈으면 "오는 중" 이다.
+ */
+function stationBoard_(ctx) {
+  var cp = stationCheckpoint_(ctx);
+  var board = progressBoardData_();
+  var nameOf = {};
+  board.checkpoints.forEach(function (c) { nameOf[c.code] = c.name; });
+
+  var teams = board.teams
+    .filter(function (t) { return t.session === ctx.session && t.route.indexOf(cp.code) >= 0; })
+    .map(function (t) {
+      var i = t.route.indexOf(cp.code);
+      var cell = t.cells[cp.code] || {};
+      var prevCode = i > 0 ? t.route[i - 1] : '';
+      return {
+        group: t.group,
+        name: t.name,
+        leaderName: t.leaderName,
+        memberCount: t.memberCount,
+        visitOrder: i + 1,
+        prevName: prevCode ? (nameOf[prevCode] || prevCode) : '',
+        prevStatus: prevCode ? ((t.cells[prevCode] || {}).status || '대기') : '',
+        status: cell.status || '대기',
+        arrivedAt: cell.arrivedAt || '',
+        completedAt: cell.completedAt || '',
+        score: cell.score === undefined ? null : cell.score,
+        scoreSource: cell.scoreSource || ''
+      };
+    })
+    .sort(function (a, b) {
+      return (a.visitOrder - b.visitOrder) || naturalGroupCmp_(a.group, b.group);
+    });
+
+  return {
+    session: ctx.session,
+    checkpoint: { code: cp.code, name: cp.name, mission: cp.mission, quizUrl: cp.quizUrl },
+    teams: teams
+  };
+}
+
+/**
+ * 스태프 기록. 지점·회차는 **로그인한 사람에게서** 정한다 — 요청이 다른 지점을 말해도 무시한다.
+ * items: [{ group, status?, score? }]
+ */
+function stationSet_(ctx, body) {
+  if (!confBool_('PROGRESS_OPEN', true)) {
+    throw new AppError('CLOSED', '진행 기록이 마감되었습니다.');
+  }
+  var cp = stationCheckpoint_(ctx);
+  var raw = Array.isArray(body.items) ? body.items : [body];
+  if (!raw.length) throw new AppError('BAD_REQUEST', '기록할 조가 없습니다.');
+
+  // 🔴 이 지점을 지나는 **내 회차** 조만. 다른 회차·코스에 없는 조는 거절한다.
+  var mine = {};
+  progressBoardData_().teams.forEach(function (t) {
+    if (t.session === ctx.session && t.route.indexOf(cp.code) >= 0) mine[t.group] = true;
+  });
+
+  var byGroup = {};
+  raw.forEach(function (it) {
+    var group = str_(it.group);
+    if (!mine[group]) {
+      throw new AppError('FORBIDDEN', group + ' 은(는) ' + ctx.session + ' 에 이 지점(' + cp.name + ')을 지나는 조가 아닙니다.');
+    }
+    var n = normalizeProgressItem_({ status: it.status, score: it.score, memo: it.memo }, true);
+    n.code = cp.code;
+    byGroup[group] = Object.assign({ session: ctx.session, group: group }, n);
+  });
+  var groups = Object.keys(byGroup);
+  var entries = groups.map(function (g) { return byGroup[g]; });
+
+  var T = { auth: __authMs, n: groups.length };
+  var t0 = Date.now();
+  writeProgress_('스태프', ctx.pid, entries, T);
+
+  // 조장 화면은 사본에서 읽는다(D-042) — 스태프가 쓴 것도 **조마다** 밀어 둔다.
+  groups.forEach(function (g) {
+    mirrorProgressPush_(ctx.session, g, progressListFor_(ctx.session, g, null));
+  });
+  T.total = Date.now() - t0;
+  logEvent_('station.set', ctx.pid, ctx.session + '/' + cp.code + '/' + groups.join(','),
+    groups.length === 1 ? (entries[0].status || '점수') : groups.length + '건', timingText_(T));
+
+  return stationBoard_(ctx);
+}
+
+/** 교역자·스태프 — 내 회차 전체 진행을 **읽기만** (D-051). 관리 기능은 운영 콘솔(PIN). */
+function opsBoard_(ctx) {
+  if (ctx.mode !== 'ops' && ctx.mode !== 'station') {
+    throw new AppError('FORBIDDEN', '교역자·스태프만 볼 수 있습니다.');
+  }
+  var board = progressBoardData_();
+  return {
+    session: ctx.session,
+    checkpoints: board.checkpoints,
+    teams: board.teams.filter(function (t) { return t.session === ctx.session; })
+  };
+}
+
+/**
+ * 운영 콘솔에서 칸 하나를 고친다 (D-052). 시트를 직접 고치면 사본에 안 가서(캠프 모드가 필요했다)
+ * 여기서 고치면 **사본까지** 밀린다. body: { session, group, checkpoint, status?, score? }
+ */
+function adminProgressSet_(ctx, body) {
+  var session = str_(body.session);
+  var group = str_(body.group);
+  var exists = allTeams_().some(function (t) { return t.session === session && t.group === group; });
+  if (!exists) throw new AppError('NOT_FOUND', '명단에 없는 조입니다: ' + session + ' ' + group);
+
+  var n = normalizeProgressItem_(body, true);
+  if (!n.code) throw new AppError('BAD_REQUEST', '지점을 선택해 주세요.');
+  var entry = Object.assign({ session: session, group: group }, n);
+
+  var T = { n: 1 };
+  writeProgress_('관리자', 'ADMIN', [entry], T);
+  mirrorProgressPush_(session, group, progressListFor_(session, group, null));
+  logEvent_('admin.progress.set', 'ADMIN', session + '|' + group + '/' + n.code,
+    (n.status || '') + (n.hasScore ? ' 점수=' + n.score : ''), timingText_(T));
+  return progressBoardData_();
 }
 
 // ---------------------------------------------------------------- 회비 (읽기 전용, D-005)
@@ -666,7 +871,9 @@ function dominantAudience_(counts) {
  * 훑게 된다(조 32개면 O(N×M)). 그래서 **참가자·Teams·Progress 를 각각 한 번만 훑어
  * 인덱스로 만든 뒤** 조회한다.
  */
-function progressBoard_(ctx) {
+function progressBoard_(ctx) { return progressBoardData_(); }
+
+function progressBoardData_() {
   var codes = defaultRoute_();
   var names = {};
   checkpoints_().forEach(function (c) { names[c.code] = c.name; });
@@ -688,7 +895,8 @@ function progressBoard_(ctx) {
       status: str_(r['상태']) || '대기',
       arrivedAt: toIso_(r['도착시각']),
       completedAt: toIso_(r['완료시각']),
-      score: r['퀴즈점수'] !== '' ? Number(r['퀴즈점수']) : null
+      score: r['퀴즈점수'] !== '' ? Number(r['퀴즈점수']) : null,
+      scoreSource: str_(r['점수출처'])
     };
   });
 
@@ -737,8 +945,10 @@ function feeBoard_(ctx) {
     if (st !== '면제') summary['예상수입'] += amount;
     if (st === '완납') summary['수납액'] += amount;
 
-    var session = str_(r[COL.SESSION]) || '(일자 미정)';
-    var group = str_(r[COL.GROUP]) || '(조 미배정)';
+    // 조 없는 교역자·스태프는 '미배정' 이 아니라 운영진이다 (D-051)
+    var ops = !str_(r[COL.GROUP]) && isOpsRole_(r[COL.ROLE]);
+    var session = str_(r[COL.SESSION]) || (ops ? '전 회차' : '(일자 미정)');
+    var group = str_(r[COL.GROUP]) || (ops ? '운영진' : '(조 미배정)');
     var key = session + ' ' + group;
     if (!byTeam[key]) {
       byTeam[key] = {

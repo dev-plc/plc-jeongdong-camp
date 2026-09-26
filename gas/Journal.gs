@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Journal.gs · v15 · 2026-09-26
+ * Journal.gs · v16 · 2026-09-26
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v16   2026-09-26  일지 일괄 승인, ★ 사진 수상작 (D-052)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
  *  —     2026-09-19  시트에는 진짜 Date, 통신에는 ISO
  *  —     2026-09-11  일정 변경·부서 분리·응답 속도 개선, Firebase 설계 문서화
- *  —     2026-08-28  정동 신앙탐험대 앱 - 시트 스키마·GAS 백엔드·참가자/운영 화면
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_JOURNAL = 'v15';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_JOURNAL = 'v16';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Journal.gs — 탐험일지 (글 + 사진)
@@ -179,6 +179,7 @@ function serializeJournal_(r, ctx) {
     rejectReason: str_(r['반려사유']),
     createdAt: toIso_(r['작성일시']),
     updatedAt: toIso_(r['수정일시']),
+    award: !!str_(r['수상']),              // ★ 사진 수상작 (D-052)
     isMine: str_(r['참가자ID']) === ctx.pid,
     canEdit: canEditJournal_(ctx, r)
   };
@@ -363,6 +364,57 @@ function journalReview_(ctx, body) {
     logEvent_('journal.review', 'ADMIN', str_(row['일지ID']), decision, str_(body.reason));
     return serializeJournal_(findJournalById_(row['일지ID']), ctx);
   });
+}
+
+/**
+ * 대기 중인 글을 **한 번에** 승인한다 (D-052).
+ *
+ * 마무리 카페에서 수십 장이 한꺼번에 올라오는데 검수가 한 장씩이면 그게 병목이었다.
+ * 락은 한 번만 쥔다 — 건마다 journalReview_ 를 부르면 요청·락이 N번이다.
+ * 이미 검토됐거나 지워진 글은 **건너뛴다**(다른 운영진이 먼저 처리했을 수 있다).
+ * 반려는 사유가 글마다 달라 일괄로 받지 않는다.
+ */
+function journalReviewBatch_(ctx, body) {
+  if (str_(body.decision) !== '승인') throw new AppError('BAD_REQUEST', '일괄 처리는 승인만 됩니다.');
+  var ids = Array.isArray(body.ids) ? body.ids.map(str_).filter(String) : [];
+  if (!ids.length) throw new AppError('BAD_REQUEST', '승인할 글이 없습니다.');
+
+  var approved = [], skipped = [];
+  withLock_(function () {
+    var byId = {};
+    readTable_(SHEETS.JOURNAL).forEach(function (r) { byId[str_(r['일지ID'])] = r; });
+    var now = nowStamp_();
+    ids.forEach(function (id) {
+      var row = byId[id];
+      if (!row || str_(row['상태']) !== '대기') { skipped.push(id); return; }
+      updateRow_(SHEETS.JOURNAL, row.__row, {
+        '상태': '승인', '반려사유': '', '검토자': str_(body.reviewer) || 'ADMIN', '검토일시': now
+      });
+      approved.push(id);
+    });
+  });
+  logEvent_('journal.reviewBatch', 'ADMIN', approved.length + '건', '승인',
+    skipped.length ? '건너뜀 ' + skipped.join(',') : '');
+  return { approved: approved, skipped: skipped };
+}
+
+/** ★ 수상작 지정/해제 (D-052). **승인된 사진 글만** — 미승인 사진이 시상 화면에 뜨면 안 된다. */
+function journalAward_(ctx, body) {
+  if (!headerIndex_(SHEETS.JOURNAL)['수상']) {
+    throw new AppError('SERVER_ERROR',
+      'Journal 탭에 "수상" 열이 없습니다. 운영진이 메뉴 "초기 세팅 실행" 을 다시 실행해야 합니다.');
+  }
+  var row = findJournalById_(body.id);
+  if (!row || str_(row['상태']) === '삭제') throw new AppError('NOT_FOUND', '해당 일지를 찾을 수 없습니다.');
+  var on = body.award === true || body.award === 'true';
+  if (on && (str_(row['상태']) !== '승인' || !str_(row['사진URL']))) {
+    throw new AppError('BAD_REQUEST', '승인된 사진 글만 수상작으로 지정할 수 있습니다.');
+  }
+  withLock_(function () {
+    updateRow_(SHEETS.JOURNAL, row.__row, { '수상': on ? '★' : '' });
+  });
+  logEvent_('journal.award', 'ADMIN', str_(row['일지ID']), on ? '지정' : '해제', '');
+  return serializeJournal_(findJournalById_(row['일지ID']), ctx);
 }
 
 // ---------------------------------------------------------------- 공용

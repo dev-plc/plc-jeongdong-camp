@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
  * ────────────────────────────────────────────────────────────────
- * build-demo.js · v15 · 2026-09-26
+ * build-demo.js · v16 · 2026-09-26
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v16   2026-09-26  스태프·교역자 페르소나, 조별 칸 한 벌 (D-051·052)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v14   2026-09-22  공지를 운영콘솔에서 쓴다
  *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
  *  —     2026-09-17  회차 활성/비활성 스위치 + 관리자 콘솔 회차 필터
- *  —     2026-09-17  demo.html 을 생성기로 다시 만들어 드리프트 제거
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -112,6 +112,8 @@ body { padding-top: var(--demobar-h, 76px); }
   <span class="demobar__group" id="personaGroup">
     <button type="button" data-persona="leader">조장</button>
     <button type="button" data-persona="member">일반 참가자</button>
+    <button type="button" data-persona="staff">스태프</button>
+    <button type="button" data-persona="pastor">교역자</button>
   </span>
   <p class="demobar__note" id="demoNote"></p>
 </div>
@@ -250,8 +252,24 @@ body { padding-top: var(--demobar-h, 76px); }
               course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'] },
       isLeader: false, isAdmin: false,
       members: []
+    },
+    // 거점 스태프 — 조 없이 담당 지점만 (D-051)
+    staff: {
+      participant: { id: 'P0031', name: '정스태', audience: '', session: '10/31(토)',
+                     role: '스태프', group: '', feeStatus: '면제', insurance: '가입완료' },
+      team: null, mode: 'station', station: { code: 'CP1', name: '배재학당역사박물관' },
+      isLeader: false, isAdmin: false, members: []
+    },
+    // 교역자 — 조 없이 전체 진행을 읽기만 (D-051)
+    pastor: {
+      participant: { id: 'P0041', name: '최교역', audience: '', session: '10/31(토)',
+                     role: '교역자', group: '', feeStatus: '면제', insurance: '가입완료' },
+      team: null, mode: 'ops', station: null,
+      isLeader: false, isAdmin: false, members: []
     }
   };
+  PEOPLE.leader.mode = 'leader';
+  PEOPLE.member.mode = 'member';
 
   function persona() {
     try { return sessionStorage.getItem('demo_persona') || 'leader'; } catch (e) { return 'leader'; }
@@ -259,20 +277,107 @@ body { padding-top: var(--demobar-h, 76px); }
   function me() { return PEOPLE[persona()] || PEOPLE.leader; }
 
   // ---- 가변 상태 -------------------------------------------------------
-  var progress = [
-    { checkpoint: 'CP3', visitOrder: 1, status: '완료', arrivedAt: '2026-10-31T14:00:00+09:00',
-      completedAt: '2026-10-31T14:24:00+09:00', score: 9, memo: '' },
-    { checkpoint: 'CP4', visitOrder: 2, status: '도착', arrivedAt: '2026-10-31T14:36:00+09:00',
-      completedAt: '', score: null, memo: '' },
-    { checkpoint: 'CP1', visitOrder: 3, status: '대기', arrivedAt: '', completedAt: '', score: null, memo: '' },
-    { checkpoint: 'CP2', visitOrder: 4, status: '대기', arrivedAt: '', completedAt: '', score: null, memo: '' }
+  //
+  // 🔴 진행은 **조별 칸 한 벌**에 둔다. 조장 코스·스태프 지점·교역자 진행·콘솔이 모두 여기서
+  //    읽고 쓴다 — 화면마다 따로 두면 데모에서 서로 다른 말을 한다.
+  var TEAMS = [
+    { session: '10/31(토)', group: '1조', audience: '청년부', name: '1조 배재', leaderName: '김캠티', memberCount: 4,
+      course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'],
+      cells: {
+        CP3: { status: '완료', arrivedAt: '2026-10-31T14:00:00+09:00', completedAt: '2026-10-31T14:24:00+09:00', score: 9, scoreSource: '스태프' },
+        CP4: { status: '도착', arrivedAt: '2026-10-31T14:36:00+09:00', completedAt: '', score: null, scoreSource: '' }
+      } },
+    { session: '10/31(토)', group: '2조', audience: '청년부', name: '2조 정동', leaderName: '윤지한', memberCount: 5,
+      course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'],
+      cells: {
+        CP1: { status: '완료', arrivedAt: '2026-10-31T14:02:00+09:00', completedAt: '2026-10-31T14:26:00+09:00', score: 10, scoreSource: '스태프' },
+        CP2: { status: '완료', arrivedAt: '2026-10-31T14:38:00+09:00', completedAt: '2026-10-31T15:00:00+09:00', score: 8, scoreSource: '조장' },
+        CP3: { status: '도착', arrivedAt: '2026-10-31T15:12:00+09:00', completedAt: '', score: null, scoreSource: '' }
+      } },
+    { session: '10/31(토)', group: '3조', audience: '청년부', name: '3조 이화', leaderName: '박민수', memberCount: 5,
+      course: 'B코스(러시아 시작)', route: ['CP2', 'CP3', 'CP4', 'CP1'],
+      cells: {
+        CP2: { status: '완료', arrivedAt: '2026-10-31T14:05:00+09:00', completedAt: '2026-10-31T14:30:00+09:00', score: 7, scoreSource: '스태프' },
+        CP3: { status: '완료', arrivedAt: '2026-10-31T14:38:00+09:00', completedAt: '2026-10-31T14:58:00+09:00', score: 9, scoreSource: '스태프' },
+        CP4: { status: '완료', arrivedAt: '2026-10-31T15:03:00+09:00', completedAt: '2026-10-31T15:20:00+09:00', score: 8, scoreSource: '스태프' }
+      } },
+    { session: '10/31(토)', group: '4조', audience: '청년부', name: '4조 정동길', leaderName: '서하준', memberCount: 4,
+      course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'],
+      cells: {
+        CP1: { status: '완료', arrivedAt: '2026-10-31T13:40:00+09:00', completedAt: '2026-10-31T14:00:00+09:00', score: 9, scoreSource: '스태프' },
+        CP2: { status: '완료', arrivedAt: '2026-10-31T14:08:00+09:00', completedAt: '2026-10-31T14:28:00+09:00', score: 10, scoreSource: '스태프' },
+        CP3: { status: '완료', arrivedAt: '2026-10-31T14:36:00+09:00', completedAt: '2026-10-31T14:56:00+09:00', score: 8, scoreSource: '조장' },
+        CP4: { status: '완료', arrivedAt: '2026-10-31T15:00:00+09:00', completedAt: '2026-10-31T15:18:00+09:00', score: 9, scoreSource: '스태프' }
+      } },
+    { session: '11/07(토)', group: '1조', audience: '장년부', name: '1조', leaderName: '이휘영', memberCount: 6,
+      course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'], cells: {} }
   ];
+  var MY_TEAM = TEAMS[0];
+
+  function listFor(t) {
+    return t.route.map(function (code, i) {
+      var c = t.cells[code] || {};
+      return { checkpoint: code, visitOrder: i + 1, status: c.status || '대기',
+               arrivedAt: c.arrivedAt || '', completedAt: c.completedAt || '',
+               score: c.score === undefined ? null : c.score, scoreSource: c.scoreSource || '', memo: '' };
+    });
+  }
+
+  /** 서버 writeProgress_ 와 같은 규칙 — 최초 시각만, 대기는 비움, 스태프 점수 우선 (D-052). */
+  function writeCell(t, code, it, actor) {
+    var c = t.cells[code] || (t.cells[code] = { status: '대기', arrivedAt: '', completedAt: '', score: null, scoreSource: '' });
+    // 기기 시각(서울)으로 찍는다 — 고정 문자열이면 화면의 "N분 전" 이 미래가 된다
+    var now = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 19) + '+09:00';
+    if (it.status) {
+      c.status = it.status;
+      if (it.status === '대기') { c.arrivedAt = ''; c.completedAt = ''; }
+      else {
+        if (!c.arrivedAt) c.arrivedAt = now;
+        if (it.status === '완료' && !c.completedAt) c.completedAt = now;
+      }
+    }
+    if (it.score !== undefined && !(actor === '조장' && c.scoreSource === '스태프')) {
+      c.score = it.score === '' || it.score === null ? null : Number(it.score);
+      c.scoreSource = c.score === null ? '' : actor;
+    }
+  }
+
+  function boardData() {
+    return { checkpoints: CHECKPOINTS.map(function (c) { return { code: c.code, name: c.name }; }), teams: TEAMS };
+  }
+
+  function stationBoard() {
+    var st = me().station;
+    var cp = CHECKPOINTS.filter(function (c) { return c.code === st.code; })[0];
+    var nameOf = {};
+    CHECKPOINTS.forEach(function (c) { nameOf[c.code] = c.name; });
+    var teams = TEAMS.filter(function (t) { return t.session === me().participant.session && t.route.indexOf(st.code) >= 0; })
+      .map(function (t) {
+        var i = t.route.indexOf(st.code), c = t.cells[st.code] || {}, prev = i > 0 ? t.route[i - 1] : '';
+        return { group: t.group, name: t.name, leaderName: t.leaderName, memberCount: t.memberCount,
+                 visitOrder: i + 1, prevName: prev ? nameOf[prev] : '', prevStatus: prev ? ((t.cells[prev] || {}).status || '대기') : '',
+                 status: c.status || '대기', arrivedAt: c.arrivedAt || '', completedAt: c.completedAt || '',
+                 score: c.score === undefined ? null : c.score, scoreSource: c.scoreSource || '' };
+      })
+      .sort(function (a, b) { return (a.visitOrder - b.visitOrder) || (parseInt(a.group, 10) - parseInt(b.group, 10)); });
+    return { session: me().participant.session,
+             checkpoint: { code: cp.code, name: cp.name, mission: cp.mission, quizUrl: cp.quizUrl }, teams: teams };
+  }
 
   var seq = 100;
+
+  /** 데모용 사진 — 색 바탕에 글자 한 줄. 외부 요청 없이 보인다. */
+  function PH(bg, label) {
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">' +
+      '<rect width="400" height="300" fill="' + bg + '"/>' +
+      '<text x="200" y="160" font-size="28" text-anchor="middle" fill="#fff" font-family="sans-serif">' + label + '</text></svg>';
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }
+
   var journals = [
     { id: 'J0001', session: '10/31(토)', group: '1조', authorId: 'P0007', authorName: '한지민',
       checkpoint: 'CP3', text: '보구여관 터 표석 앞에서. 병원이 있던 자리라는 걸 안내판을 보고서야 알았다.\\n이름의 뜻이 "여성을 널리 구제한다"라는 게 오래 남는다.',
-      photoUrl: '', status: '승인', rejectReason: '',
+      photoUrl: PH('#984534', '보구여관 터 표석'), status: '승인', rejectReason: '',
       createdAt: '2026-10-31T14:20:00+09:00', updatedAt: '' },
     { id: 'J0002', session: '10/31(토)', group: '1조', authorId: 'P0008', authorName: '오세훈',
       checkpoint: 'CP4', text: '심슨기념관 계단. 학생 한 명으로 시작했다는 이야기가 계속 맴돈다.',
@@ -280,12 +385,24 @@ body { padding-top: var(--demobar-h, 76px); }
       createdAt: '2026-10-31T14:52:00+09:00', updatedAt: '' },
     { id: 'J0003', session: '10/31(토)', group: '2조', authorId: 'P0011', authorName: '박서준',
       checkpoint: 'CP1', text: '배재학당 교훈을 찾았다. 欲爲大者 當爲人役 — 크고자 하거든 남을 섬기라.',
-      photoUrl: '', status: '승인', rejectReason: '',
+      photoUrl: PH('#3f7d5a', '배재학당 교훈'), status: '승인', rejectReason: '',
       createdAt: '2026-10-31T14:05:00+09:00', updatedAt: '' },
     { id: 'J0004', session: '10/31(토)', group: '3조', authorId: 'P0015', authorName: '최유나',
       checkpoint: 'CP2', text: '킹스로드를 걸으며. 고종이 걸었던 길이라는 게 실감이 안 난다.',
+      photoUrl: PH('#6b5d57', '킹스로드'), status: '대기', rejectReason: '',
+      createdAt: '2026-10-31T15:10:00+09:00', updatedAt: '' },
+    { id: 'J0005', session: '10/31(토)', group: '4조', authorId: 'P0021', authorName: '서하준',
+      checkpoint: 'CP4', text: '넷이 다 같이 완주! 심슨기념관 앞에서.',
+      photoUrl: PH('#b8863b', '4조 완주'), status: '승인', rejectReason: '',
+      createdAt: '2026-10-31T15:22:00+09:00', updatedAt: '' },
+    { id: 'J0006', session: '10/31(토)', group: '2조', authorId: 'P0012', authorName: '정하늘',
+      checkpoint: 'CP2', text: '러시아 공사관 탑. 생각보다 작았다.',
+      photoUrl: PH('#7a3729', '공사관 탑'), status: '대기', rejectReason: '',
+      createdAt: '2026-10-31T15:20:00+09:00', updatedAt: '' },
+    { id: 'J0007', session: '10/31(토)', group: '1조', authorId: 'P0008', authorName: '오세훈',
+      checkpoint: '', text: '다리가 아프지만 뿌듯한 하루.',
       photoUrl: '', status: '대기', rejectReason: '',
-      createdAt: '2026-10-31T15:10:00+09:00', updatedAt: '' }
+      createdAt: '2026-10-31T15:24:00+09:00', updatedAt: '' }
   ];
 
   function decorate(j) {
@@ -325,20 +442,42 @@ body { padding-top: var(--demobar-h, 76px); }
 
       case 'me': return Object.assign({}, me(), { isAdmin: false });
 
-      case 'progress.list': return progress;
+      case 'progress.list':
+        if (!me().team) return { __error: { code: 'NOT_FOUND', message: '배정된 조가 없습니다.' } };
+        return listFor(MY_TEAM);
 
-      case 'progress.set':
+      // 🔴 앱은 **묶음**(items)으로 보낸다(D-045). 예전 데모는 단건만 받아 조장 버튼이 되돌아갔다.
+      case 'progress.set': {
         if (!me().isLeader) return { __error: { code: 'FORBIDDEN', message: '조장만 기록할 수 있습니다.' } };
-        progress = progress.map(function (p) {
-          if (p.checkpoint !== body.checkpoint) return p;
-          var now = '2026-10-31T15:0' + (seq++ % 10) + ':00+09:00';
-          return Object.assign({}, p, {
-            status: body.status,
-            arrivedAt: body.status === '대기' ? '' : (p.arrivedAt || now),
-            completedAt: body.status === '완료' ? (p.completedAt || now) : (body.status === '대기' ? '' : p.completedAt)
-          });
+        (Array.isArray(body.items) ? body.items : [body]).forEach(function (it) {
+          writeCell(MY_TEAM, it.checkpoint, it, '조장');
         });
-        return progress;
+        return listFor(MY_TEAM);
+      }
+
+      case 'station.board':
+        if (me().mode !== 'station') return { __error: { code: 'FORBIDDEN', message: '담당 지점이 있는 스태프만 쓸 수 있습니다.' } };
+        return stationBoard();
+
+      case 'station.set': {
+        if (me().mode !== 'station') return { __error: { code: 'FORBIDDEN', message: '담당 지점이 있는 스태프만 쓸 수 있습니다.' } };
+        var sess = me().participant.session, code = me().station.code;
+        var bad = null;
+        (body.items || []).forEach(function (it) {
+          var t = TEAMS.filter(function (x) { return x.session === sess && x.group === it.group; })[0];
+          if (!t || t.route.indexOf(code) < 0) { bad = it.group; return; }
+          writeCell(t, code, it, '스태프');
+        });
+        if (bad) return { __error: { code: 'FORBIDDEN', message: bad + ' 은(는) 이 지점을 지나는 조가 아닙니다.' } };
+        return stationBoard();
+      }
+
+      case 'ops.board': {
+        if (me().mode !== 'ops' && me().mode !== 'station') return { __error: { code: 'FORBIDDEN', message: '교역자·스태프만 볼 수 있습니다.' } };
+        var s0 = me().participant.session;
+        return { session: s0, checkpoints: boardData().checkpoints,
+                 teams: TEAMS.filter(function (t) { return t.session === s0; }) };
+      }
 
       case 'journal.list': {
         var m2 = me();
@@ -475,28 +614,34 @@ body { padding-top: var(--demobar-h, 76px); }
       }
 
       case 'admin.progress.board':
-        return {
-          checkpoints: CHECKPOINTS.map(function (c) { return { code: c.code, name: c.name }; }),
-          teams: [
-            { session: '10/31(토)', group: '1조', audience: '청년부', name: '1조 배재', leaderName: '김캠티', memberCount: 4,
-              course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'],
-              cells: {
-                CP3: { status: '완료', arrivedAt: '2026-10-31T14:00:00+09:00', completedAt: '2026-10-31T14:24:00+09:00', score: 9 },
-                CP4: { status: '도착', arrivedAt: '2026-10-31T14:36:00+09:00', completedAt: '', score: null }
-              } },
-            { session: '10/31(토)', group: '2조', audience: '청년부', name: '2조 정동', leaderName: '윤지한', memberCount: 5,
-              course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'],
-              cells: {
-                CP1: { status: '완료', arrivedAt: '2026-10-31T14:02:00+09:00', completedAt: '2026-10-31T14:26:00+09:00', score: 10 },
-                CP2: { status: '완료', arrivedAt: '2026-10-31T14:38:00+09:00', completedAt: '2026-10-31T15:00:00+09:00', score: 8 },
-                CP3: { status: '도착', arrivedAt: '2026-10-31T15:12:00+09:00', completedAt: '', score: null }
-              } },
-            { session: '10/31(토)', group: '3조', audience: '청년부', name: '3조 이화', leaderName: '박민수', memberCount: 5,
-              course: 'B코스(러시아 시작)', route: ['CP2', 'CP3', 'CP4', 'CP1'], cells: {} },
-            { session: '11/07(토)', group: '1조', audience: '장년부', name: '1조', leaderName: '이휘영', memberCount: 6,
-              course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'], cells: {} }
-          ]
-        };
+        return boardData();
+
+      case 'admin.progress.set': {
+        var tt = TEAMS.filter(function (x) { return x.session === body.session && x.group === body.group; })[0];
+        if (!tt) return { __error: { code: 'NOT_FOUND', message: '명단에 없는 조입니다.' } };
+        writeCell(tt, body.checkpoint, body, '관리자');
+        return boardData();
+      }
+
+      case 'admin.journal.reviewBatch': {
+        var ok2 = [], skip = [];
+        (body.ids || []).forEach(function (id) {
+          var j = journals.filter(function (x) { return x.id === id; })[0];
+          if (!j || j.status !== '대기') { skip.push(id); return; }
+          j.status = '승인'; j.rejectReason = ''; ok2.push(id);
+        });
+        return { approved: ok2, skipped: skip };
+      }
+
+      case 'admin.journal.award': {
+        var ja = journals.filter(function (x) { return x.id === body.id; })[0];
+        if (!ja) return { __error: { code: 'NOT_FOUND', message: '찾을 수 없습니다.' } };
+        if (body.award && (ja.status !== '승인' || !ja.photoUrl)) {
+          return { __error: { code: 'BAD_REQUEST', message: '승인된 사진 글만 수상작으로 지정할 수 있습니다.' } };
+        }
+        ja.award = !!body.award;
+        return Object.assign({}, ja, { isMine: false, canEdit: true });
+      }
 
       case 'admin.fee.board':
         return {
@@ -623,7 +768,7 @@ ${adminJs}
   // 탭바 구성은 모드마다 다르다.
   var tabs = (mode === 'admin')
     ? [['review', '✅', '일지 검수'], ['notice', '📢', '공지'], ['progress', '🧭', '진행 현황'],
-       ['fee', '💳', '회비'], ['settings', '⚙️', '설정']]
+       ['awards', '🏆', '시상'], ['fee', '💳', '회비'], ['settings', '⚙️', '설정']]
     : [['home', '🏛', '홈'], ['course', '🧭', '코스'], ['journal', '📓', '탐험일지'], ['me', '👤', '내 정보']];
 
   document.getElementById('tabbar').innerHTML = tabs.map(function (t, i) {

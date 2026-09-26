@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Sheets.gs · v15 · 2026-09-26
+ * Sheets.gs · v16 · 2026-09-26
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v16   2026-09-26  교역자·담당 지점·점수출처·수상 열, 지금 회차 (D-051·052)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v14   2026-09-22  공지를 운영콘솔에서 쓴다
  *  —     2026-09-19  진행 기록이 왜 8.5초인지 구간별로 잰다
  *  —     2026-09-19  이미 쌓인 ISO 글자도 날짜로 바꾼다
- *  —     2026-09-19  시트에는 진짜 Date, 통신에는 ISO
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_SHEETS = 'v15';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_SHEETS = 'v16';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Sheets.gs — 스프레드시트 접근 레이어
@@ -54,10 +54,11 @@ var COL = {
   FEE_AMOUNT: '회비 대상(2만/3만)',
   FEE_STATUS: '입금 여부',
   GROUP: '조 배정',             // 1조 / 2조 …  (참여 일자와 묶여야 조가 특정된다)
-  ROLE: '역할',                 // 일반 / 조장 / 스태프 / 사역자
+  ROLE: '역할',                 // 일반 / 조장 / 스태프 / 교역자
   INSURANCE: '여행자 보험 가입',
   COURSE: '배정 코스',          // A코스(배재 시작) …
-  NOTE: '비고'
+  NOTE: '비고',
+  STATION: '담당 지점'          // 거점 스태프만. 지점코드(CP1…) — D-051
 };
 
 /**
@@ -95,7 +96,7 @@ var SCHEMA = {
     '참가자ID',
     COL.AUDIENCE, COL.SESSION, COL.NAME, COL.GENDER, COL.AGE, COL.PHONE,
     COL.FEE_AMOUNT, COL.FEE_STATUS, COL.GROUP, COL.ROLE, COL.INSURANCE, COL.COURSE, COL.NOTE,
-    '등록일시'
+    '등록일시', COL.STATION
   ],
   // 조는 (참여 일자 + 조 배정) 조합으로 특정된다. 별도 조ID를 두지 않는다 — 행정팀이
   // ID를 따로 관리할 필요가 없고, 마스터시트의 "1조" 표기를 그대로 쓸 수 있다.
@@ -107,12 +108,14 @@ var SCHEMA = {
   ],
   Progress: [
     '기록ID', COL.SESSION, COL.GROUP, '지점코드', '상태',
-    '도착시각', '완료시각', '퀴즈점수', '기록자ID', '메모', '수정일시'
+    '도착시각', '완료시각', '퀴즈점수', '기록자ID', '메모', '수정일시',
+    '점수출처'                // 스태프 / 조장 / 관리자 — 점수를 넣은 쪽 (D-052)
   ],
   Journal: [
     '일지ID', COL.SESSION, COL.GROUP, '참가자ID', '작성자명', '지점코드', '내용',
     '사진ID', '사진URL', '상태', '반려사유',
-    '작성일시', '수정일시', '수정자ID', '검토자', '검토일시'
+    '작성일시', '수정일시', '수정자ID', '검토자', '검토일시',
+    '수상'                    // ★ 사진 수상작 (D-052)
   ],
   Notices: ['공지ID', '대상', '제목', '내용', '고정', '게시일시', '종료일시'],
   Timeline: [COL.SESSION, '순번', '시작', '종료', '내용', '장소', '비고'],
@@ -122,7 +125,7 @@ var SCHEMA = {
 /** 상태/역할 등 열거값 — 데이터 검증과 코드가 공유한다. */
 var ENUM = {
   AUDIENCE: ['청년부', '장년부'],
-  ROLE: ['일반', '조장', '스태프', '사역자'],
+  ROLE: ['일반', '조장', '스태프', '교역자'],
   FEE: ['미납', '완납', '면제'],
   FEE_AMOUNT: ['20000', '30000'],
   INSURANCE: ['미가입', '가입완료'],
@@ -130,8 +133,21 @@ var ENUM = {
   JOURNAL: ['대기', '승인', '반려', '삭제']
 };
 
-/** 조장 권한을 갖는 역할. 스태프·사역자도 현장에서 대신 기록해야 할 때가 있다. */
-var LEADER_ROLES = ['조장', '스태프', '사역자'];
+/** **조가 있을 때** 조장 권한을 갖는 역할. 스태프·교역자도 현장에서 대신 기록해야 할 때가 있다. */
+var LEADER_ROLES = ['조장', '스태프', '교역자'];
+
+/**
+ * 조 없이도 앱을 쓰는 운영 역할 (D-051).
+ *
+ * 🔴 "운영진" 이라는 가짜 조를 만들지 않는다. 가짜 조는 진행 보드(0/4 카드),
+ * 명단 점검("조장이 없음"), 조 목록 동기화, 회비 보드에 전부 새어 나가고,
+ * 스태프가 코스 없는 조의 조장이 된다. 조가 없으면 **역할**로 모드를 정한다.
+ */
+var OPS_ROLES = ['스태프', '교역자'];
+
+function isOpsRole_(role) {
+  return OPS_ROLES.indexOf(str_(role)) >= 0;
+}
 
 // ---------------------------------------------------------------- 회차 / 조
 
@@ -197,6 +213,42 @@ function isValidSession_(label) {
 /** 지금 로그인을 열어 주는 회차인가. */
 function isActiveSession_(label) {
   return activeSessionLabels_().indexOf(str_(label)) >= 0;
+}
+
+/** 오늘 날짜(서울). 테스트가 갈아 끼울 수 있게 한 곳에 둔다. */
+function todayStr_() {
+  return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
+}
+
+/**
+ * "지금" 회차 — 오늘 날짜의 활성 회차, 없으면 **다음** 활성 회차, 없으면 마지막 활성 회차.
+ * 날짜가 없는 회차는 날짜 있는 회차가 하나도 없을 때만 쓴다. 활성 회차가 없으면 ''.
+ */
+function currentSessionLabel_() {
+  var act = sessions_().filter(function (s) { return s.active; });
+  if (!act.length) return '';
+  var dated = act.filter(function (s) { return s.date; })
+    .sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+  if (!dated.length) return act[0].label;
+  var today = todayStr_();
+  for (var i = 0; i < dated.length; i++) {
+    if (dated[i].date >= today) return dated[i].label;   // 오늘이거나 다음
+  }
+  return dated[dated.length - 1].label;
+}
+
+/**
+ * 이 사람의 회차.
+ *
+ * 🔴 조 없는 교역자·스태프는 `참여 일자` 를 **비워 두면 전 회차**다 (D-051).
+ * 한 사람 = 한 행이라, 두 회차를 다 일해도 같은 이름·번호가 두 행이 되지 않는다
+ * (두 행이면 날짜 선택을 뺀 뒤 로그인이 `AMBIGUOUS` 로 막힌다). 그때는 지금 회차를 쓴다.
+ */
+function effectiveSession_(row) {
+  var s = str_(row[COL.SESSION]);
+  if (s) return s;
+  if (isOpsRole_(row[COL.ROLE]) && !str_(row[COL.GROUP])) return currentSessionLabel_();
+  return '';
 }
 
 /**

@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v15.1 · 2026-09-26
+ * ui.js · v16 · 2026-09-26
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v16   2026-09-26  조별 카드 공용화, 점수 표시·정정 칸 (D-051·052)
  *  v15.1 2026-09-26  상대 시각 도우미 (N분 전 · 오늘 날짜 · HH:MM→분) (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  —     2026-09-18  진행 기록을 낙관적으로 반영하고, 실패하면 되돌린다
  *  —     2026-09-18  실패에 이름을, 왕복 시간에 서버 시간을 붙인다
- *  —     2026-09-17  응답 시간 실측 붙이기 (?perf=1)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -362,11 +362,100 @@
     return box;
   }
 
+  // ------------------------------------------------------------ 조별 진행 카드
+  //
+  // 운영 콘솔(D-050)과 교역자 화면(D-051)이 **같은 카드**를 쓴다. 한쪽만 고치면
+  // 두 화면이 다른 말을 한다.
+
+  // 🔴 **완주 전인데 이만큼 새 기록이 없으면 ⚠** (D-050).
+  //    업무계획서 일정이 지점 체류 25분 + 이동 10분이다. 그걸 넘기면 늦거나 길을 잃은 조다.
+  var STALE_MIN = 40;
+
+  /**
+   * 조별 카드.
+   *
+   * 🔴 예전 표는 폰에서 **진행 칸이 화면 밖**이었다 — 일자·대상·조·조장·인원 다섯 칸이 폭을
+   * 먹었다. 당일 운영진은 폰을 본다. 카드 한 장에 조의 네 지점을 코스 순서대로 한 줄에 놓고,
+   * 마지막 기록이 몇 분 전인지 보인다.
+   *
+   * opts.showSession — 회차 필터가 '전체' 일 때만 회차를 적는다.
+   * opts.editable    — 운영 콘솔: 칸을 누르면 정정 창 (D-052). 교역자 화면은 읽기 전용.
+   */
+  function teamCard(t, checkpoints, opts) {
+    var o = opts || {};
+    var nameOf = {};
+    checkpoints.forEach(function (c) { nameOf[c.code] = c.name; });
+
+    var done = 0, last = '';
+    var steps = t.route.map(function (code, i) {
+      var cell = t.cells[code] || {};
+      var status = cell.status || '대기';
+      if (status === '완료') done++;
+      [cell.arrivedAt, cell.completedAt].forEach(function (x) { if (x && x > last) last = x; });
+      var cls = status === '완료' ? 'done' : status === '도착' ? 'here' : 'wait';
+      var time = hhmm(cell.completedAt || cell.arrivedAt);
+      var hasScore = cell.score !== null && cell.score !== undefined && cell.score !== '';
+      var inner =
+        '<span class="step__top">' + (i + 1) + (time ? ' · ' + esc(time) : '') + '</span>' +
+        '<span class="step__name">' + esc(nameOf[code] || code) + '</span>' +
+        (hasScore ? '<span class="step__score">' + esc(cell.score) + '점' +
+          (cell.scoreSource === '스태프' ? ' ✓' : '') + '</span>' : '');
+      var title = (nameOf[code] || code) + ' · ' + status +
+        (hasScore ? ' · ' + cell.score + '점(' + (cell.scoreSource || '?') + ')' : '');
+      return '<li class="step step--' + cls + '" title="' + esc(title) + '">' +
+        (o.editable
+          ? '<button type="button" class="step__btn" data-edit-session="' + esc(t.session) +
+              '" data-edit-group="' + esc(t.group) + '" data-edit-code="' + esc(code) + '">' + inner + '</button>'
+          : inner) +
+        '</li>';
+    }).join('');
+
+    var total = t.route.length;
+    var finished = total > 0 && done === total;
+    var ago = minutesSince(last, o.nowMs);
+    var stale = !finished && ago !== null && ago >= STALE_MIN;
+
+    return '<article class="team-card' + (stale ? ' is-stale' : '') + (finished ? ' is-done' : '') + '"' +
+      ' data-team="' + esc(t.session + ' ' + t.group) + '">' +
+      '<header class="team-card__head">' +
+        '<div><strong>' + esc(t.name) + '</strong>' +
+          '<span class="team-card__meta">' +
+            (o.showSession ? esc(t.session) + ' · ' : '') +
+            '조장 ' + esc(t.leaderName || '—') + ' · ' + t.memberCount + '명</span></div>' +
+        '<span class="chip chip--' + (finished ? 'done' : done ? 'here' : 'wait') + '">' +
+          done + '/' + total + '</span>' +
+      '</header>' +
+      (total ? '<ol class="steps">' + steps + '</ol>' : '<p class="hint">배정 코스가 없습니다.</p>') +
+      '<p class="team-card__last">' +
+        (last
+          ? (stale ? '⚠ ' : '') + '마지막 기록 ' + esc(hhmm(last)) + ' · ' + esc(agoText(ago))
+          : '아직 기록 없음') +
+      '</p>' +
+    '</article>';
+  }
+
+  /** 카드 묶음 + 맨 위 경고 줄. 반환: { html, stale } */
+  function teamGrid(teams, checkpoints, opts) {
+    var stale = 0;
+    var nowMs = (opts && opts.nowMs) || Date.now();
+    var cards = teams.map(function (t) {
+      var html = teamCard(t, checkpoints, Object.assign({}, opts, { nowMs: nowMs }));
+      if (html.indexOf(' is-stale') > 0) stale++;
+      return html;
+    }).join('');
+    return {
+      stale: stale,
+      html: (stale ? '<p class="team-alert">⚠ ' + stale + '개 조가 ' + STALE_MIN + '분 넘게 소식이 없습니다.</p>' : '') +
+        '<div class="team-grid">' + cards + '</div>'
+    };
+  }
+
   global.UI = {
     $: $, $$: $$, esc: esc, nl2br: nl2br,
     toast: toast, confirmDialog: confirmDialog, setBusy: setBusy,
     resizePhoto: resizePhoto, hhmm: hhmm, localIso: localIso, prettyDateTime: prettyDateTime,
     localDate: localDate, hmToMin: hmToMin, minutesSince: minutesSince, agoText: agoText,
-    perfPanel: perfPanel, perfEnabled: perfEnabled
+    perfPanel: perfPanel, perfEnabled: perfEnabled,
+    STALE_MIN: STALE_MIN, teamCard: teamCard, teamGrid: teamGrid
   };
 })(window);

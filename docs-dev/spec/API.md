@@ -114,20 +114,37 @@ fetch(API_BASE, {
             "leaderName": "김캠티", "meetingPoint": "PL교회 본당 앞",
             "course": "C코스(보구여관 시작)", "route": ["CP3","CP4","CP1","CP2"] },
   "isLeader": true,
+  "mode": "leader",          // station | leader | member | ops (v16, D-051)
+  "station": null,           // mode=station 이면 { "code": "CP1", "name": "배재학당역사박물관" }
   "members": [ { "id": "P0002", "name": "이조원", "role": "일반",
                  "feeStatus": "미납", "insurance": "미가입" } ]
 }
 ```
 `members` 는 `isLeader=true` 일 때만 채워집니다. `연락처`는 어떤 경우에도 포함되지 않습니다.
 이름은 마스터시트의 구분번호가 제거된 표시용 이름입니다.
-`isLeader` 는 `역할` 이 `조장` / `스태프` / `사역자` 중 하나일 때 참입니다.
+`isLeader` 는 **조가 있고** `역할` 이 `조장` / `스태프` / `교역자` 중 하나일 때 참입니다 (v16 — `사역자` 는 `교역자` 로 바뀌었고, 조 없는 스태프·교역자는 조장이 아닙니다).
+
+**`mode`** (v16, D-051)
+
+| mode | 조건 | 앱 |
+|---|---|---|
+| `station` | 역할 `스태프` + `담당 지점` | 코스 탭 = **내 지점** (`station.*`) |
+| `leader` | 조 있음 + 조장·스태프·교역자 | 지금 그대로 |
+| `member` | 조 있음 + 일반, 또는 조 없는 일반 | 지금 그대로 (조 없으면 "조 미배정") |
+| `ops` | 조 없음 + 교역자·스태프 | 코스 탭 = **진행** (`ops.board`, 읽기 전용) |
+
+조 없는 교역자·스태프는 `참여 일자` 를 비울 수 있습니다 — **전 회차**. `participant.session` 에는
+오늘 날짜의 활성 회차(없으면 다음, 없으면 마지막)가 실립니다.
 
 #### `progress.list`
 소속 조의 4개 지점 진행 상태.
 ```jsonc
 { "action": "progress.list", "token": "..." }
-// data: [ { "checkpoint": "CP1", "status": "완료", "arrivedAt": "...", "completedAt": "...", "score": 8 } ]
+// data: [ { "checkpoint": "CP1", "status": "완료", "arrivedAt": "...", "completedAt": "...",
+//           "score": 8, "scoreSource": "스태프" } ]
 ```
+`scoreSource` (v16) — 점수를 넣은 쪽: `스태프` / `조장` / `관리자` / `''`.
+🔴 사본(Supabase `progress_cache`)에는 이 열이 없습니다 — 미러에서 읽은 목록에는 `scoreSource` 가 빠집니다.
 
 #### `progress.set` — **조장 전용**
 ```jsonc
@@ -135,7 +152,36 @@ fetch(API_BASE, {
   "status": "완료", "score": 8, "memo": "" }
 ```
 `status` 는 `대기|도착|완료`. 상태 전이 시각(`도착시각`/`완료시각`)은 서버가 찍습니다.
-`Config.PROGRESS_OPEN=FALSE` 면 `CLOSED`.
+`Config.PROGRESS_OPEN=FALSE` 면 `CLOSED`. 묶음은 `{ items: [ {checkpoint, status, score?}, … ] }` (D-045).
+
+🔴 **스태프 점수 우선** (v16, D-052) — `점수출처=스태프` 인 지점에 조장이 점수를 보내면 **점수만 무시**하고
+상태는 기록합니다(거절하면 같은 묶음의 도착·완료까지 날아갑니다). 응답 목록의 `score`·`scoreSource` 로 앱이 알립니다.
+`Progress` 에 `점수출처` 열이 없으면 점수가 든 요청은 `SERVER_ERROR` — `초기 세팅 실행` 을 다시 돌리라는 뜻입니다.
+
+#### `station.board` — **거점 스태프**(`mode=station`) 전용 (v16)
+```jsonc
+{ "action": "station.board", "token": "..." }
+// data
+{ "session": "10/31(토)",
+  "checkpoint": { "code": "CP1", "name": "…", "mission": "…", "quizUrl": "…" },
+  "teams": [ { "group": "2조", "name": "2조 정동", "leaderName": "…", "memberCount": 5,
+               "visitOrder": 1, "prevName": "", "prevStatus": "",
+               "status": "완료", "arrivedAt": "…", "completedAt": "…", "score": 10, "scoreSource": "스태프" } ] }
+```
+내 회차에서 **이 지점을 지나는 조**만, 이 지점에 오는 순서(`visitOrder`)대로. `prevStatus` 가 `완료` 면 "오는 중".
+
+#### `station.set` — 거점 스태프 전용 (v16)
+```jsonc
+{ "action": "station.set", "token": "...", "items": [ { "group": "3조", "status": "도착" },
+                                                     { "group": "2조", "score": 9 } ] }
+```
+지점·회차는 **로그인한 스태프에게서** 정합니다 — 요청에 지점을 적어도 무시합니다. 이 지점을 지나지 않는 조가
+하나라도 있으면 묶음 전체를 `FORBIDDEN`. 상태 없이 점수만 보낼 수 있습니다. 응답은 갱신된 `station.board`.
+조마다 사본을 밀어 조장 화면(미러에서 읽음)에도 바로 보입니다.
+
+#### `ops.board` — 교역자·스태프(`mode=ops|station`) (v16)
+`admin.progress.board` 와 같은 모양을 **내 회차로 거른 읽기 전용**. `{ session, checkpoints, teams }`.
+관리 기능(정정·검수·공지)은 운영 콘솔(PIN)에서만.
 
 #### `journal.list`
 ```jsonc
@@ -195,11 +241,14 @@ fetch(API_BASE, {
 | `admin.journal.pending` | 승인 대기 목록 (`상태 = 대기`) |
 | `admin.journal.list` | **삭제를 뺀 전체 목록**, 최신순 (D-046). 상태 거르기는 앱이 받아 둔 데이터로 합니다 |
 | `admin.journal.review` | `{ id, decision: "승인"\|"반려", reason }` |
+| `admin.journal.reviewBatch` | `{ ids: [...], decision: "승인" }` (v16) — **대기 글만** 한 번의 락으로 승인, 나머지는 건너뜀. → `{ approved, skipped }`. 일괄 반려는 없습니다 |
+| `admin.journal.award` | `{ id, award: true\|false }` (v16) — ★ 사진 수상작. **승인된 사진 글만** 지정 가능. 목록 항목에 `award` |
 | `admin.journal.update` / `admin.journal.delete` | 참가자용과 동일하나 전 범위 |
 | `admin.notice.list` | 공지 **전부** — 예약·종료된 것까지, `targets`(고를 수 있는 대상) 동봉 (D-048) |
 | `admin.notice.save` | `{ id?, target, title, body, pinned, endsAt? }` — `id` 가 없으면 만들고 있으면 고칩니다. `게시일시` 는 만들 때만 찍고 이후 건드리지 않습니다 |
 | `admin.notice.delete` | `{ id }` — 행을 **실제로 지웁니다**(일지와 달리 소프트 삭제가 아닙니다) |
-| `admin.progress.board` | 전 조 진행 현황 보드 — 조는 Teams 가 아니라 **명단에 실제로 존재하는 (참여 일자, 조 배정) 조합**에서 뽑습니다 |
+| `admin.progress.board` | 전 조 진행 현황 보드 — 조는 Teams 가 아니라 **명단에 실제로 존재하는 (참여 일자, 조 배정) 조합**에서 뽑습니다. 칸에 `scoreSource` (v16) |
+| `admin.progress.set` | `{ session, group, checkpoint, status?, score? }` (v16) — 칸 정정. 출처 `관리자`, 스태프 점수도 고칩니다. 사본까지 밀고 갱신된 보드를 돌려줍니다 |
 | `admin.fee.board` | 회비·보험 현황 집계 (읽기). 수납액/예상수입 합계 포함 |
 | `admin.config.set` | `{ key, value, note?, allowNew? }` — `Config` 값 변경. `note` 는 `설명` 열에 함께 기록됩니다. 반환: `publicConfig_()` (반영 후 공개 설정 전체). 설정·부트스트랩 캐시를 함께 비웁니다.<br>**없는 키는 거절됩니다** — 오타로 새 키가 조용히 생기는 것을 막기 위해서입니다(비슷한 키를 제안). 새 키를 정말 추가하려면 `allowNew: true` |
 

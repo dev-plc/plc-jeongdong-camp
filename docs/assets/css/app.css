@@ -1,13 +1,13 @@
 /*
    ────────────────────────────────────────────────────────────────
-    app.css · v15.1 · 2026-09-26
+    app.css · v16 · 2026-09-26
    ────────────────────────────────────────────────────────────────
     변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+     v16   2026-09-26  내 지점·점수·시상·크게 보기 (D-051·052)
      v15.1 2026-09-26  글자 하한 13px · 조별 카드 · 코스 접기 (D-050)
      v15   2026-09-26  파일 버전 표시 시작
      —     2026-09-18  진행 기록을 낙관적으로 반영하고, 실패하면 되돌린다
      —     2026-09-18  실패에 이름을, 왕복 시간에 서버 시간을 붙인다
-     —     2026-09-17  회차 활성/비활성 스위치 + 관리자 콘솔 회차 필터
 
     버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
           — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -654,3 +654,71 @@ details.cp:not([open]) { padding-top: 12px; padding-bottom: 12px; }
 .step__name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board-table > summary { cursor: pointer; font-size: 14px; color: var(--ink-2); }
 .board-table[open] > summary { margin-bottom: 10px; }
+
+/* ==========================================================================
+   D-051·052 — 조 없는 교역자·스태프, 거점 스태프, 점수 (v16)
+   ========================================================================== */
+
+.card--role { --team-color: #6b5d57; }
+
+/* 퀴즈 점수 — 조장 코스 카드와 스태프 행이 같이 쓴다 */
+.cp__score { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 0; font-size: 14px; }
+.cp__score label { display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
+.cp__score.is-locked { color: var(--ok); }
+.input--score { width: 84px; padding: 8px 10px; text-align: center; }
+
+/* 거점 스태프 — 내 지점 */
+.station-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+.station-bar .course-summary__count { margin-right: auto; }
+.st-row {
+  background: var(--paper-2); border: 1px solid var(--line); border-left: 5px solid var(--wall);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; margin-bottom: 10px;
+}
+.st-row--here { border-left-color: var(--warn); }
+.st-row--done { border-left-color: var(--ok); }
+.st-row__head { display: flex; align-items: flex-start; gap: 11px; }
+.st-row__head > div { flex: 1; min-width: 0; }
+.st-row__actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.st-row__actions .btn--primary { flex: 1; padding: 13px 16px; font-size: 16px; }
+
+/* 콘솔 진행 카드 — 칸을 누르면 정정 (D-052) */
+.step__score { display: block; font-weight: 700; }
+.step__btn {
+  display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit;
+  font: inherit; text-align: left; cursor: pointer;
+}
+.step:has(.step__btn):hover { outline: 2px solid rgba(152, 69, 52, .35); }
+
+/* 일지 관리 — 사진만 · 일괄 승인 (D-052) */
+.review-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+.review-tools .tab { flex: none; }
+
+/* 🏆 시상 (D-052) */
+.award .card__title .hint { font-family: var(--font-sans); font-weight: 400; margin-left: 6px; }
+.rank { list-style: none; margin: 0; padding: 0; }
+.rank__row {
+  display: grid; grid-template-columns: 34px 1fr auto; align-items: baseline; gap: 2px 10px;
+  padding: 10px 0; border-bottom: 1px dashed var(--line);
+}
+.rank__row:last-child { border-bottom: 0; }
+.rank__no { font-weight: 700; color: var(--brick); font-size: 18px; text-align: center; }
+.rank__name { font-weight: 700; min-width: 0; }
+.rank__val { font-weight: 700; font-variant-numeric: tabular-nums; }
+.rank__meta { grid-column: 2 / -1; font-size: 13px; color: var(--ink-2); }
+.award-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.award-photo { margin: 0; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; background: #fff; }
+.award-photo.is-award { border: 2px solid var(--warn); }
+.award-photo img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.award-photo figcaption {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 8px; font-size: 13px;
+}
+
+/* 크게 보기 — 주일 발표용. 상위 3 과 ★ 사진만 크게 */
+body.is-present .rank__row { padding: 16px 0; }
+body.is-present .rank__no { font-size: 32px; }
+body.is-present .rank__name, body.is-present .rank__val { font-size: 26px; }
+body.is-present .award .card__title { font-size: 24px; }
+body.is-present .award-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+body.is-present .award-photo figcaption { font-size: 18px; }
+body.is-present .view { max-width: 1100px; }
