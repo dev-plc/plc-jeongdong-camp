@@ -398,7 +398,11 @@ body { padding-top: var(--demobar-h, 76px); }
     { id: 'J0006', session: '10/31(토)', group: '2조', authorId: 'P0012', authorName: '정하늘',
       checkpoint: 'CP2', text: '러시아 공사관 탑. 생각보다 작았다.',
       photoUrl: PH('#7a3729', '공사관 탑'), status: '대기', rejectReason: '',
-      createdAt: '2026-10-31T15:20:00+09:00', updatedAt: '' }
+      createdAt: '2026-10-31T15:20:00+09:00', updatedAt: '' },
+    { id: 'J0007', session: '10/31(토)', group: '1조', authorId: 'P0008', authorName: '오세훈',
+      checkpoint: '', text: '다리가 아프지만 뿌듯한 하루.',
+      photoUrl: '', status: '대기', rejectReason: '',
+      createdAt: '2026-10-31T15:24:00+09:00', updatedAt: '' }
   ];
 
   function decorate(j) {
