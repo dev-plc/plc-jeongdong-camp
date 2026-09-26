@@ -15,14 +15,14 @@
 <style>
 /*
    ────────────────────────────────────────────────────────────────
-    app.css · v15 · 2026-09-26
+    app.css · v15.1 · 2026-09-26
    ────────────────────────────────────────────────────────────────
     변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+     v15.1 2026-09-26  글자 하한 13px · 조별 카드 · 코스 접기 (D-050)
      v15   2026-09-26  파일 버전 표시 시작
      —     2026-09-18  진행 기록을 낙관적으로 반영하고, 실패하면 되돌린다
      —     2026-09-18  실패에 이름을, 왕복 시간에 서버 시간을 붙인다
      —     2026-09-17  회차 활성/비활성 스위치 + 관리자 콘솔 회차 필터
-     —     2026-09-17  응답 시간 실측 붙이기 (?perf=1)
 
     버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
           — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -101,7 +101,7 @@ a { color: var(--brick); }
 .appbar__mark { width: 30px; height: 30px; opacity: .95; }
 .appbar__sub {
   margin: 0;
-  font-size: 11px;
+  font-size: 13px;
   letter-spacing: .08em;
   opacity: .82;
 }
@@ -146,7 +146,7 @@ body.is-auth .view { padding-bottom: calc(var(--tabbar-h) + 28px + env(safe-area
 /* ------------------------------------------------------------------ 히어로 (로그인) */
 
 .hero { padding: 28px 6px 18px; text-align: center; }
-.hero__eyebrow { margin: 0 0 8px; font-size: 12px; color: var(--ink-2); letter-spacing: .04em; }
+.hero__eyebrow { margin: 0 0 8px; font-size: 13px; color: var(--ink-2); letter-spacing: .04em; }
 .hero__title {
   margin: 0;
   font-family: var(--font-serif);
@@ -172,7 +172,7 @@ body.is-auth .view { padding-bottom: calc(var(--tabbar-h) + 28px + env(safe-area
   font-size: 17px;
   font-weight: 700;
 }
-.card__eyebrow { margin: 0 0 4px; font-size: 12px; color: var(--ink-2); }
+.card__eyebrow { margin: 0 0 4px; font-size: 13px; color: var(--ink-2); }
 .card__foot {
   margin: 14px 0 0;
   padding-top: 12px;
@@ -233,7 +233,7 @@ textarea.input { resize: vertical; min-height: 96px; }
   font-size: 14px;
   cursor: pointer;
 }
-.seg__item span em { display: block; font-style: normal; font-size: 11px; color: var(--ink-2); }
+.seg__item span em { display: block; font-style: normal; font-size: 13px; color: var(--ink-2); }
 .seg__item input:checked + span {
   border-color: var(--brick);
   background: var(--brick);
@@ -269,7 +269,7 @@ textarea.input { resize: vertical; min-height: 96px; }
   margin-bottom: 8px;
 }
 
-.hint { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-2); }
+.hint { margin: 6px 0 0; font-size: 13px; color: var(--ink-2); }
 .hint--center { text-align: center; }
 
 /* ------------------------------------------------------------------ 버튼 */
@@ -306,7 +306,7 @@ textarea.input { resize: vertical; min-height: 96px; }
   display: inline-block;
   padding: 3px 9px;
   border-radius: 999px;
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1.6;
   white-space: nowrap;
@@ -322,7 +322,7 @@ textarea.input { resize: vertical; min-height: 96px; }
   border-radius: 5px;
   background: var(--brick);
   color: #fff;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
   vertical-align: middle;
 }
@@ -347,14 +347,14 @@ textarea.input { resize: vertical; min-height: 96px; }
 .timeline__time {
   flex: none;
   width: 86px;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
   padding-top: 2px;
 }
 .timeline__body { font-size: 14.5px; }
-.timeline__body em { font-style: normal; font-size: 12.5px; color: var(--ink-2); margin-left: 6px; }
-.timeline__note { display: block; font-size: 12px; color: var(--ink-2); }
+.timeline__body em { font-style: normal; font-size: 13px; color: var(--ink-2); margin-left: 6px; }
+.timeline__note { display: block; font-size: 13px; color: var(--ink-2); }
 
 /* ------------------------------------------------------------------ 코스 */
 
@@ -387,7 +387,7 @@ textarea.input { resize: vertical; min-height: 96px; }
   margin-top: 2px;
 }
 .cp__name { margin: 0; font-family: var(--font-serif); font-size: 16.5px; }
-.cp__sum { margin: 2px 0 0; font-size: 12.5px; color: var(--ink-2); }
+.cp__sum { margin: 2px 0 0; font-size: 13px; color: var(--ink-2); }
 .cp__desc { margin: 12px 0 0; font-size: 14px; }
 .cp__mission {
   margin: 10px 0 0;
@@ -397,9 +397,9 @@ textarea.input { resize: vertical; min-height: 96px; }
   font-size: 13.5px;
 }
 .cp__mission strong { color: var(--brick); margin-right: 4px; }
-.cp__times { margin: 10px 0 0; font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.cp__times { margin: 10px 0 0; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .cp__links { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.cp__hours { font-size: 12px; color: var(--ink-2); }
+.cp__hours { font-size: 13px; color: var(--ink-2); }
 .cp__actions {
   display: flex;
   gap: 8px;
@@ -440,19 +440,19 @@ textarea.input { resize: vertical; min-height: 96px; }
 .jcard__photo { display: block; }
 .jcard__photo img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #eee; }
 .jcard__body { padding: 14px; }
-.jcard__meta { margin: 0 0 6px; font-size: 12px; color: var(--ink-2); }
+.jcard__meta { margin: 0 0 6px; font-size: 13px; color: var(--ink-2); }
 .jcard__meta strong { color: var(--ink); font-weight: 500; }
 .jcard__text { margin: 0; font-size: 14px; white-space: normal; }
 .jcard__reject {
   margin: 8px 0 0;
-  font-size: 12.5px;
+  font-size: 13px;
   color: #a33;
   background: #f9eeec;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
 }
 .jcard__actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
-.jcard__role { font-size: 11.5px; color: var(--ink-2); }
+.jcard__role { font-size: 13px; color: var(--ink-2); }
 
 .members { list-style: none; margin: 0; padding: 0; }
 .members li {
@@ -491,7 +491,7 @@ textarea.input { resize: vertical; min-height: 96px; }
   border: 0;
   background: none;
   font-family: inherit;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--ink-2);
   cursor: pointer;
 }
@@ -551,6 +551,8 @@ textarea.input { resize: vertical; min-height: 96px; }
   white-space: nowrap;
 }
 .admin-table th { background: #f2ece6; font-weight: 500; color: var(--ink-2); }
+/* <small> 은 기본 0.83배라 13px 하한을 밑돈다 (D-050) — 크기는 두고 색으로만 덜어 낸다. */
+.admin-table small { font-size: 13px; color: var(--ink-2); }
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -593,8 +595,80 @@ textarea.input { resize: vertical; min-height: 96px; }
 /* 비활성 회차 탭. 숨기지 않고 **꺼져 있음을 보여 준다** — 운영진은 데이터를 계속 본다 (D-031). */
 .tab.is-off { opacity: .55; }
 .tab.is-off small {
-  display: block; font-size: 10px; letter-spacing: .02em; opacity: .8;
+  display: block; font-size: 13px; letter-spacing: .02em; opacity: .8;
 }
+
+/* ==========================================================================
+   D-050 — 사전답사 전 화면 정리 (v15.1)
+   🔴 글자는 13px 아래로 내리지 않는다 — 장년부 회차가 있다. 예외는 ?perf=1 패널뿐.
+   ========================================================================== */
+
+.btn--text {
+  padding: 8px 4px; border: 0; background: none;
+  color: var(--ink-2); font-size: 13px; text-decoration: underline; text-underline-offset: 3px;
+}
+
+/* ---- 홈: 지금 · 다음 ---- */
+.now-card { border-left: 5px solid var(--brick); }
+.now-card__label { margin: 0 0 2px; font-size: 13px; font-weight: 700; color: var(--brick); }
+.now-card__line { margin: 0; font-size: 17px; line-height: 1.45; }
+.now-card__time { font-size: 14px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.now-card__next { margin: 8px 0 0; font-size: 14px; color: var(--ink-2); }
+.now-card__course { margin: 10px 0 0; padding-top: 10px; border-top: 1px dashed var(--line); font-size: 14px; }
+.now-card--dday .now-card__line strong { color: var(--brick); margin-right: 4px; }
+.timeline__row.is-now {
+  margin: 0 -10px; padding-left: 10px; padding-right: 10px;
+  background: #f6ecd8; border-radius: var(--radius-sm);
+}
+
+/* ---- 코스: 진행 요약 · 다음 지점 · 접힌 완료 카드 ---- */
+.course-summary {
+  display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline;
+  margin: 0 0 12px; padding: 12px 14px;
+  border-radius: var(--radius); background: var(--paper-2); border: 1px solid var(--line);
+  color: var(--ink); text-decoration: none; font-size: 15px;
+}
+.course-summary__count { font-weight: 700; color: var(--brick); }
+.cp--next { border-left-color: var(--brick); box-shadow: 0 0 0 2px rgba(152, 69, 52, .18), var(--shadow); }
+details.cp > summary { list-style: none; cursor: pointer; }
+details.cp > summary::-webkit-details-marker { display: none; }
+details.cp:not([open]) { padding-top: 12px; padding-bottom: 12px; }
+.cp__actions { align-items: center; }
+.cp__actions .cp__next { flex: 1; padding: 14px 16px; font-size: 16px; }
+.cp__actions .cp__undo { flex: none; }
+
+/* ---- 운영콘솔: 조별 진행 카드 ---- */
+.team-alert {
+  margin: 0 0 12px; padding: 10px 14px; border-radius: var(--radius-sm);
+  background: #f7e3e0; color: #8c2f26; font-size: 14px; font-weight: 500;
+}
+.team-grid { display: grid; gap: 12px; margin-bottom: 14px; }
+@media (min-width: 720px) { .team-grid { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1100px) { .team-grid { grid-template-columns: 1fr 1fr 1fr; } }
+.team-card {
+  background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 14px; min-width: 0;
+}
+.team-card.is-stale { border-color: #d9a39a; background: #fdf6f4; }
+.team-card__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.team-card__head strong { font-size: 16px; }
+.team-card__meta { display: block; font-size: 13px; color: var(--ink-2); }
+.team-card__last { margin: 10px 0 0; font-size: 13px; color: var(--ink-2); }
+.team-card.is-stale .team-card__last { color: #8c2f26; font-weight: 700; }
+.steps {
+  list-style: none; margin: 10px 0 0; padding: 0;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px;
+}
+.step {
+  min-width: 0; padding: 6px 6px 7px; border-radius: 7px;
+  background: #efe9e3; color: var(--ink-2); font-size: 13px; line-height: 1.3;
+}
+.step--here { background: #f6ecd8; color: #7a5a22; }
+.step--done { background: #e3efe7; color: var(--ok); }
+.step__top { display: block; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.step__name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-table > summary { cursor: pointer; font-size: 14px; color: var(--ink-2); }
+.board-table[open] > summary { margin-bottom: 10px; }
 
 </style>
 
@@ -1664,14 +1738,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v15 · 2026-09-26
+ * ui.js · v15.1 · 2026-09-26
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v15.1 2026-09-26  상대 시각 도우미 (N분 전 · 오늘 날짜 · HH:MM→분) (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  —     2026-09-18  진행 기록을 낙관적으로 반영하고, 실패하면 되돌린다
  *  —     2026-09-18  실패에 이름을, 왕복 시간에 서버 시간을 붙인다
  *  —     2026-09-17  응답 시간 실측 붙이기 (?perf=1)
- *  —     2026-09-17  폰에서 갤러리 사진 선택 / 로그인 화면 날짜 선택 제거
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -1836,6 +1910,41 @@ window.APP_CONFIG = {
       sign + p2(Math.floor(Math.abs(off) / 60)) + ':' + p2(Math.abs(off) % 60);
   }
 
+  // ---------------------------------------------------------------- 지금 기준 (D-050)
+  //
+  // 🔴 **"지금" 은 폰 시계로 판단한다.** bootstrap 의 `serverTime` 을 쓰면 안 된다 —
+  // 미러에서 받은 bootstrap 은 **마지막 푸시 시각**을 싣고 있어 몇 시간 전일 수 있다.
+  // 폰 시계는 통신사 시각에 맞춰져 있어 이 용도로는 충분하다.
+
+  /** 기기 기준 오늘 'YYYY-MM-DD'. 회차 날짜(`sessions[].date`)와 견준다. */
+  function localDate(date) {
+    return localIso(date).slice(0, 10);
+  }
+
+  /** '09:30' → 570 (자정부터 분). 형식이 아니면 null. */
+  function hmToMin(hm) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(hm || '').trim());
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  }
+
+  /** ISO 시각이 지금부터 몇 분 전인지. 폰 시계가 조금 늦어 미래로 나오면 0. */
+  function minutesSince(iso, nowMs) {
+    if (!iso) return null;
+    var t = new Date(iso).getTime();
+    if (isNaN(t)) return null;
+    var d = Math.floor(((nowMs === undefined ? Date.now() : nowMs) - t) / 60000);
+    return d < 0 ? 0 : d;
+  }
+
+  /** 12 → '12분 전', 75 → '1시간 15분 전' */
+  function agoText(min) {
+    if (min === null || min === undefined) return '';
+    if (min < 1) return '방금';
+    if (min < 60) return min + '분 전';
+    var h = Math.floor(min / 60), r = min % 60;
+    return h + '시간 ' + (r ? r + '분 ' : '') + '전';
+  }
+
   /** '2026-10-31T14:05:00+09:00' → '10월 31일 14:05' */
   function prettyDateTime(iso) {
     if (!iso) return '';
@@ -1995,6 +2104,7 @@ window.APP_CONFIG = {
     $: $, $$: $$, esc: esc, nl2br: nl2br,
     toast: toast, confirmDialog: confirmDialog, setBusy: setBusy,
     resizePhoto: resizePhoto, hhmm: hhmm, localIso: localIso, prettyDateTime: prettyDateTime,
+    localDate: localDate, hmToMin: hmToMin, minutesSince: minutesSince, agoText: agoText,
     perfPanel: perfPanel, perfEnabled: perfEnabled
   };
 })(window);
@@ -2003,14 +2113,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v15 · 2026-09-26
+ * app.js · v15.1 · 2026-09-26
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v15.1 2026-09-26  홈 "지금·다음" 카드, 코스 다음 동작 버튼·접기 (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
  *  —     2026-09-19  진행 기록을 묶어서 보낸다
  *  —     2026-09-19  진행을 미러에서 읽는다
- *  —     2026-09-19  안 보낸 필드는 덮어쓰지 않는다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -2205,6 +2315,93 @@ window.APP_CONFIG = {
 
   // ------------------------------------------------------------ 홈
 
+  // ------------------------------------------------------------ 홈 — 지금 · 다음 (D-050)
+  //
+  // 🔴 홈이 "지금 뭐 하고, 어디로 가지?" 에 답하지 않았다. 하루 일정을 같은 무게로 늘어놓기만
+  // 했다. 당일 가장 많이 여는 화면이니 맨 위에 **지금 · 다음** 을 둔다.
+  // "지금" 은 **폰 시계**다(UI.localDate · 이 파일의 nowMinutes). serverTime 을 쓰지 않는다.
+
+  function nowMinutes() {
+    var d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  }
+
+  /** 오늘 일정에서 지금 항목과 다음 항목. 종료가 비면 다음 항목 시작까지로 본다. */
+  function timelineNow(rows, nowMin) {
+    var cur = null, next = null;
+    for (var i = 0; i < rows.length; i++) {
+      var st = UI.hmToMin(rows[i].start);
+      if (st === null) continue;
+      var en = UI.hmToMin(rows[i].end);
+      if (en === null && rows[i + 1]) en = UI.hmToMin(rows[i + 1].start);
+      if (st <= nowMin && (en === null ? true : nowMin < en)) cur = i;
+      if (st > nowMin && next === null) next = i;
+    }
+    return { cur: cur, next: next };
+  }
+
+  /** 두 날짜('YYYY-MM-DD') 사이 날 수 */
+  function daysBetween(from, to) {
+    return Math.round((new Date(to + 'T00:00:00') - new Date(from + 'T00:00:00')) / 86400000);
+  }
+
+  function nowCardHtml(rows, sessionLabel, sessionDate) {
+    if (!sessionDate) return '';
+    var diff = daysBetween(UI.localDate(), sessionDate);
+    if (diff < 0) return '';                         // 지난 회차 — 보일 것이 없다
+    if (diff > 0) {
+      return '<section class="card now-card now-card--dday"><p class="now-card__line">' +
+        '<strong>D-' + diff + '</strong> ' + esc(sessionLabel) + '</p></section>';
+    }
+
+    var t = timelineNow(rows, nowMinutes());
+    var line;
+    if (t.cur !== null) {
+      var r = rows[t.cur];
+      line = '<p class="now-card__label">지금</p>' +
+        '<p class="now-card__line"><strong>' + esc(r.title) + '</strong> ' +
+        '<span class="now-card__time">' + esc(r.start) + (r.end ? '–' + esc(r.end) : '') + '</span>' +
+        (r.place ? ' · ' + esc(r.place) : '') + '</p>';
+    } else if (t.next !== null) {
+      // 첫 일정 전, 또는 두 일정 사이(예: 답사 끝 16:10 ~ 마무리 16:25)
+      var n = rows[t.next];
+      line = '<p class="now-card__label">곧 시작</p>' +
+        '<p class="now-card__line"><strong>' + esc(n.title) + '</strong> ' +
+        '<span class="now-card__time">' + esc(n.start) + '</span>' +
+        (n.place ? ' · ' + esc(n.place) : '') + '</p>';
+    } else {
+      line = '<p class="now-card__line">오늘 일정이 끝났습니다. 수고하셨습니다!</p>';
+    }
+    var after = (t.cur !== null && t.next !== null)
+      ? '<p class="now-card__next">다음 · ' + esc(rows[t.next].start) + ' ' + esc(rows[t.next].title) + '</p>'
+      : '';
+    return '<section class="card now-card" id="nowCard">' + line + after +
+      '<p class="now-card__course" id="nowCourse" hidden></p></section>';
+  }
+
+  /** 당일에만 코스 진행을 읽어 홈 카드에 채운다. 미러에서 읽으므로 가볍다(D-042). */
+  function fillNowCourse() {
+    var el = $('#nowCourse');
+    if (!el || !state.me.team) return;
+    var paint = function (list) {
+      var box = $('#nowCourse');
+      if (!box || !list || !list.length) return;
+      var done = list.filter(function (p) { return p.status === '완료'; }).length;
+      var next = nextCheckpoint(list);
+      var nameOf = {};
+      (state.boot.checkpoints || []).forEach(function (c) { nameOf[c.code] = c.name; });
+      box.innerHTML = '코스 ' + done + '/' + list.length +
+        (next ? ' · 다음 <strong>' + esc(nameOf[next.checkpoint] || next.checkpoint) + '</strong>' : ' · 완주!') +
+        ' <button type="button" class="btn btn--text" id="goCourse">코스 보기</button>';
+      box.hidden = false;
+      $('#goCourse').addEventListener('click', function () { go('course'); });
+    };
+    if (state.progress && state.progress.length) { paint(state.progress); return; }
+    API.progressList(state.me.team)
+      .then(function (list) { state.progress = list; lastServerList = list; paint(list); })
+      .catch(function () { /* 홈 보조 정보다 — 실패해도 조용히 둔다 */ });
+  }
+
   function renderHome() {
     var me = state.me;
     var team = me.team;
@@ -2214,8 +2411,13 @@ window.APP_CONFIG = {
         n.target === me.participant.audience;
     });
     var rows = (state.boot.timeline && state.boot.timeline[me.participant.session]) || [];
+    var sess = (state.boot.sessions || []).filter(function (x) { return x.label === me.participant.session; })[0];
+    var sessionDate = sess ? sess.date : '';
+    var isToday = sessionDate && sessionDate === UI.localDate();
+    var curRow = isToday ? timelineNow(rows, nowMinutes()).cur : null;
 
     setView(
+      nowCardHtml(rows, me.participant.session, sessionDate) +
       '<section class="card card--team" style="--team-color:' + esc(team ? team.color : '#984534') + '">' +
         '<p class="card__eyebrow">' + esc(me.participant.audience || '') +
           (me.participant.audience ? ' · ' : '') + esc(me.participant.session) + '</p>' +
@@ -2241,8 +2443,8 @@ window.APP_CONFIG = {
 
       '<section class="card"><h2 class="card__title">오늘 일정</h2>' +
         (rows.length
-          ? '<ol class="timeline">' + rows.map(function (r) {
-              return '<li class="timeline__row">' +
+          ? '<ol class="timeline">' + rows.map(function (r, i) {
+              return '<li class="timeline__row' + (i === curRow ? ' is-now' : '') + '">' +
                 '<span class="timeline__time">' + esc(r.start) + (r.end ? '–' + esc(r.end) : '') + '</span>' +
                 '<span class="timeline__body"><strong>' + esc(r.title) + '</strong>' +
                 (r.place ? '<em>' + esc(r.place) + '</em>' : '') +
@@ -2252,6 +2454,7 @@ window.APP_CONFIG = {
           : '<p class="empty">일정이 아직 등록되지 않았습니다.</p>') +
       '</section>'
     );
+    if (isToday) fillNowCourse();
   }
 
   function routeNames(route) {
@@ -2276,37 +2479,77 @@ window.APP_CONFIG = {
       });
   }
 
+  /**
+   * 조장이 누를 버튼 (D-050).
+   *
+   * 🔴 예전에는 `대기 / 도착 / 완료` 세 버튼이 같은 크기로 나란히 있고, **현재 상태가 진한 색**
+   * 이었다. 아직 안 간 지점은 `대기` 가 칠해져 **눌러야 할 버튼처럼** 보였고, 한 번 잘못 누르면
+   * 도착 기록이 지워졌다. 이제 버튼은 **다음 동작 하나**다. 상태는 칩으로만 보인다.
+   *
+   * 되돌리기는 작은 글자 버튼이고 확인창을 거친다 — 도착 취소는 **최초 도착 시각을 지운다.**
+   * 버튼에는 지금처럼 **목표 상태**를 `data-status` 로 단다. 그래서 `queueProgress` 이하
+   * (낙관적 반영·배치·되돌림)는 그대로다.
+   */
+  var NEXT_ACTION = {
+    '대기': { status: '도착', label: '도착했어요' },
+    '도착': { status: '완료', label: '완료했어요' }
+  };
+  var UNDO_ACTION = {
+    '도착': { status: '대기', label: '도착 취소', ask: '도착 기록을 지울까요?\n도착 시각도 함께 지워집니다.' },
+    '완료': { status: '도착', label: '완료 취소', ask: '완료를 취소할까요?\n도착 상태로 돌아갑니다.' }
+  };
+
+  function courseActions(p) {
+    var next = NEXT_ACTION[p.status];
+    var undo = UNDO_ACTION[p.status];
+    if (!next && !undo) return '';
+    return '<div class="cp__actions" data-cp="' + esc(p.checkpoint) + '">' +
+      (next
+        ? '<button type="button" class="btn btn--primary cp__next" data-status="' + next.status + '">' +
+            esc(next.label) + '</button>'
+        : '') +
+      (undo
+        ? '<button type="button" class="btn btn--text cp__undo" data-status="' + undo.status + '"' +
+            ' data-ask="' + esc(undo.ask) + '">' + esc(undo.label) + '</button>'
+        : '') +
+      '</div>';
+  }
+
+  /** 코스 순서상 아직 완료하지 않은 첫 지점. 모두 완료면 null. */
+  function nextCheckpoint(list) {
+    for (var i = 0; i < list.length; i++) if (list[i].status !== '완료') return list[i];
+    return null;
+  }
+
   function paintCourse() {
     var byCode = {};
     (state.boot.checkpoints || []).forEach(function (c) { byCode[c.code] = c; });
     var canEdit = state.me.isLeader && state.boot.config.PROGRESS_OPEN;
+    var next = nextCheckpoint(state.progress);
+    var done = state.progress.filter(function (p) { return p.status === '완료'; }).length;
 
     var cards = state.progress.map(function (p) {
       var cp = byCode[p.checkpoint] || { name: p.checkpoint };
       var mapUrl = cp.lat && cp.lng
         ? 'https://map.kakao.com/link/map/' + encodeURIComponent(cp.name) + ',' + cp.lat + ',' + cp.lng
         : 'https://map.kakao.com/link/search/' + encodeURIComponent(cp.name);
+      var isNext = next && next.checkpoint === p.checkpoint;
+      var times = (p.arrivedAt ? '도착 ' + esc(UI.hhmm(p.arrivedAt)) : '') +
+        (p.completedAt ? ' · 완료 ' + esc(UI.hhmm(p.completedAt)) : '');
 
-      // 화면은 이미 바뀌었지만 아직 서버에 안 갔다 — 그 사실을 숨기지 않는다.
-      // data-score 는 **표시가 아니라 확인용**이다. 점수·메모는 화면에 안 나와서
-      // 상태 변경이 그 값을 지우던 버그가 오래 드러나지 않았다(D-039).
-      // 테스트와 현장 점검이 값을 볼 수 있게 속성 하나만 싣는다.
-      return '<article class="cp cp--' + statusClass(p.status) + (p.pending ? ' is-saving' : '') + '"' +
-        ' data-score="' + esc(p.score === null || p.score === undefined ? '' : p.score) + '">' +
-        '<header class="cp__head">' +
-          '<span class="cp__no">' + p.visitOrder + '</span>' +
-          '<div><h3 class="cp__name">' + esc(cp.name) + '</h3>' +
-          (cp.summary ? '<p class="cp__sum">' + esc(cp.summary) + '</p>' : '') + '</div>' +
-          '<span class="chip chip--' + statusClass(p.status) + '">' + esc(p.status) +
-          (p.pending ? ' · 저장 중' : '') + '</span>' +
-        '</header>' +
+      var head =
+        '<span class="cp__no">' + p.visitOrder + '</span>' +
+        '<div><h3 class="cp__name">' + esc(cp.name) + '</h3>' +
+        (p.status === '완료'
+          ? '<p class="cp__sum">' + times + '</p>'
+          : (cp.summary ? '<p class="cp__sum">' + esc(cp.summary) + '</p>' : '')) + '</div>' +
+        '<span class="chip chip--' + statusClass(p.status) + '">' + esc(p.status) +
+        (p.pending ? ' · 저장 중' : '') + '</span>';
+
+      var body =
         (cp.description ? '<p class="cp__desc">' + nl2br(esc(cp.description)) + '</p>' : '') +
         (cp.mission ? '<p class="cp__mission"><strong>미션</strong> ' + esc(cp.mission) + '</p>' : '') +
-        (p.arrivedAt || p.completedAt
-          ? '<p class="cp__times">' +
-            (p.arrivedAt ? '도착 ' + esc(UI.hhmm(p.arrivedAt)) : '') +
-            (p.completedAt ? ' · 완료 ' + esc(UI.hhmm(p.completedAt)) : '') + '</p>'
-          : '') +
+        (times && p.status !== '완료' ? '<p class="cp__times">' + times + '</p>' : '') +
         '<div class="cp__links">' +
           '<a class="btn btn--ghost btn--sm" href="' + esc(mapUrl) + '" target="_blank" rel="noopener">지도</a>' +
           (cp.quizUrl
@@ -2314,24 +2557,44 @@ window.APP_CONFIG = {
             : '') +
           (cp.openHours ? '<span class="cp__hours">' + esc(cp.openHours) + '</span>' : '') +
         '</div>' +
-        (canEdit
-          ? '<div class="cp__actions" data-cp="' + esc(p.checkpoint) + '">' +
-            ['대기', '도착', '완료'].map(function (s) {
-              return '<button type="button" class="btn btn--sm' +
-                (p.status === s ? ' btn--primary' : ' btn--ghost') +
-                '" data-status="' + s + '">' + s + '</button>';
-            }).join('') +
-            '</div>'
-          : '') +
-        '</article>';
+        (canEdit ? courseActions(p) : '');
+
+      // 화면은 이미 바뀌었지만 아직 서버에 안 갔다 — 그 사실을 숨기지 않는다.
+      // data-score 는 **표시가 아니라 확인용**이다(D-039). 테스트와 현장 점검이 값을 본다.
+      var attrs = ' id="cp-' + esc(p.checkpoint) + '" data-code="' + esc(p.checkpoint) + '"' +
+        ' data-status="' + esc(p.status) + '"' +
+        ' data-score="' + esc(p.score === null || p.score === undefined ? '' : p.score) + '"';
+      var cls = 'cp cp--' + statusClass(p.status) + (p.pending ? ' is-saving' : '') + (isNext ? ' cp--next' : '');
+
+      // 🔴 **다음 지점과 진행 중(도착)인 지점만 펼친다.** 나머지는 한 줄로 접는다 —
+      // 네 곳을 다 펼치면 화면이 3,600px 이 되어 조장이 걸으면서 스크롤로 찾았다.
+      // 접힌 카드도 누르면 펼쳐지고 버튼이 그대로 있다(순서를 바꿔 갈 때를 위해).
+      if (!isNext && p.status !== '도착') {
+        return '<details class="' + cls + '"' + attrs + '>' +
+          '<summary class="cp__head">' + head + '</summary>' + body + '</details>';
+      }
+      return '<article class="' + cls + '"' + attrs + '>' +
+        '<header class="cp__head">' + head + '</header>' + body + '</article>';
     }).join('');
+
+    var total = state.progress.length;
+    var summary = total
+      ? '<a class="course-summary" href="' + (next ? '#cp-' + esc(next.checkpoint) : '#') + '">' +
+          '<span class="course-summary__count">진행 ' + done + '/' + total + '</span>' +
+          (next
+            ? '<span>다음: ' + next.visitOrder + '. ' +
+                esc((byCode[next.checkpoint] || { name: next.checkpoint }).name) + '</span>'
+            : '<span>🎉 네 곳 모두 완료했습니다</span>') +
+        '</a>'
+      : '';
 
     setView(
       '<section class="section-head"><h2>답사 코스</h2>' +
         '<p class="hint">우리 조 순서대로 표시됩니다.' +
         (state.me.isLeader
-          ? (state.boot.config.PROGRESS_OPEN ? ' 조장은 각 지점 상태를 기록할 수 있습니다.' : ' 진행 기록은 마감되었습니다.')
+          ? (state.boot.config.PROGRESS_OPEN ? ' 도착하면 "도착했어요", 끝나면 "완료했어요" 를 눌러 주세요.' : ' 진행 기록은 마감되었습니다.')
           : ' 상태는 조장이 기록합니다.') + '</p></section>' +
+      summary +
       (cards || '<p class="empty">코스 정보가 없습니다.</p>')
     );
 
@@ -2438,10 +2701,19 @@ window.APP_CONFIG = {
   });
 
   function onProgressClick(e) {
-    var btn = e.target.closest('[data-status]');
+    // 카드 자체에도 data-status(현재 상태)가 달려 있다 — 버튼만 잡는다.
+    var btn = e.target.closest('button[data-status]');
     if (!btn) return;
     var wrap = btn.closest('[data-cp]');
-    queueProgress(wrap.getAttribute('data-cp'), btn.getAttribute('data-status'));
+    if (!wrap) return;
+    var code = wrap.getAttribute('data-cp');
+    var target = btn.getAttribute('data-status');
+    var ask = btn.getAttribute('data-ask');
+    if (!ask) { queueProgress(code, target); return; }
+    // 되돌리기는 기록을 지우므로 한 번 묻는다.
+    UI.confirmDialog(ask, btn.textContent).then(function (yes) {
+      if (yes) queueProgress(code, target);
+    });
   }
 
   function statusClass(status) {
@@ -2858,14 +3130,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v15 · 2026-09-26
+ * admin.js · v15.1 · 2026-09-26
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v15.1 2026-09-26  진행표를 조별 카드로 + 40분 무소식 ⚠ (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v14   2026-09-22  공지를 운영콘솔에서 쓴다
  *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
  *  —     2026-09-17  회차 활성/비활성 스위치 + 관리자 콘솔 회차 필터
- *  —     2026-09-17  응답 시간 실측 붙이기 (?perf=1)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -3342,43 +3614,110 @@ window.APP_CONFIG = {
 
   function renderProgress() { loadThenPaint('progress', 'admin.progress.board', paintProgress); }
 
+  // 🔴 **완주 전인데 이만큼 새 기록이 없으면 ⚠** (D-050).
+  //    업무계획서 일정이 지점 체류 25분 + 이동 10분이다. 그걸 넘기면 늦거나 길을 잃은 조다.
+  var STALE_MIN = 40;
+
+  /**
+   * 조별 카드 (D-050).
+   *
+   * 🔴 예전 표는 폰에서 **진행 칸이 화면 밖**이었다 — 일자·대상·조·조장·인원 다섯 칸이 폭을
+   * 먹었다. 당일 운영진은 폰을 본다. 카드 한 장에 조의 네 지점을 코스 순서대로 한 줄에 놓고,
+   * 마지막 기록이 몇 분 전인지 보인다. 표는 "표로 보기" 로 남긴다(넓은 화면·인쇄용).
+   */
+  function teamCard(t, checkpoints, showSession, nowMs) {
+    var nameOf = {};
+    checkpoints.forEach(function (c) { nameOf[c.code] = c.name; });
+
+    var done = 0, last = '';
+    var steps = t.route.map(function (code, i) {
+      var cell = t.cells[code] || {};
+      var status = cell.status || '대기';
+      if (status === '완료') done++;
+      [cell.arrivedAt, cell.completedAt].forEach(function (x) { if (x && x > last) last = x; });
+      var cls = status === '완료' ? 'done' : status === '도착' ? 'here' : 'wait';
+      var time = UI.hhmm(cell.completedAt || cell.arrivedAt);
+      return '<li class="step step--' + cls + '" title="' + esc((nameOf[code] || code) + ' · ' + status) + '">' +
+        '<span class="step__top">' + (i + 1) + (time ? ' · ' + esc(time) : '') + '</span>' +
+        '<span class="step__name">' + esc(nameOf[code] || code) + '</span></li>';
+    }).join('');
+
+    var total = t.route.length;
+    var finished = total > 0 && done === total;
+    var ago = UI.minutesSince(last, nowMs);
+    var stale = !finished && ago !== null && ago >= STALE_MIN;
+
+    return '<article class="team-card' + (stale ? ' is-stale' : '') + (finished ? ' is-done' : '') + '"' +
+      ' data-team="' + esc(t.session + ' ' + t.group) + '">' +
+      '<header class="team-card__head">' +
+        '<div><strong>' + esc(t.name) + '</strong>' +
+          '<span class="team-card__meta">' +
+            (showSession ? esc(t.session) + ' · ' : '') +
+            '조장 ' + esc(t.leaderName || '—') + ' · ' + t.memberCount + '명</span></div>' +
+        '<span class="chip chip--' + (finished ? 'done' : done ? 'here' : 'wait') + '">' +
+          done + '/' + total + '</span>' +
+      '</header>' +
+      (total ? '<ol class="steps">' + steps + '</ol>' : '<p class="hint">배정 코스가 없습니다.</p>') +
+      '<p class="team-card__last">' +
+        (last
+          ? (stale ? '⚠ ' : '') + '마지막 기록 ' + esc(UI.hhmm(last)) + ' · ' + esc(UI.agoText(ago))
+          : '아직 기록 없음') +
+      '</p>' +
+    '</article>';
+  }
+
+  function progressTable(board, teams) {
+    return '<div class="table-scroll"><table class="admin-table">' +
+      '<thead><tr><th>' + esc(L('session', '참여 일자')) + '</th>' +
+      '<th>' + esc(L('audience', '캠프 대상')) + '</th>' +
+      '<th>' + esc(L('group', '조 배정')) + '</th><th>조장</th><th>인원</th>' +
+      board.checkpoints.map(function (c) { return '<th>' + esc(c.name) + '</th>'; }).join('') +
+      '</tr></thead><tbody>' +
+      teams.map(function (t) {
+        return '<tr>' +
+          '<td>' + esc(t.session) + '</td>' +
+          '<td>' + esc(t.audience || '—') + '</td>' +
+          '<td>' + esc(t.name) + '</td>' +
+          '<td>' + esc(t.leaderName || '—') + '</td>' +
+          '<td>' + t.memberCount + '</td>' +
+          board.checkpoints.map(function (c) {
+            var cell = t.cells[c.code];
+            var visit = t.route.indexOf(c.code);
+            var order = visit >= 0 ? '<small>' + (visit + 1) + '번째</small><br>' : '';
+            if (!cell) return '<td>' + order + '<span class="chip chip--wait">대기</span></td>';
+            var cls = cell.status === '완료' ? 'done' : cell.status === '도착' ? 'here' : 'wait';
+            var time = UI.hhmm(cell.completedAt || cell.arrivedAt);
+            return '<td>' + order + '<span class="chip chip--' + cls + '">' + esc(cell.status) + '</span>' +
+              (time ? ' <small>' + esc(time) + '</small>' : '') + '</td>';
+          }).join('') +
+        '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
   function paintProgress(board) {
         var teams = board.teams.filter(function (t) {
           return matchesAudience(t.audience) && matchesSession(t.session);
         });
+        var nowMs = Date.now();
+        var stale = 0;
+        var cards = teams.map(function (t) {
+          var html = teamCard(t, board.checkpoints, state.session === '전체', nowMs);
+          if (html.indexOf(' is-stale') > 0) stale++;
+          return html;
+        }).join('');
 
         setView(
           '<section class="section-head"><h2>' + esc(L('group', '조 배정')) + '별 진행 현황</h2>' +
-            '<p class="hint">조장이 기록한 도착·완료 상태입니다. 조마다 배정 코스가 달라 방문 순서가 다릅니다.</p></section>' +
+            '<p class="hint">조마다 배정 코스 순서대로 보입니다. 완주 전인데 ' + STALE_MIN +
+            '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다.</p></section>' +
           sessionFilterHtml() +
           audienceFilterHtml() +
           (teams.length
-            ? '<div class="card"><div class="table-scroll"><table class="admin-table">' +
-                '<thead><tr><th>' + esc(L('session', '참여 일자')) + '</th>' +
-                '<th>' + esc(L('audience', '캠프 대상')) + '</th>' +
-                '<th>' + esc(L('group', '조 배정')) + '</th><th>조장</th><th>인원</th>' +
-                board.checkpoints.map(function (c) { return '<th>' + esc(c.name) + '</th>'; }).join('') +
-                '</tr></thead><tbody>' +
-                teams.map(function (t) {
-                  return '<tr>' +
-                    '<td>' + esc(t.session) + '</td>' +
-                    '<td>' + esc(t.audience || '—') + '</td>' +
-                    '<td>' + esc(t.name) + '</td>' +
-                    '<td>' + esc(t.leaderName || '—') + '</td>' +
-                    '<td>' + t.memberCount + '</td>' +
-                    board.checkpoints.map(function (c) {
-                      var cell = t.cells[c.code];
-                      var visit = t.route.indexOf(c.code);
-                      var order = visit >= 0 ? '<small>' + (visit + 1) + '번째</small><br>' : '';
-                      if (!cell) return '<td>' + order + '<span class="chip chip--wait">대기</span></td>';
-                      var cls = cell.status === '완료' ? 'done' : cell.status === '도착' ? 'here' : 'wait';
-                      var time = UI.hhmm(cell.completedAt || cell.arrivedAt);
-                      return '<td>' + order + '<span class="chip chip--' + cls + '">' + esc(cell.status) + '</span>' +
-                        (time ? ' <small>' + esc(time) + '</small>' : '') + '</td>';
-                    }).join('') +
-                  '</tr>';
-                }).join('') +
-              '</tbody></table></div></div>'
+            ? (stale ? '<p class="team-alert">⚠ ' + stale + '개 조가 ' + STALE_MIN + '분 넘게 소식이 없습니다.</p>' : '') +
+              '<div class="team-grid">' + cards + '</div>' +
+              '<details class="card board-table"><summary>표로 보기</summary>' +
+                progressTable(board, teams) + '</details>'
             : '<p class="empty">' + (state.audience === '전체'
                 ? '명단에 조가 배정된 참가자가 아직 없습니다.'
                 : esc(state.audience) + '에 배정된 조가 없습니다.') + '</p>')

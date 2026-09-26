@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v15 · 2026-09-26
+ * admin.js · v15.1 · 2026-09-26
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v15.1 2026-09-26  진행표를 조별 카드로 + 40분 무소식 ⚠ (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v14   2026-09-22  공지를 운영콘솔에서 쓴다
  *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
  *  —     2026-09-17  회차 활성/비활성 스위치 + 관리자 콘솔 회차 필터
- *  —     2026-09-17  응답 시간 실측 붙이기 (?perf=1)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -484,43 +484,110 @@
 
   function renderProgress() { loadThenPaint('progress', 'admin.progress.board', paintProgress); }
 
+  // 🔴 **완주 전인데 이만큼 새 기록이 없으면 ⚠** (D-050).
+  //    업무계획서 일정이 지점 체류 25분 + 이동 10분이다. 그걸 넘기면 늦거나 길을 잃은 조다.
+  var STALE_MIN = 40;
+
+  /**
+   * 조별 카드 (D-050).
+   *
+   * 🔴 예전 표는 폰에서 **진행 칸이 화면 밖**이었다 — 일자·대상·조·조장·인원 다섯 칸이 폭을
+   * 먹었다. 당일 운영진은 폰을 본다. 카드 한 장에 조의 네 지점을 코스 순서대로 한 줄에 놓고,
+   * 마지막 기록이 몇 분 전인지 보인다. 표는 "표로 보기" 로 남긴다(넓은 화면·인쇄용).
+   */
+  function teamCard(t, checkpoints, showSession, nowMs) {
+    var nameOf = {};
+    checkpoints.forEach(function (c) { nameOf[c.code] = c.name; });
+
+    var done = 0, last = '';
+    var steps = t.route.map(function (code, i) {
+      var cell = t.cells[code] || {};
+      var status = cell.status || '대기';
+      if (status === '완료') done++;
+      [cell.arrivedAt, cell.completedAt].forEach(function (x) { if (x && x > last) last = x; });
+      var cls = status === '완료' ? 'done' : status === '도착' ? 'here' : 'wait';
+      var time = UI.hhmm(cell.completedAt || cell.arrivedAt);
+      return '<li class="step step--' + cls + '" title="' + esc((nameOf[code] || code) + ' · ' + status) + '">' +
+        '<span class="step__top">' + (i + 1) + (time ? ' · ' + esc(time) : '') + '</span>' +
+        '<span class="step__name">' + esc(nameOf[code] || code) + '</span></li>';
+    }).join('');
+
+    var total = t.route.length;
+    var finished = total > 0 && done === total;
+    var ago = UI.minutesSince(last, nowMs);
+    var stale = !finished && ago !== null && ago >= STALE_MIN;
+
+    return '<article class="team-card' + (stale ? ' is-stale' : '') + (finished ? ' is-done' : '') + '"' +
+      ' data-team="' + esc(t.session + ' ' + t.group) + '">' +
+      '<header class="team-card__head">' +
+        '<div><strong>' + esc(t.name) + '</strong>' +
+          '<span class="team-card__meta">' +
+            (showSession ? esc(t.session) + ' · ' : '') +
+            '조장 ' + esc(t.leaderName || '—') + ' · ' + t.memberCount + '명</span></div>' +
+        '<span class="chip chip--' + (finished ? 'done' : done ? 'here' : 'wait') + '">' +
+          done + '/' + total + '</span>' +
+      '</header>' +
+      (total ? '<ol class="steps">' + steps + '</ol>' : '<p class="hint">배정 코스가 없습니다.</p>') +
+      '<p class="team-card__last">' +
+        (last
+          ? (stale ? '⚠ ' : '') + '마지막 기록 ' + esc(UI.hhmm(last)) + ' · ' + esc(UI.agoText(ago))
+          : '아직 기록 없음') +
+      '</p>' +
+    '</article>';
+  }
+
+  function progressTable(board, teams) {
+    return '<div class="table-scroll"><table class="admin-table">' +
+      '<thead><tr><th>' + esc(L('session', '참여 일자')) + '</th>' +
+      '<th>' + esc(L('audience', '캠프 대상')) + '</th>' +
+      '<th>' + esc(L('group', '조 배정')) + '</th><th>조장</th><th>인원</th>' +
+      board.checkpoints.map(function (c) { return '<th>' + esc(c.name) + '</th>'; }).join('') +
+      '</tr></thead><tbody>' +
+      teams.map(function (t) {
+        return '<tr>' +
+          '<td>' + esc(t.session) + '</td>' +
+          '<td>' + esc(t.audience || '—') + '</td>' +
+          '<td>' + esc(t.name) + '</td>' +
+          '<td>' + esc(t.leaderName || '—') + '</td>' +
+          '<td>' + t.memberCount + '</td>' +
+          board.checkpoints.map(function (c) {
+            var cell = t.cells[c.code];
+            var visit = t.route.indexOf(c.code);
+            var order = visit >= 0 ? '<small>' + (visit + 1) + '번째</small><br>' : '';
+            if (!cell) return '<td>' + order + '<span class="chip chip--wait">대기</span></td>';
+            var cls = cell.status === '완료' ? 'done' : cell.status === '도착' ? 'here' : 'wait';
+            var time = UI.hhmm(cell.completedAt || cell.arrivedAt);
+            return '<td>' + order + '<span class="chip chip--' + cls + '">' + esc(cell.status) + '</span>' +
+              (time ? ' <small>' + esc(time) + '</small>' : '') + '</td>';
+          }).join('') +
+        '</tr>';
+      }).join('') +
+      '</tbody></table></div>';
+  }
+
   function paintProgress(board) {
         var teams = board.teams.filter(function (t) {
           return matchesAudience(t.audience) && matchesSession(t.session);
         });
+        var nowMs = Date.now();
+        var stale = 0;
+        var cards = teams.map(function (t) {
+          var html = teamCard(t, board.checkpoints, state.session === '전체', nowMs);
+          if (html.indexOf(' is-stale') > 0) stale++;
+          return html;
+        }).join('');
 
         setView(
           '<section class="section-head"><h2>' + esc(L('group', '조 배정')) + '별 진행 현황</h2>' +
-            '<p class="hint">조장이 기록한 도착·완료 상태입니다. 조마다 배정 코스가 달라 방문 순서가 다릅니다.</p></section>' +
+            '<p class="hint">조마다 배정 코스 순서대로 보입니다. 완주 전인데 ' + STALE_MIN +
+            '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다.</p></section>' +
           sessionFilterHtml() +
           audienceFilterHtml() +
           (teams.length
-            ? '<div class="card"><div class="table-scroll"><table class="admin-table">' +
-                '<thead><tr><th>' + esc(L('session', '참여 일자')) + '</th>' +
-                '<th>' + esc(L('audience', '캠프 대상')) + '</th>' +
-                '<th>' + esc(L('group', '조 배정')) + '</th><th>조장</th><th>인원</th>' +
-                board.checkpoints.map(function (c) { return '<th>' + esc(c.name) + '</th>'; }).join('') +
-                '</tr></thead><tbody>' +
-                teams.map(function (t) {
-                  return '<tr>' +
-                    '<td>' + esc(t.session) + '</td>' +
-                    '<td>' + esc(t.audience || '—') + '</td>' +
-                    '<td>' + esc(t.name) + '</td>' +
-                    '<td>' + esc(t.leaderName || '—') + '</td>' +
-                    '<td>' + t.memberCount + '</td>' +
-                    board.checkpoints.map(function (c) {
-                      var cell = t.cells[c.code];
-                      var visit = t.route.indexOf(c.code);
-                      var order = visit >= 0 ? '<small>' + (visit + 1) + '번째</small><br>' : '';
-                      if (!cell) return '<td>' + order + '<span class="chip chip--wait">대기</span></td>';
-                      var cls = cell.status === '완료' ? 'done' : cell.status === '도착' ? 'here' : 'wait';
-                      var time = UI.hhmm(cell.completedAt || cell.arrivedAt);
-                      return '<td>' + order + '<span class="chip chip--' + cls + '">' + esc(cell.status) + '</span>' +
-                        (time ? ' <small>' + esc(time) + '</small>' : '') + '</td>';
-                    }).join('') +
-                  '</tr>';
-                }).join('') +
-              '</tbody></table></div></div>'
+            ? (stale ? '<p class="team-alert">⚠ ' + stale + '개 조가 ' + STALE_MIN + '분 넘게 소식이 없습니다.</p>' : '') +
+              '<div class="team-grid">' + cards + '</div>' +
+              '<details class="card board-table"><summary>표로 보기</summary>' +
+                progressTable(board, teams) + '</details>'
             : '<p class="empty">' + (state.audience === '전체'
                 ? '명단에 조가 배정된 참가자가 아직 없습니다.'
                 : esc(state.audience) + '에 배정된 조가 없습니다.') + '</p>')
