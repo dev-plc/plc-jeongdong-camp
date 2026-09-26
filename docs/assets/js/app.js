@@ -44,8 +44,18 @@
     journal: { items: [], total: 0, nextCursor: null, scope: 'gallery' },
     fee: null,
     pendingPhoto: null,  // 작성 폼에 붙인 사진
-    editing: null        // 수정 중인 일지 id
+    editing: null,       // 수정 중인 일지 id
+    station: null,       // 거점 스태프 — station.board 응답 (D-051)
+    stationAll: false    // 거점 스태프가 '전체 진행 보기' 를 연 상태
   };
+
+  /**
+   * 모드 (D-051). 서버가 정한다 — 여기서는 화면만 바꾼다.
+   *   leader·member — 조가 있는 사람. 지금 그대로.
+   *   station       — 담당 지점이 있는 스태프. 코스 탭이 '내 지점'.
+   *   ops           — 조 없는 교역자·스태프. 코스 탭이 '진행'(읽기 전용).
+   */
+  function modeOf(me) { return (me && me.mode) || (me && me.isLeader ? 'leader' : 'member'); }
 
   // ------------------------------------------------------------ 부팅
 
@@ -95,6 +105,7 @@
   function go(view) {
     state.view = view;
     state.editing = null;
+    state.stationAll = false;     // 탭을 누르면 스태프는 늘 '내 지점' 부터
     render();
   }
 
@@ -112,11 +123,30 @@
     UI.$$('#tabbar [data-view]').forEach(function (b) {
       b.classList.toggle('is-active', b.getAttribute('data-view') === state.view);
     });
+    syncCourseTab();
 
+    var mode = modeOf(state.me);
     if (state.view === 'home') renderHome();
-    else if (state.view === 'course') renderCourse();
+    else if (state.view === 'course') {
+      if (mode === 'station' && !state.stationAll) renderStation();
+      else if (mode === 'station' || mode === 'ops') renderBoard();
+      else renderCourse();
+    }
     else if (state.view === 'journal') renderJournal();
     else if (state.view === 'me') renderMe();
+  }
+
+  /** 코스 탭의 이름·아이콘을 모드에 맞춘다. 탭 자리는 그대로(data-view="course"). */
+  var COURSE_TAB = {
+    station: ['📍', '내 지점'],
+    ops: ['📊', '진행']
+  };
+  function syncCourseTab() {
+    var btn = UI.$('#tabbar [data-view="course"]');
+    if (!btn) return;
+    var t = COURSE_TAB[modeOf(state.me)] || ['🧭', '코스'];
+    var spans = btn.querySelectorAll('span');
+    if (spans.length >= 2) { spans[0].textContent = t[0]; spans[1].textContent = t[1]; }
   }
 
   function setView(html) {
@@ -303,8 +333,10 @@
     var isToday = sessionDate && sessionDate === UI.localDate();
     var curRow = isToday ? timelineNow(rows, nowMinutes()).cur : null;
 
+    var mode = modeOf(me);
     setView(
       nowCardHtml(rows, me.participant.session, sessionDate) +
+      (mode === 'station' || mode === 'ops' ? roleCardHtml(me) :
       '<section class="card card--team" style="--team-color:' + esc(team ? team.color : '#984534') + '">' +
         '<p class="card__eyebrow">' + esc(me.participant.audience || '') +
           (me.participant.audience ? ' · ' : '') + esc(me.participant.session) + '</p>' +
@@ -319,7 +351,7 @@
           ? '<p class="card__foot">' + (team.course ? esc(L('course', '배정 코스')) + ' · ' + esc(team.course) + '<br>' : '') +
             esc(routeNames(team.route).join(' → ')) + '</p>'
           : '') +
-      '</section>' +
+      '</section>') +
 
       (notices.length ? '<section class="card"><h2 class="card__title">공지</h2>' +
         notices.map(function (n) {
@@ -342,6 +374,29 @@
       '</section>'
     );
     if (isToday) fillNowCourse();
+    var goRole = $('#goRole');
+    if (goRole) goRole.addEventListener('click', function () { state.stationAll = false; go('course'); });
+  }
+
+  /** 조 없는 교역자·스태프의 홈 카드 — 조 카드 자리 (D-051). */
+  function roleCardHtml(me) {
+    var st = me.station;
+    var isStation = modeOf(me) === 'station';
+    return '<section class="card card--team card--role">' +
+      '<p class="card__eyebrow">' + esc(me.participant.session) + ' · 운영진</p>' +
+      '<h2 class="card__title">' + esc(me.participant.role || '운영진') +
+        (isStation && st ? ' · ' + esc(st.name || st.code) : '') + '</h2>' +
+      '<dl class="kv">' +
+        '<div><dt>' + esc(L('name', '이름')) + '</dt><dd>' + esc(me.participant.name) + '</dd></div>' +
+        (isStation && st ? '<div><dt>담당</dt><dd>' + esc(st.name || st.code) + ' (' + esc(st.code) + ')</dd></div>' : '') +
+      '</dl>' +
+      '<p class="card__foot">' +
+        (isStation
+          ? '이 지점에 오는 조의 도착·완료·퀴즈 점수를 기록합니다. '
+          : '모든 조의 진행을 볼 수 있습니다(읽기 전용). 검수·공지·정정은 운영 콘솔에서 PIN 으로. ') +
+        '<button type="button" class="btn btn--text" id="goRole">' + (isStation ? '내 지점 열기' : '진행 보기') + '</button>' +
+      '</p>' +
+    '</section>';
   }
 
   function routeNames(route) {
@@ -402,6 +457,26 @@
       '</div>';
   }
 
+  /**
+   * 퀴즈 점수 (D-052). 조장도 넣을 수 있지만 **스태프가 넣은 점수가 우선**이다 —
+   * 출처가 스태프면 칸을 잠근다. 도착 전에는 점수 칸을 보이지 않는다.
+   */
+  function scoreHtml(p, canEdit) {
+    var has = p.score !== null && p.score !== undefined && p.score !== '';
+    if (p.scoreSource === '스태프' && has) {
+      return '<p class="cp__score is-locked">퀴즈 <strong>' + esc(p.score) + '점</strong> · 스태프 확인</p>';
+    }
+    if (canEdit && p.status !== '대기') {
+      return '<div class="cp__score" data-cp="' + esc(p.checkpoint) + '">' +
+        '<label>퀴즈 점수 <input class="input input--score" type="number" inputmode="numeric" min="0" max="100"' +
+          ' value="' + (has ? esc(p.score) : '') + '" aria-label="퀴즈 점수"></label>' +
+        '<button type="button" class="btn btn--ghost btn--sm" data-score-save>저장</button>' +
+        (has && p.scoreSource === '관리자' ? '<span class="hint">운영진이 고친 점수</span>' : '') +
+      '</div>';
+    }
+    return has ? '<p class="cp__score">퀴즈 <strong>' + esc(p.score) + '점</strong></p>' : '';
+  }
+
   /** 코스 순서상 아직 완료하지 않은 첫 지점. 모두 완료면 null. */
   function nextCheckpoint(list) {
     for (var i = 0; i < list.length; i++) if (list[i].status !== '완료') return list[i];
@@ -444,6 +519,7 @@
             : '') +
           (cp.openHours ? '<span class="cp__hours">' + esc(cp.openHours) + '</span>' : '') +
         '</div>' +
+        scoreHtml(p, canEdit) +
         (canEdit ? courseActions(p) : '');
 
       // 화면은 이미 바뀌었지만 아직 서버에 안 갔다 — 그 사실을 숨기지 않는다.
@@ -509,11 +585,16 @@
    * · 🔴 점수·메모는 **건드리지 않는다.** 보내지 않았으니 서버도 손대지 않는다.
    *   (예전에는 서버가 덮어써서 여기서도 비웠다 — 그 손실을 서버에서 고쳤다.)
    */
-  function applyProgressLocal(list, code, status) {
+  function applyProgressLocal(list, code, status, extra) {
     var now = UI.localIso();
     return list.map(function (p) {
       if (p.checkpoint !== code) return p;
       var next = Object.assign({}, p, { status: status, pending: true });
+      // 점수는 보낸 때만. 스태프 점수는 서버가 지키므로 화면도 건드리지 않는다 (D-052).
+      if (extra && extra.score !== undefined && p.scoreSource !== '스태프') {
+        next.score = extra.score === '' ? null : extra.score;
+        next.scoreSource = extra.score === '' ? '' : '조장';
+      }
       if (status === '대기') {
         next.arrivedAt = '';
         next.completedAt = '';
@@ -537,7 +618,7 @@
   // 여전히 모자란다. "앞 요청이 끝날 때까지 모은다" 는 **한가하면 0ms, 느리면
   // 최대한 묶는다** 를 알아서 한다 — 왕복 3초 동안 탭이 쌓이는 지금 문제에 맞는다.
 
-  var sendQueue = {};        // 지점코드 → 상태. 같은 지점을 두 번 누르면 마지막만 남는다
+  var sendQueue = {};        // 지점코드 → {status, score?}. 같은 지점은 필드를 합치고 마지막 값이 남는다
   var sending = false;       // 요청이 도는 중인가
 
   // 🔴 되돌릴 곳은 **마지막 서버 응답**이다. 화면 스냅샷이 아니다.
@@ -546,10 +627,13 @@
   // 표시가 남아 있으면** 되돌릴 때 그것까지 복원돼 영영 안 지워진다.
   // 테스트가 이걸 잡았다. 서버가 준 목록은 언제나 깨끗하다.
   var lastServerList = [];
+  var lastStatusBefore = {};   // 토스트 문구용 — 점수만 저장했는지 구분
 
-  function queueProgress(code, status) {
-    sendQueue[code] = status;
-    state.progress = applyProgressLocal(state.progress, code, status);
+  function queueProgress(code, status, extra) {
+    // 🔴 같은 지점이면 **필드를 합친다.** 점수를 저장한 뒤 바로 '완료' 를 누르면
+    //    점수가 사라지면 안 된다 — 상태만 덮어쓰고 점수는 남긴다.
+    sendQueue[code] = Object.assign({}, sendQueue[code], { status: status }, extra || {});
+    state.progress = applyProgressLocal(state.progress, code, status, extra);
     paintCourse();
 
     if (!sending) flushProgress();
@@ -559,17 +643,32 @@
     var codes = Object.keys(sendQueue);
     if (!codes.length) { sending = false; return; }
 
-    var items = codes.map(function (c) { return { checkpoint: c, status: sendQueue[c] }; });
+    var items = codes.map(function (c) {
+      var q = sendQueue[c];
+      var it = { checkpoint: c, status: q.status };
+      if (q.score !== undefined) it.score = q.score;
+      return it;
+    });
     sendQueue = {};
     sending = true;
+    lastStatusBefore = {};
+    lastServerList.forEach(function (p) { lastStatusBefore[p.checkpoint] = p.status; });
 
     API.progressSetBatch(items)
       .then(function (list) {
         state.progress = list;              // 권위는 서버다
         lastServerList = list;
         paintCourse();
-        toast(items.length === 1
-          ? '기록했습니다: ' + items[0].status
+        // 스태프가 이미 확인한 점수는 서버가 그대로 둔다 — 조용히 넘기지 않는다.
+        var kept = items.filter(function (it) {
+          if (it.score === undefined) return false;
+          var p = list.filter(function (x) { return x.checkpoint === it.checkpoint; })[0];
+          return p && p.scoreSource === '스태프' && String(p.score) !== String(it.score);
+        });
+        if (kept.length) toast('스태프가 확인한 점수는 바꿀 수 없습니다. 상태만 기록했습니다.', 'error');
+        else toast(items.length === 1
+          ? (items[0].score !== undefined && items[0].status === (lastStatusBefore[items[0].checkpoint] || items[0].status)
+              ? '점수를 저장했습니다.' : '기록했습니다: ' + items[0].status)
           : items.length + '곳을 기록했습니다.');
       })
       .catch(function (err) {
@@ -588,6 +687,20 @@
   });
 
   function onProgressClick(e) {
+    var save = e.target.closest('[data-score-save]');
+    if (save) {
+      var box = save.closest('[data-cp]');
+      var input = box && box.querySelector('input');
+      if (!input) return;
+      var raw = String(input.value).trim();
+      var n = Number(raw);
+      if (raw !== '' && (isNaN(n) || n < 0 || n > 100)) { toast('점수는 0~100 사이로 넣어 주세요.', 'error'); return; }
+      var code0 = box.getAttribute('data-cp');
+      var cur = state.progress.filter(function (p) { return p.checkpoint === code0; })[0];
+      if (!cur) return;
+      queueProgress(code0, cur.status, { score: raw === '' ? '' : n });
+      return;
+    }
     // 카드 자체에도 data-status(현재 상태)가 달려 있다 — 버튼만 잡는다.
     var btn = e.target.closest('button[data-status]');
     if (!btn) return;
@@ -605,6 +718,170 @@
 
   function statusClass(status) {
     return status === '완료' ? 'done' : status === '도착' ? 'here' : 'wait';
+  }
+
+  // ------------------------------------------------------------ 거점 스태프 · 내 지점 (D-051)
+  //
+  // 지점 하나를 맡은 스태프가 **이 지점에 오는 모든 조**를 본다. 조장 화면과 달리
+  // 낙관적 반영·묶어 보내기를 쓰지 않는다 — 스태프는 연타하지 않고, 조가 여럿이라
+  // 누른 조의 버튼만 잠그는 편이 헷갈리지 않는다. 응답은 갱신된 목록이다.
+
+  var ST_NEXT = {
+    '대기': { status: '도착', label: '도착 확인' },
+    '도착': { status: '완료', label: '완료' }
+  };
+  var ST_UNDO = {
+    '도착': { status: '대기', label: '도착 취소', ask: '도착 기록을 지울까요?\n도착 시각도 함께 지워집니다.' },
+    '완료': { status: '도착', label: '완료 취소', ask: '완료를 취소할까요?\n도착 상태로 돌아갑니다.' }
+  };
+
+  function renderStation() {
+    setView('<p class="loading">불러오는 중…</p>');
+    API.call('station.board')
+      .then(function (b) { state.station = b; paintStation(); })
+      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+  }
+
+  function paintStation() {
+    var b = state.station;
+    var cp = b.checkpoint;
+    var canEdit = state.boot.config.PROGRESS_OPEN;
+    var n = b.teams.length;
+    var here = b.teams.filter(function (t) { return t.status !== '대기'; }).length;
+    var done = b.teams.filter(function (t) { return t.status === '완료'; }).length;
+
+    setView(
+      '<section class="section-head"><h2>📍 ' + esc(cp.name) + '</h2>' +
+        '<p class="hint">' + esc(b.session) + ' · 이 지점에 오는 순서대로입니다. 조가 오면 "도착 확인", ' +
+        '미션·퀴즈가 끝나면 "완료". 스태프가 넣은 점수가 조장 점수보다 우선합니다.</p></section>' +
+      (cp.mission ? '<p class="cp__mission"><strong>미션</strong> ' + esc(cp.mission) + '</p>' : '') +
+      '<div class="station-bar">' +
+        '<span class="course-summary__count">도착 ' + here + '/' + n + ' · 완료 ' + done + '/' + n + '</span>' +
+        (cp.quizUrl ? '<a class="btn btn--ghost btn--sm" href="' + esc(cp.quizUrl) + '" target="_blank" rel="noopener">퀴즈</a>' : '') +
+        '<button type="button" class="btn btn--ghost btn--sm" data-st="refresh">새로고침</button>' +
+        '<button type="button" class="btn btn--ghost btn--sm" data-st="all">전체 진행</button>' +
+      '</div>' +
+      (canEdit ? '' : '<p class="empty">진행 기록이 마감되었습니다.</p>') +
+      (n ? '<div id="stationList">' + b.teams.map(function (t) { return stationRow(t, canEdit); }).join('') + '</div>'
+         : '<p class="empty">이 지점을 지나는 조가 없습니다.</p>')
+    );
+    $('#view').addEventListener('click', onStationClick);
+  }
+
+  function stationRow(t, canEdit) {
+    var next = ST_NEXT[t.status];
+    var undo = ST_UNDO[t.status];
+    var has = t.score !== null && t.score !== undefined && t.score !== '';
+    var where = t.status !== '대기' ? ''
+      : t.visitOrder === 1 ? '첫 지점'
+      : t.prevStatus === '완료' ? '🚶 오는 중 — ' + esc(t.prevName) + ' 완료'
+      : esc(t.prevName) + ' ' + esc(t.prevStatus);
+    var times = (t.arrivedAt ? '도착 ' + esc(UI.hhmm(t.arrivedAt)) : '') +
+      (t.completedAt ? ' · 완료 ' + esc(UI.hhmm(t.completedAt)) : '');
+
+    return '<article class="st-row st-row--' + statusClass(t.status) + '" data-group="' + esc(t.group) + '">' +
+      '<header class="st-row__head">' +
+        '<span class="cp__no">' + t.visitOrder + '</span>' +
+        '<div><strong>' + esc(t.name) + '</strong>' +
+          '<span class="team-card__meta">조장 ' + esc(t.leaderName || '—') + ' · ' + t.memberCount + '명' +
+            (where ? ' · ' + where : '') + (times ? ' · ' + times : '') + '</span></div>' +
+        '<span class="chip chip--' + statusClass(t.status) + '">' + esc(t.status) + '</span>' +
+      '</header>' +
+      (canEdit
+        ? '<div class="st-row__actions">' +
+            (next ? '<button type="button" class="btn btn--primary" data-st="set" data-status="' + next.status + '">' +
+              esc(next.label) + '</button>' : '') +
+            (undo ? '<button type="button" class="btn btn--text" data-st="set" data-status="' + undo.status + '"' +
+              ' data-ask="' + esc(undo.ask) + '">' + esc(undo.label) + '</button>' : '') +
+          '</div>' +
+          (t.status !== '대기' || has
+            ? '<div class="cp__score">' +
+                '<label>퀴즈 점수 <input class="input input--score" type="number" inputmode="numeric" min="0" max="100"' +
+                  ' value="' + (has ? esc(t.score) : '') + '" aria-label="' + esc(t.name) + ' 퀴즈 점수"></label>' +
+                '<button type="button" class="btn btn--ghost btn--sm" data-st="score">저장</button>' +
+                (has && t.scoreSource && t.scoreSource !== '스태프'
+                  ? '<span class="hint">' + esc(t.scoreSource) + ' 입력 — 확인 후 저장하면 스태프 점수가 됩니다</span>' : '') +
+              '</div>'
+            : '')
+        : (has ? '<p class="cp__score">퀴즈 <strong>' + esc(t.score) + '점</strong></p>' : '')) +
+    '</article>';
+  }
+
+  function onStationClick(e) {
+    if (state.view !== 'course' || modeOf(state.me) !== 'station' || state.stationAll) return;
+    var btn = e.target.closest('[data-st]');
+    if (!btn) return;
+    var act = btn.getAttribute('data-st');
+    if (act === 'refresh') { renderStation(); return; }
+    if (act === 'all') { state.stationAll = true; render(); return; }
+
+    var row = btn.closest('[data-group]');
+    if (!row) return;
+    var item = { group: row.getAttribute('data-group') };
+    if (act === 'set') {
+      item.status = btn.getAttribute('data-status');
+    } else if (act === 'score') {
+      var raw = String(row.querySelector('input').value).trim();
+      var n = Number(raw);
+      if (raw !== '' && (isNaN(n) || n < 0 || n > 100)) { toast('점수는 0~100 사이로 넣어 주세요.', 'error'); return; }
+      item.score = raw === '' ? '' : n;
+    } else return;
+
+    var ask = btn.getAttribute('data-ask');
+    (ask ? UI.confirmDialog(ask, btn.textContent) : Promise.resolve(true)).then(function (yes) {
+      if (!yes) return;
+      UI.$$('button', row).forEach(function (b) { b.disabled = true; });
+      UI.setBusy(btn, true, '저장 중…');
+      API.call('station.set', { items: [item] })
+        .then(function (b) {
+          state.station = b;
+          paintStation();
+          toast(item.status ? item.group + ' ' + item.status : item.group + ' 점수 저장');
+        })
+        .catch(function (err) {
+          UI.$$('button', row).forEach(function (b) { b.disabled = false; });
+          UI.setBusy(btn, false);
+          toast(err.message, 'error');
+        });
+    });
+  }
+
+  // ------------------------------------------------------------ 진행 (교역자·스태프, 읽기 전용)
+
+  function renderBoard() {
+    setView('<p class="loading">불러오는 중…</p>');
+    API.call('ops.board')
+      .then(paintBoard)
+      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+  }
+
+  function paintBoard(b) {
+    var isStation = modeOf(state.me) === 'station';
+    var grid = UI.teamGrid(b.teams, b.checkpoints, {});
+    setView(
+      '<section class="section-head"><h2>진행 현황</h2>' +
+        '<p class="hint">' + esc(b.session) + ' · 조마다 코스 순서대로입니다. 완주 전인데 ' + UI.STALE_MIN +
+        '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다. 점수 옆 ✓ 는 스태프가 확인한 점수입니다. ' +
+        '<strong>읽기 전용</strong>입니다.</p></section>' +
+      '<div class="station-bar">' +
+        '<button type="button" class="btn btn--ghost btn--sm" data-board="refresh">새로고침</button>' +
+        (isStation ? '<button type="button" class="btn btn--ghost btn--sm" data-board="back">내 지점으로</button>' : '') +
+      '</div>' +
+      (b.teams.length ? grid.html : '<p class="empty">이 회차에 배정된 조가 없습니다.</p>') +
+      (state.me.participant.role === '교역자'
+        ? '<p class="hint hint--center">진행 정정·일지 검수·공지는 운영 콘솔에서 합니다.</p>' +
+          '<a class="btn btn--ghost btn--block" href="admin.html">운영 콘솔 열기 (PIN)</a>'
+        : '')
+    );
+    $('#view').addEventListener('click', onBoardClick);
+  }
+
+  function onBoardClick(e) {
+    if (state.view !== 'course') return;
+    var btn = e.target.closest('[data-board]');
+    if (!btn) return;
+    if (btn.getAttribute('data-board') === 'back') { state.stationAll = false; render(); return; }
+    renderBoard();
   }
 
   // ------------------------------------------------------------ 탐험일지
@@ -955,7 +1232,8 @@
           '<div><dt>' + esc(L('session', '참여 일자')) + '</dt><dd>' +
             esc(me.participant.session) + '</dd></div>' +
           '<div><dt>' + esc(L('group', '조 배정')) + '</dt><dd>' +
-            esc(me.team ? me.team.name : '미배정') + '</dd></div>' +
+            esc(me.team ? me.team.name : (modeOf(me) === 'station' || modeOf(me) === 'ops' ? '운영진 (조 없음)' : '미배정')) + '</dd></div>' +
+          (me.station ? '<div><dt>담당 지점</dt><dd>' + esc(me.station.name || me.station.code) + '</dd></div>' : '') +
           '<div><dt>' + esc(L('role', '역할')) + '</dt><dd>' + esc(me.participant.role) + '</dd></div>' +
           '<div><dt>' + esc(L('insurance', '여행자 보험 가입')) + '</dt><dd>' +
             esc(me.participant.insurance || '확인 중') + '</dd></div>' +

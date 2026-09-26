@@ -484,57 +484,8 @@
 
   function renderProgress() { loadThenPaint('progress', 'admin.progress.board', paintProgress); }
 
-  // 🔴 **완주 전인데 이만큼 새 기록이 없으면 ⚠** (D-050).
-  //    업무계획서 일정이 지점 체류 25분 + 이동 10분이다. 그걸 넘기면 늦거나 길을 잃은 조다.
-  var STALE_MIN = 40;
-
-  /**
-   * 조별 카드 (D-050).
-   *
-   * 🔴 예전 표는 폰에서 **진행 칸이 화면 밖**이었다 — 일자·대상·조·조장·인원 다섯 칸이 폭을
-   * 먹었다. 당일 운영진은 폰을 본다. 카드 한 장에 조의 네 지점을 코스 순서대로 한 줄에 놓고,
-   * 마지막 기록이 몇 분 전인지 보인다. 표는 "표로 보기" 로 남긴다(넓은 화면·인쇄용).
-   */
-  function teamCard(t, checkpoints, showSession, nowMs) {
-    var nameOf = {};
-    checkpoints.forEach(function (c) { nameOf[c.code] = c.name; });
-
-    var done = 0, last = '';
-    var steps = t.route.map(function (code, i) {
-      var cell = t.cells[code] || {};
-      var status = cell.status || '대기';
-      if (status === '완료') done++;
-      [cell.arrivedAt, cell.completedAt].forEach(function (x) { if (x && x > last) last = x; });
-      var cls = status === '완료' ? 'done' : status === '도착' ? 'here' : 'wait';
-      var time = UI.hhmm(cell.completedAt || cell.arrivedAt);
-      return '<li class="step step--' + cls + '" title="' + esc((nameOf[code] || code) + ' · ' + status) + '">' +
-        '<span class="step__top">' + (i + 1) + (time ? ' · ' + esc(time) : '') + '</span>' +
-        '<span class="step__name">' + esc(nameOf[code] || code) + '</span></li>';
-    }).join('');
-
-    var total = t.route.length;
-    var finished = total > 0 && done === total;
-    var ago = UI.minutesSince(last, nowMs);
-    var stale = !finished && ago !== null && ago >= STALE_MIN;
-
-    return '<article class="team-card' + (stale ? ' is-stale' : '') + (finished ? ' is-done' : '') + '"' +
-      ' data-team="' + esc(t.session + ' ' + t.group) + '">' +
-      '<header class="team-card__head">' +
-        '<div><strong>' + esc(t.name) + '</strong>' +
-          '<span class="team-card__meta">' +
-            (showSession ? esc(t.session) + ' · ' : '') +
-            '조장 ' + esc(t.leaderName || '—') + ' · ' + t.memberCount + '명</span></div>' +
-        '<span class="chip chip--' + (finished ? 'done' : done ? 'here' : 'wait') + '">' +
-          done + '/' + total + '</span>' +
-      '</header>' +
-      (total ? '<ol class="steps">' + steps + '</ol>' : '<p class="hint">배정 코스가 없습니다.</p>') +
-      '<p class="team-card__last">' +
-        (last
-          ? (stale ? '⚠ ' : '') + '마지막 기록 ' + esc(UI.hhmm(last)) + ' · ' + esc(UI.agoText(ago))
-          : '아직 기록 없음') +
-      '</p>' +
-    '</article>';
-  }
+  // 조별 카드는 교역자 화면과 같이 쓰므로 ui.js 에 있다 (UI.teamGrid, D-051).
+  var STALE_MIN = UI.STALE_MIN;
 
   function progressTable(board, teams) {
     return '<div class="table-scroll"><table class="admin-table">' +
@@ -569,23 +520,16 @@
         var teams = board.teams.filter(function (t) {
           return matchesAudience(t.audience) && matchesSession(t.session);
         });
-        var nowMs = Date.now();
-        var stale = 0;
-        var cards = teams.map(function (t) {
-          var html = teamCard(t, board.checkpoints, state.session === '전체', nowMs);
-          if (html.indexOf(' is-stale') > 0) stale++;
-          return html;
-        }).join('');
+        var grid = UI.teamGrid(teams, board.checkpoints, { showSession: state.session === '전체', editable: true });
 
         setView(
           '<section class="section-head"><h2>' + esc(L('group', '조 배정')) + '별 진행 현황</h2>' +
             '<p class="hint">조마다 배정 코스 순서대로 보입니다. 완주 전인데 ' + STALE_MIN +
-            '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다.</p></section>' +
+            '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다. 점수 옆 ✓ 는 스태프가 확인한 점수 · 칸을 누르면 고칠 수 있습니다.</p></section>' +
           sessionFilterHtml() +
           audienceFilterHtml() +
           (teams.length
-            ? (stale ? '<p class="team-alert">⚠ ' + stale + '개 조가 ' + STALE_MIN + '분 넘게 소식이 없습니다.</p>' : '') +
-              '<div class="team-grid">' + cards + '</div>' +
+            ? grid.html +
               '<details class="card board-table"><summary>표로 보기</summary>' +
                 progressTable(board, teams) + '</details>'
             : '<p class="empty">' + (state.audience === '전체'

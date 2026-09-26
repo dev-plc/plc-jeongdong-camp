@@ -654,3 +654,37 @@ details.cp:not([open]) { padding-top: 12px; padding-bottom: 12px; }
 .step__name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board-table > summary { cursor: pointer; font-size: 14px; color: var(--ink-2); }
 .board-table[open] > summary { margin-bottom: 10px; }
+
+/* ==========================================================================
+   D-051·052 — 조 없는 교역자·스태프, 거점 스태프, 점수 (v16)
+   ========================================================================== */
+
+.card--role { --team-color: #6b5d57; }
+
+/* 퀴즈 점수 — 조장 코스 카드와 스태프 행이 같이 쓴다 */
+.cp__score { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 0; font-size: 14px; }
+.cp__score label { display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
+.cp__score.is-locked { color: var(--ok); }
+.input--score { width: 84px; padding: 8px 10px; text-align: center; }
+
+/* 거점 스태프 — 내 지점 */
+.station-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+.station-bar .course-summary__count { margin-right: auto; }
+.st-row {
+  background: var(--paper-2); border: 1px solid var(--line); border-left: 5px solid var(--wall);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; margin-bottom: 10px;
+}
+.st-row--here { border-left-color: var(--warn); }
+.st-row--done { border-left-color: var(--ok); }
+.st-row__head { display: flex; align-items: flex-start; gap: 11px; }
+.st-row__head > div { flex: 1; min-width: 0; }
+.st-row__actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.st-row__actions .btn--primary { flex: 1; padding: 13px 16px; font-size: 16px; }
+
+/* 콘솔 진행 카드 — 칸을 누르면 정정 (D-052) */
+.step__score { display: block; font-weight: 700; }
+.step__btn {
+  display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit;
+  font: inherit; text-align: left; cursor: pointer;
+}
+.step:has(.step__btn):hover { outline: 2px solid rgba(152, 69, 52, .35); }
