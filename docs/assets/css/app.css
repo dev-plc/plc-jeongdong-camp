@@ -688,3 +688,37 @@ details.cp:not([open]) { padding-top: 12px; padding-bottom: 12px; }
   font: inherit; text-align: left; cursor: pointer;
 }
 .step:has(.step__btn):hover { outline: 2px solid rgba(152, 69, 52, .35); }
+
+/* 일지 관리 — 사진만 · 일괄 승인 (D-052) */
+.review-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 14px; }
+.review-tools .tab { flex: none; }
+
+/* 🏆 시상 (D-052) */
+.award .card__title .hint { font-family: var(--font-sans); font-weight: 400; margin-left: 6px; }
+.rank { list-style: none; margin: 0; padding: 0; }
+.rank__row {
+  display: grid; grid-template-columns: 34px 1fr auto; align-items: baseline; gap: 2px 10px;
+  padding: 10px 0; border-bottom: 1px dashed var(--line);
+}
+.rank__row:last-child { border-bottom: 0; }
+.rank__no { font-weight: 700; color: var(--brick); font-size: 18px; text-align: center; }
+.rank__name { font-weight: 700; min-width: 0; }
+.rank__val { font-weight: 700; font-variant-numeric: tabular-nums; }
+.rank__meta { grid-column: 2 / -1; font-size: 13px; color: var(--ink-2); }
+.award-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.award-photo { margin: 0; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; background: #fff; }
+.award-photo.is-award { border: 2px solid var(--warn); }
+.award-photo img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.award-photo figcaption {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 8px; font-size: 13px;
+}
+
+/* 크게 보기 — 주일 발표용. 상위 3 과 ★ 사진만 크게 */
+body.is-present .rank__row { padding: 16px 0; }
+body.is-present .rank__no { font-size: 32px; }
+body.is-present .rank__name, body.is-present .rank__val { font-size: 26px; }
+body.is-present .award .card__title { font-size: 24px; }
+body.is-present .award-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+body.is-present .award-photo figcaption { font-size: 18px; }
+body.is-present .view { max-width: 1100px; }
