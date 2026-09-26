@@ -215,6 +215,16 @@ function isActiveSession_(label) {
   return activeSessionLabels_().indexOf(str_(label)) >= 0;
 }
 
+/**
+ * 부서 목록 — Config `AUDIENCES`(쉼표로 구분). 없으면 청년부·장년부 (D-053).
+ * 다음 캠프 부서가 달라도 코드를 고치지 않는다. 드롭다운·공지 대상·콘솔 필터가 따라온다.
+ */
+function audiences_() {
+  var list = confStr_('AUDIENCES', '').split(/[,，\/]/)
+    .map(function (x) { return String(x).trim(); }).filter(String);
+  return list.length ? list : ENUM.AUDIENCE.slice();
+}
+
 /** 오늘 날짜(서울). 테스트가 갈아 끼울 수 있게 한 곳에 둔다. */
 function todayStr_() {
   return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');

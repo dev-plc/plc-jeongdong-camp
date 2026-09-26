@@ -222,6 +222,9 @@ function publicConfig_() {
   return {
     CAMP_NAME: confStr_('CAMP_NAME', '정동, 신앙탐험대'),
     CAMP_SUBTITLE: confStr_('CAMP_SUBTITLE', 'PLC 성경적세계관 캠프'),
+    // 캠프마다 바뀌는 문구·부서는 Config 에서 (D-053). 없으면 로그인 부제는 숨긴다.
+    CAMP_TAGLINE: confStr_('CAMP_TAGLINE', ''),
+    AUDIENCES: audiences_(),
     GALLERY_SCOPE: confStr_('GALLERY_SCOPE', 'ALL').toUpperCase(),
     JOURNAL_REQUIRE_APPROVAL: confBool_('JOURNAL_REQUIRE_APPROVAL', true),
     JOURNAL_OPEN: confBool_('JOURNAL_OPEN', true),
@@ -310,7 +313,7 @@ function serializeNotice_(r, now) {
 
 /** 앱에서 고를 수 있는 대상. 시트 드롭다운(`applyValidation_`)과 **같은 목록**이다. */
 function noticeTargets_() {
-  return ['전체'].concat(ENUM.AUDIENCE).concat(sessionLabels_());
+  return ['전체'].concat(audiences_()).concat(sessionLabels_());
 }
 
 function noticeAll_(ctx) {

@@ -1,7 +1,7 @@
 {
-  "name": "정동, 신앙탐험대",
-  "short_name": "신앙탐험대",
-  "description": "PLC 정동 가을캠프 현장 앱",
+  "name": "PLC 캠프",
+  "short_name": "PLC 캠프",
+  "description": "PLC 캠프 현장 앱 — 일정·코스·탐험일지",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
