@@ -15,14 +15,14 @@
 <style>
 /*
    ────────────────────────────────────────────────────────────────
-    app.css · v16 · 2026-09-26
+    app.css · v17 · 2026-09-26
    ────────────────────────────────────────────────────────────────
     변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+     v17   2026-09-26  슬라이드쇼 (D-053)
      v16   2026-09-26  내 지점·점수·시상·크게 보기 (D-051·052)
      v15.1 2026-09-26  글자 하한 13px · 조별 카드 · 코스 접기 (D-050)
      v15   2026-09-26  파일 버전 표시 시작
      —     2026-09-18  진행 기록을 낙관적으로 반영하고, 실패하면 되돌린다
-     —     2026-09-18  실패에 이름을, 왕복 시간에 서버 시간을 붙인다
 
     버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
           — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -738,6 +738,28 @@ body.is-present .award-grid { grid-template-columns: repeat(auto-fill, minmax(26
 body.is-present .award-photo figcaption { font-size: 18px; }
 body.is-present .view { max-width: 1100px; }
 
+/* 🖼 슬라이드쇼 (D-053) — 마무리 카페 빔 화면 */
+.slides {
+  position: fixed; inset: 0; z-index: 200;
+  display: grid; grid-template-rows: 1fr auto;
+  background: #111; color: #fff;
+}
+.slides__img { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.slides__bar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 18px calc(12px + env(safe-area-inset-bottom)); background: rgba(0, 0, 0, .6);
+}
+.slides__cap { margin: 0; font-size: 18px; line-height: 1.5; min-width: 0; }
+.slides__cap span { display: block; font-size: 15px; opacity: .85; }
+.slides__star { display: inline; color: #f3c969; }
+.slides__ctl { display: flex; align-items: center; gap: 8px; }
+.slides__ctl button {
+  min-width: 44px; height: 44px; border: 1px solid rgba(255, 255, 255, .35); border-radius: 999px;
+  background: none; color: #fff; font-size: 16px; cursor: pointer;
+}
+.slides__count { font-size: 14px; opacity: .8; font-variant-numeric: tabular-nums; }
+.slides__ctl [data-s="play"] { padding: 0 14px; font-size: 14px; }
+
 </style>
 
 <style>
@@ -826,6 +848,8 @@ body { padding-top: var(--demobar-h, 76px); }
   var CONFIG = {
     CAMP_NAME: '정동, 신앙탐험대',
     CAMP_SUBTITLE: 'PLC 성경적세계관 캠프',
+    CAMP_TAGLINE: '역사와 신앙의 현장을 직접 걸으며 배우는',
+    AUDIENCES: ['청년부', '장년부'],
     GALLERY_SCOPE: 'ALL',
     JOURNAL_REQUIRE_APPROVAL: true,
     JOURNAL_OPEN: true,
@@ -2415,14 +2439,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v16 · 2026-09-26
+ * app.js · v17 · 2026-09-26
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v17   2026-09-26  로그인 부제·이름은 Config (D-053)
  *  v16   2026-09-26  내 지점·진행 화면, 역할 카드, 조장 점수 칸 (D-051·052)
  *  v15.1 2026-09-26  홈 "지금·다음" 카드, 코스 다음 동작 버튼·접기 (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
- *  —     2026-09-19  진행 기록을 묶어서 보낸다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -2598,9 +2622,10 @@ window.APP_CONFIG = {
     var saved = rememberedLogin();
     setView(
       '<section class="hero">' +
-        '<p class="hero__eyebrow">역사와 신앙의 현장을 직접 걸으며 배우는</p>' +
-        '<h1 class="hero__title">' + esc(c.CAMP_NAME || '정동, 신앙탐험대') + '</h1>' +
-        '<p class="hero__sub">' + esc(c.CAMP_SUBTITLE || 'PLC 성경적세계관 캠프') + '</p>' +
+        // 캠프마다 바뀌는 문구는 Config 에서 (D-053)
+        (c.CAMP_TAGLINE ? '<p class="hero__eyebrow">' + esc(c.CAMP_TAGLINE) + '</p>' : '') +
+        '<h1 class="hero__title">' + esc(c.CAMP_NAME || '캠프') + '</h1>' +
+        (c.CAMP_SUBTITLE ? '<p class="hero__sub">' + esc(c.CAMP_SUBTITLE) + '</p>' : '') +
       '</section>' +
       '<form id="loginForm" class="card card--form" autocomplete="off">' +
         '<h2 class="card__title">참가자 확인</h2>' +
@@ -3710,14 +3735,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v16 · 2026-09-26
+ * admin.js · v17 · 2026-09-26
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v17   2026-09-26  부서 필터 Config, 🖼 슬라이드쇼 (D-053)
  *  v16   2026-09-26  진행 칸 정정, 🏆 시상, 일지 일괄 승인 (D-052)
  *  v15.1 2026-09-26  진행표를 조별 카드로 + 40분 무소식 ⚠ (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v14   2026-09-22  공지를 운영콘솔에서 쓴다
- *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -3844,7 +3869,8 @@ window.APP_CONFIG = {
    */
   function audienceFilterHtml() {
     return '<div class="tabs" id="audienceFilter">' +
-      ['전체', '청년부', '장년부'].map(function (a) {
+      // 부서는 Config AUDIENCES 를 따른다 — 다음 캠프 부서가 달라도 코드를 고치지 않는다 (D-053)
+      ['전체'].concat((state.boot && state.boot.config && state.boot.config.AUDIENCES) || ['청년부', '장년부']).map(function (a) {
         return '<button type="button" class="tab' + (state.audience === a ? ' is-active' : '') +
           '" data-audience="' + esc(a) + '">' + esc(a) + '</button>';
       }).join('') +
@@ -3983,6 +4009,7 @@ window.APP_CONFIG = {
       statusFilterHtml() +
       '<div class="review-tools">' +
         '<button type="button" class="tab' + (state.photoOnly ? ' is-active' : '') + '" data-act="photoOnly">📷 사진 있는 글만</button>' +
+        '<button type="button" class="btn btn--ghost btn--sm" data-act="slides">🖼 슬라이드쇼</button>' +
         (shownWaiting.length > 1
           ? '<button type="button" class="btn btn--primary btn--sm" data-act="bulk" data-count="' + shownWaiting.length + '">' +
               '보이는 대기 ' + shownWaiting.length + '건 모두 승인</button>'
@@ -4032,6 +4059,7 @@ window.APP_CONFIG = {
     var act0 = btn.getAttribute('data-act');
     if (act0 === 'photoOnly') { state.photoOnly = !state.photoOnly; paintReview(state.cache.review); return; }
     if (act0 === 'bulk') { bulkApprove(btn); return; }
+    if (act0 === 'slides') { slideshow(state.cache.review.items); return; }
     var card = btn.closest('[data-id]');
     var id = card.getAttribute('data-id');
     var act = btn.getAttribute('data-act');
@@ -4479,6 +4507,7 @@ window.APP_CONFIG = {
         '<button type="button" class="btn btn--sm ' + (state.present ? 'btn--primary' : 'btn--ghost') + '" data-present>' +
           (state.present ? '닫기' : '크게 보기') + '</button>' +
         (state.present ? '' : '<button type="button" class="btn btn--ghost btn--sm" data-reload>새로고침</button>') +
+        '<button type="button" class="btn btn--ghost btn--sm" data-slides>🖼 슬라이드쇼</button>' +
       '</div>' +
       '<section class="card award"><h3 class="card__title">🧩 퀴즈 점수</h3>' + quizHtml + '</section>' +
       '<section class="card award"><h3 class="card__title">⏱ 소요 시간</h3>' + timeHtml + '</section>' +
@@ -4497,6 +4526,7 @@ window.APP_CONFIG = {
       return;
     }
     if (e.target.closest('[data-reload]')) { invalidate('awards'); renderAwards(); return; }
+    if (e.target.closest('[data-slides]')) { slideshow(state.cache.awards.journals); return; }
     var btn = e.target.closest('[data-award]');
     if (!btn) return;
     var id = btn.closest('[data-id]').getAttribute('data-id');
@@ -4512,6 +4542,90 @@ window.APP_CONFIG = {
         toast(on ? '★ 수상작으로 지정했습니다.' : '지정을 풀었습니다.');
       })
       .catch(function (err) { UI.setBusy(btn, false); toast(err.message, 'error'); });
+  }
+
+  // ------------------------------------------------------------ 🖼 슬라이드쇼 (D-053)
+  //
+  // 마무리 카페에서 **승인된 사진**을 큰 화면에 돌린다. 운영 콘솔을 켠 노트북을 빔에 물리면 된다.
+  // 🔴 승인된 글만 — 검수 전 사진이 화면에 뜨면 안 된다. 회차 필터를 따른다.
+
+  var SLIDE_MS = 6000;
+
+  function slideshow(journals) {
+    var list = (journals || []).filter(function (j) {
+      return j.status === '승인' && j.photoUrl && matchesSession(j.session);
+    }).sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
+    if (!list.length) { toast('보여 줄 승인된 사진이 없습니다.', 'error'); return; }
+
+    var i = 0, playing = true, timer = null;
+    var wrap = document.createElement('div');
+    wrap.className = 'slides';
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-label', '사진 슬라이드쇼');
+    wrap.innerHTML =
+      '<img class="slides__img" alt="">' +
+      '<div class="slides__bar">' +
+        '<p class="slides__cap"></p>' +
+        '<div class="slides__ctl">' +
+          '<button type="button" data-s="prev" aria-label="이전">◀</button>' +
+          '<button type="button" data-s="play">멈춤</button>' +
+          '<button type="button" data-s="next" aria-label="다음">▶</button>' +
+          '<span class="slides__count"></span>' +
+          '<button type="button" data-s="close" aria-label="닫기">✕</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+
+    function show() {
+      var j = list[i];
+      var img = wrap.querySelector('.slides__img');
+      img.src = j.photoUrl;
+      img.alt = j.authorName + ' 사진';
+      wrap.querySelector('.slides__cap').innerHTML =
+        '<strong>' + esc(j.group) + ' · ' + esc(j.authorName) + '</strong>' +
+        (j.award ? ' <span class="slides__star">★</span>' : '') +
+        (j.text ? '<span>' + esc(j.text.length > 80 ? j.text.slice(0, 80) + '…' : j.text) + '</span>' : '');
+      wrap.querySelector('.slides__count').textContent = (i + 1) + ' / ' + list.length;
+      wrap.setAttribute('data-index', String(i));
+    }
+    function step(d) { i = (i + d + list.length) % list.length; show(); restart(); }
+    function restart() {
+      if (timer) clearInterval(timer);
+      timer = playing ? setInterval(function () { i = (i + 1) % list.length; show(); }, SLIDE_MS) : null;
+    }
+    function toggle() {
+      playing = !playing;
+      var b = wrap.querySelector('[data-s="play"]');
+      b.textContent = playing ? '멈춤' : '재생';
+      wrap.classList.toggle('is-paused', !playing);
+      restart();
+    }
+    function close() {
+      if (timer) clearInterval(timer);
+      document.removeEventListener('keydown', onKey);
+      try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) { /* 무시 */ }
+      wrap.remove();
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') close();
+      else if (e.key === 'ArrowRight') step(1);
+      else if (e.key === 'ArrowLeft') step(-1);
+      else if (e.key === ' ') { e.preventDefault(); toggle(); }
+    }
+    wrap.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-s]');
+      if (!b) return;
+      var a = b.getAttribute('data-s');
+      if (a === 'close') close();
+      else if (a === 'prev') step(-1);
+      else if (a === 'next') step(1);
+      else if (a === 'play') toggle();
+    });
+    document.addEventListener('keydown', onKey);
+    // 전체 화면은 되면 좋고 안 되면 그만이다(브라우저·권한에 따라 막힌다).
+    try { if (wrap.requestFullscreen) wrap.requestFullscreen().catch(function () {}); } catch (e) { /* 무시 */ }
+    show();
+    restart();
   }
 
   // ------------------------------------------------------------ 회비

@@ -84,6 +84,7 @@ python3 -m http.server 8080 --directory docs   # → http://localhost:8080/demo.
 
 | 문서 | 내용 |
 |---|---|
+| ⭐ [운영자 한 장 가이드](docs-dev/ops/OPERATOR-GUIDE.md) | **D-30 / D-14 / D-7 / D-1 / 당일 / 시상 / 다음 캠프** — 언제 무엇을 어느 도구로 |
 | [구조 안내 (운영진용)](docs-dev/ops/ARCHITECTURE.md) | **코드를 안 읽는 사람용** — 시트와 앱의 관계, 일지가 기록되는 방식, 바꾸면 뭐가 따라 바뀌나, 함정 |
 | [시트 스키마](docs-dev/spec/SHEET-SCHEMA.md) | 10개 탭의 컬럼 정의, 마스터시트 연동, 초기 세팅 순서 |
 | [API 명세](docs-dev/spec/API.md) | 액션 목록, 요청/응답, 에러 코드 |
@@ -128,3 +129,6 @@ python3 -m http.server 8080 --directory docs   # → http://localhost:8080/demo.
 - 일지 승인 필요 여부
 - 회비 상태 노출 여부
 - 상단 한 줄 공지
+- 캠프 이름·부제·로그인 부제·부서 목록 (`CAMP_NAME` · `CAMP_SUBTITLE` · `CAMP_TAGLINE` · `AUDIENCES`) — 다음 캠프도 코드 수정 없이
+
+다음 캠프는 시트 메뉴 **새 캠프 시작 (보관 후 비우기)** 로 시작합니다 — [운영자 가이드](docs-dev/ops/OPERATOR-GUIDE.md#다음-캠프).
