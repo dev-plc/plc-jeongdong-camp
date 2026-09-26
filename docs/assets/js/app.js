@@ -183,9 +183,10 @@
     var saved = rememberedLogin();
     setView(
       '<section class="hero">' +
-        '<p class="hero__eyebrow">역사와 신앙의 현장을 직접 걸으며 배우는</p>' +
-        '<h1 class="hero__title">' + esc(c.CAMP_NAME || '정동, 신앙탐험대') + '</h1>' +
-        '<p class="hero__sub">' + esc(c.CAMP_SUBTITLE || 'PLC 성경적세계관 캠프') + '</p>' +
+        // 캠프마다 바뀌는 문구는 Config 에서 (D-053)
+        (c.CAMP_TAGLINE ? '<p class="hero__eyebrow">' + esc(c.CAMP_TAGLINE) + '</p>' : '') +
+        '<h1 class="hero__title">' + esc(c.CAMP_NAME || '캠프') + '</h1>' +
+        (c.CAMP_SUBTITLE ? '<p class="hero__sub">' + esc(c.CAMP_SUBTITLE) + '</p>' : '') +
       '</section>' +
       '<form id="loginForm" class="card card--form" autocomplete="off">' +
         '<h2 class="card__title">참가자 확인</h2>' +

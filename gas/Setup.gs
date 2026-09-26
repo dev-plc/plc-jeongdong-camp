@@ -131,6 +131,8 @@ function seedConfig_() {
   var defaults = [
     ['CAMP_NAME', '정동, 신앙탐험대', '앱 상단 타이틀'],
     ['CAMP_SUBTITLE', 'PLC 성경적세계관 캠프', '부제'],
+    ['CAMP_TAGLINE', '역사와 신앙의 현장을 직접 걸으며 배우는', '로그인 화면 제목 위 한 줄. 비우면 숨김'],
+    ['AUDIENCES', '청년부,장년부', '부서(캠프 대상) 목록 — 쉼표로 구분. 명단 드롭다운·공지 대상·콘솔 필터가 따른다'],
     ['SESSION_1', '10/31(토)', '1차 참여 일자(청년부) — 명단의 "참여 일자" 표기와 글자까지 같아야 함'],
     ['SESSION_1_DATE', '2026-10-31', '1차 실제 날짜'],
     ['SESSION_2', '11/07(토)', '2차 참여 일자(장년부)'],
@@ -287,7 +289,7 @@ function applyValidation_() {
   var sessionList = sessionLabels_();
   var courseList = readTable_(SHEETS.COURSES).map(function (r) { return str_(r['코스명']); }).filter(String);
 
-  dropdown_(SHEETS.PARTICIPANTS, COL.AUDIENCE, ENUM.AUDIENCE);
+  dropdown_(SHEETS.PARTICIPANTS, COL.AUDIENCE, audiences_());
   dropdown_(SHEETS.PARTICIPANTS, COL.SESSION, sessionList);
   dropdown_(SHEETS.PARTICIPANTS, COL.ROLE, ENUM.ROLE);
   dropdown_(SHEETS.PARTICIPANTS, COL.FEE_STATUS, ENUM.FEE);
@@ -299,7 +301,7 @@ function applyValidation_() {
   dropdown_(SHEETS.TEAMS, COL.SESSION, sessionList);
   dropdown_(SHEETS.PROGRESS, '상태', ENUM.PROGRESS);
   dropdown_(SHEETS.JOURNAL, '상태', ENUM.JOURNAL);
-  dropdown_(SHEETS.NOTICES, '대상', ['전체'].concat(ENUM.AUDIENCE).concat(sessionList));
+  dropdown_(SHEETS.NOTICES, '대상', ['전체'].concat(audiences_()).concat(sessionList));
   dropdown_(SHEETS.TIMELINE, COL.SESSION, sessionList);
 }
 
@@ -904,7 +906,7 @@ function onOpen() {
     return; // UI 없는 컨텍스트
   }
 
-  ui.createMenu('🧭 정동캠프')
+  ui.createMenu('🧭 캠프 앱')
     .addItem('초기 세팅 실행', 'setupSpreadsheet')
     .addItem('참가자ID 채우기', 'fillParticipantIds')
     .addItem('조 목록 동기화', 'syncTeams')

@@ -160,6 +160,8 @@ body { padding-top: var(--demobar-h, 76px); }
   var CONFIG = {
     CAMP_NAME: '정동, 신앙탐험대',
     CAMP_SUBTITLE: 'PLC 성경적세계관 캠프',
+    CAMP_TAGLINE: '역사와 신앙의 현장을 직접 걸으며 배우는',
+    AUDIENCES: ['청년부', '장년부'],
     GALLERY_SCOPE: 'ALL',
     JOURNAL_REQUIRE_APPROVAL: true,
     JOURNAL_OPEN: true,

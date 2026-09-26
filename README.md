@@ -77,7 +77,7 @@ python3 -m http.server 8080 --directory docs   # → http://localhost:8080/demo.
    `docs/assets/js/config.js` 의 `API_BASE` 를 채웁니다.
 2. Apps Script 편집기에서 `setupSpreadsheet()` 을 한 번 실행하면 시트 10개가 만들어집니다.
 3. 행정팀 마스터시트를 `Participants` 에 그대로 붙여넣고(헤더가 동일합니다),
-   스프레드시트 메뉴 `🧭 정동캠프` 에서 **참가자ID 채우기 → 조 목록 동기화 → 명단 점검** 을 실행합니다.
+   스프레드시트 메뉴 `🧭 캠프 앱` 에서 **참가자ID 채우기 → 조 목록 동기화 → 명단 점검** 을 실행합니다.
 4. GitHub Settings → Pages 에서 `main` 브랜치 `/docs` 를 소스로 지정합니다.
 
 ## 문서

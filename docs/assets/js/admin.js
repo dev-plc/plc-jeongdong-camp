@@ -134,7 +134,8 @@
    */
   function audienceFilterHtml() {
     return '<div class="tabs" id="audienceFilter">' +
-      ['전체', '청년부', '장년부'].map(function (a) {
+      // 부서는 Config AUDIENCES 를 따른다 — 다음 캠프 부서가 달라도 코드를 고치지 않는다 (D-053)
+      ['전체'].concat((state.boot && state.boot.config && state.boot.config.AUDIENCES) || ['청년부', '장년부']).map(function (a) {
         return '<button type="button" class="tab' + (state.audience === a ? ' is-active' : '') +
           '" data-audience="' + esc(a) + '">' + esc(a) + '</button>';
       }).join('') +

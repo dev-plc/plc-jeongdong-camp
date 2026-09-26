@@ -617,7 +617,7 @@ function syncRoster() {
   if (orphans.length) out.push('· 마스터에 없는 이름 ' + orphans.length + '건 — 확인이 필요합니다');
   out.push('');
   out.push('새로 추가된 행은 참가자ID 가 비어 있습니다.');
-  out.push('메뉴 → 🧭 정동캠프 → 참가자ID 채우기 를 실행하세요.');
+  out.push('메뉴 → 🧭 캠프 앱 → 참가자ID 채우기 를 실행하세요.');
   say(out.join('\n'));
 
   return { added: newcomers.length + addedTotal, sheets: plans.length, orphans: orphans.length };
