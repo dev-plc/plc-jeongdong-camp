@@ -50,7 +50,12 @@ node tools/build-demo.js          # docs/demo.html 은 생성물 — 손으로 �
 
 `docs/demo.html` 을 다시 만들었으면 **아티팩트 데모도 다시 올린다**
 (`https://claude.ai/artifact/DQQvR4awqr3iAXfcYZHdTM`). 안 올리면 3주 동안 첫 버전이
-남아 있던 일이 반복된다 (D-046). 공유 버전 이동은 운영자가 Share 메뉴에서 한다.
+남아 있던 일이 반복된다 (D-046).
+
+공유 버전은 **최신(Latest)** 으로 설정돼 있어(2026-09-26) 다시 올리면 링크에 바로 반영된다.
+게시 뒤 `Artifact read` 결과에 `viewers see updates immediately` 가 나오는지 확인한다.
+`pinned earlier version` 이 보이면 누군가 특정 버전으로 고정한 것이다 — 운영자에게
+**Share → 공유 버전 → 최신** 을 부탁한다. 소유자 본인 화면은 늘 최신이라 확인이 안 된다.
 
 ## 지켜 온 원칙
 
