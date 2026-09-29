@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Code.gs · v16 · 2026-09-26
+ * Code.gs · v18 · 2026-09-29
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *  v16   2026-09-26  점수출처·스태프 우선, 지점·운영·정정 액션 (D-051·052)
  *  v15   2026-09-26  파일 버전 표시 · health 가 파일별 버전을 알려 준다
  *  v13   2026-09-22  공지를 운영콘솔에서 쓴다
  *  v13   2026-09-22  설정을 바꾸면 사본도 민다
- *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_CODE = 'v16';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_CODE = 'v18';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Code.gs — 웹앱 진입점 및 라우팅
@@ -38,7 +38,10 @@ function doGet(e) {
       return jsonOk_(bootstrap_());
     }
     if (params.action === 'health') {
-      return jsonOk_({ ok: true, serverTime: nowIso_(), versions: fileVersions_() });
+      var versions = fileVersions_();
+      var ends = fileEnds_();
+      return jsonOk_({ ok: true, serverTime: nowIso_(), versions: versions, ends: ends,
+                       problems: fileProblems_(versions, ends) });
     }
     throw new AppError('BAD_REQUEST', 'GET 으로는 지원하지 않는 액션입니다: ' + params.action);
   } catch (err) {
@@ -81,6 +84,45 @@ function fileVersions_() {
     'Setup.gs':      typeof VERSION_SETUP      !== 'undefined' ? VERSION_SETUP      : null,
     'Sheets.gs':     typeof VERSION_SHEETS     !== 'undefined' ? VERSION_SHEETS     : null
   };
+}
+
+/**
+ * 파일마다 **맨 마지막 줄**의 끝 표시(`var END_X = 'vN'`) (D-054).
+ *
+ * 🔴 v16 때 `Setup.gs` 가 **함수 경계에서** 잘려 붙었다. GitHub 코드 화면에서 전체 선택하면
+ * 긴 파일은 보이는 부분만 복사된다. 문법이 멀쩡해 저장·배포가 되고, 버전 상수는 맨 위라
+ * `versions` 도 v16 이었다 — 끝에 있던 `onOpen` 만 빠져 시트 메뉴가 사라졌다.
+ * 끝 표시가 없으면(null) 그 파일은 끝까지 안 붙은 것이다.
+ */
+function fileEnds_() {
+  return {
+    'Auth.gs':       typeof END_AUTH       !== 'undefined' ? END_AUTH       : null,
+    'Code.gs':       typeof END_CODE       !== 'undefined' ? END_CODE       : null,
+    'Journal.gs':    typeof END_JOURNAL    !== 'undefined' ? END_JOURNAL    : null,
+    'MasterSync.gs': typeof END_MASTERSYNC !== 'undefined' ? END_MASTERSYNC : null,
+    'Mirror.gs':     typeof END_MIRROR     !== 'undefined' ? END_MIRROR     : null,
+    'Setup.gs':      typeof END_SETUP      !== 'undefined' ? END_SETUP      : null,
+    'Sheets.gs':     typeof END_SHEETS     !== 'undefined' ? END_SHEETS     : null
+  };
+}
+
+/**
+ * 배포 확인에서 볼 것. **비어 있으면** 일곱 파일이 모두 끝까지, 같은 버전으로 붙었다.
+ * 사람이 JSON 을 대조하지 않아도 되게 문장으로 준다.
+ */
+function fileProblems_(versions, ends) {
+  var out = [];
+  Object.keys(versions).forEach(function (f) {
+    var v = versions[f], e = ends[f];
+    if (v === null) {
+      out.push(f + ': 버전 표시가 없습니다 — 빠졌거나 옛 파일입니다. Raw 에서 다시 붙여넣으세요');
+    } else if (e === null) {
+      out.push(f + ': 끝이 잘렸습니다(파일 끝 표시 없음) — Raw 에서 다시 붙여넣으세요');
+    } else if (e !== v) {
+      out.push(f + ': 앞(' + v + ')과 끝(' + e + ')의 버전이 다릅니다 — 섞여 붙었습니다. 다시 붙여넣으세요');
+    }
+  });
+  return out;
 }
 
 // ---------------------------------------------------------------- 라우팅
@@ -1054,3 +1096,6 @@ function configSet_(ctx, body) {
 
   return out;
 }
+
+// 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
+var END_CODE = 'v18';

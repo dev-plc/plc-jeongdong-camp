@@ -76,14 +76,20 @@ fetch(API_BASE, {
 // GET {API_BASE}?action=health
 // data
 { "ok": true, "serverTime": "2026-10-31T09:12:00+09:00",
-  "versions": { "Auth.gs": "v15", "Code.gs": "v15", "Journal.gs": "v15",
-                "MasterSync.gs": "v15", "Mirror.gs": "v15", "Setup.gs": "v15", "Sheets.gs": "v15" } }
+  "versions": { "Auth.gs": "v18", "Code.gs": "v18", "Journal.gs": "v18",
+                "MasterSync.gs": "v18", "Mirror.gs": "v18", "Setup.gs": "v18", "Sheets.gs": "v18" },
+  "ends":     { "Auth.gs": "v18", … },   // v18 — 파일 맨 끝의 끝 표시 (D-054)
+  "problems": [] }                       // v18 — 비어 있으면 일곱 파일이 끝까지, 같은 버전으로 붙었다
 ```
 브라우저에서 `{API_BASE}?action=health` 를 열었을 때 이 JSON 이 보이면 배포·권한 설정이
 정상입니다. HTML 이 보이면 웹 앱 접근 권한이 `모든 사용자` 가 아닙니다 (`DEPLOY.md` 참고).
 
 `versions` 는 **붙여넣은 `.gs` 파일마다의 버전**입니다 (D-049). 배포 뒤 이걸 보면 빠뜨린
 파일이 드러납니다. 값이 `null` 이면 버전 표시가 생기기 전의 옛 파일입니다.
+
+`ends` · `problems` (v18, D-054) — `versions` 는 파일이 **있는지**만 봅니다. 붙여넣기가 **끝까지** 됐는지는
+파일 맨 끝의 `var END_X` 로 봅니다. `problems` 에 "끝이 잘렸습니다"(끝 표시 없음) · "섞여 붙었습니다"(앞뒤 버전 다름) ·
+"빠졌거나 옛 파일"(버전 표시 없음)이 파일마다 한 줄씩 뜹니다.
 
 #### `auth.login`
 ```jsonc
