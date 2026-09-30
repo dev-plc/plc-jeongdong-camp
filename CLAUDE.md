@@ -26,10 +26,10 @@ PLC 정동 가을캠프 "신앙탐험대" 현장 앱. 설계 결정은 `docs-dev
 
 고친 뒤 반드시: `node tools/check-versions.js` — 어긋나면 1 로 끝난다.
 
-**현재 배포**: GAS 배포 **17번** = 코드 **v16** (2026-09-26, health — Auth·Code·Journal·Setup·Sheets v16, MasterSync·Mirror v15).
-16번 배포 때 `Setup.gs` 끝이 잘려 붙어 `onOpen` 이 빠졌고(메뉴 사라짐), 다시 붙여 17번으로 재배포했다 —
-코드는 같으므로 헤더는 v16 그대로 둔다. **v18 = 파일 끝 표시만** (D-054, 운영자 배포 대기 — 결과를 받으면 이 줄을 고친다).
-C 단계(`claude/plc-jeongdong-camp-c-next`, 11/07 본 캠프 뒤)는 **v19** 로 민다.
+**현재 배포**: GAS 배포 **18번** = 코드 **v18** (2026-09-30, 파일 끝 표시 D-054 — `health` 의 `problems` 가 `[]` 이면 정상).
+그 전: 17번 = v16 (16번 때 `Setup.gs` 끝이 잘려 `onOpen` 이 빠졌고 다시 붙여 17번으로 재배포 — 코드가 같아 헤더는 v16).
+**다음 v19 = 명단 사본 + 미션 점수 입력 삭제** (D-055·056, `claude/plc-jeongdong-camp-people-mirror`).
+C 단계(`claude/plc-jeongdong-camp-c-next`, 11/07 본 캠프 뒤)는 **v20** 으로 민다.
 배포 번호가 예상과 다르게 나왔다고 운영자가 알려 주면 이 줄과 헤더를 그 번호로 맞춘다.
 
 ## 🔴 GAS 배포를 안내할 때
