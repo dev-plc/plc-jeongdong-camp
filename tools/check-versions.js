@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
  * ────────────────────────────────────────────────────────────────
- * check-versions.js · v15 · 2026-09-26
+ * check-versions.js · v18 · 2026-09-29
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v18   2026-09-29  .gs 맨 끝 줄의 끝 표시(END_X)도 검사한다 (D-054)
  *  v15   2026-09-26  처음 만듦 — 파일 버전 헤더를 검사한다 (D-049)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
@@ -24,6 +25,8 @@
  *      어긋나면 배포 확인이 거짓말을 한다
  *   5. 🔴 **GAS 버전은 정수**다 — `.gs` 에 `vN.k` 가 붙으면 안 된다. 서버를 고쳤다면
  *      새로 배포해야 하고, 배포하면 번호가 하나 오른다.
+ *   6. 🔴 `.gs` 의 **맨 마지막 줄**이 `var END_X = '<헤더 버전>';` 이다 (D-054) — health 가 이걸로
+ *      잘린 붙여넣기를 잡는다. 버전을 올리며 이 줄을 안 고치면 health 가 "섞여 붙었다" 고 거짓 경보를 낸다.
  *
  * 실행: node tools/check-versions.js      (어긋난 곳이 있으면 1 로 끝난다)
  */
@@ -45,6 +48,7 @@ const FILES = [
 const HEAD = /^[ *]*(\S+) · (v\d+(?:\.\d+)?) · (\d{4}-\d{2}-\d{2})\s*$/m;
 const FIRST_ENTRY = /변경 이력[^\n]*\n[ *]*(v\d+(?:\.\d+)?|—)\s+(\d{4}-\d{2}-\d{2})\s+\S/;
 const CONST = /^var (VERSION_[A-Z]+) = '([^']*)';/m;
+const END = /^var (END_[A-Z]+) = '([^']*)';$/;
 
 function check(rel) {
   const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -68,6 +72,13 @@ function check(rel) {
     const c = CONST.exec(src);
     if (!c) errs.push("`var VERSION_X = '" + ver + "';` 이 없습니다 — health 가 이 파일을 못 봅니다");
     else if (c[2] !== ver) errs.push(c[1] + " = '" + c[2] + "' 가 헤더(" + ver + ')와 다릅니다');
+
+    const lines = src.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+    const e = END.exec(lines[lines.length - 1] || '');
+    const want = c ? c[1].replace('VERSION_', 'END_') : 'END_X';
+    if (!e) errs.push("맨 마지막 줄이 `var " + want + " = '" + ver + "';` 가 아닙니다 — health 가 잘린 붙여넣기를 못 잡습니다 (D-054)");
+    else if (c && e[1] !== want) errs.push('끝 표시 이름이 ' + e[1] + ' 입니다 (' + want + ' 이어야 함)');
+    else if (e[2] !== ver) errs.push(e[1] + " = '" + e[2] + "' 가 헤더(" + ver + ')와 다릅니다');
   }
   return errs;
 }
