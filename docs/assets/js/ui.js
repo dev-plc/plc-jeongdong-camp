@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v16 · 2026-09-26
+ * ui.js · v19 · 2026-09-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v19   2026-09-30  조별 카드에서 점수 표시 삭제 (D-056)
  *  v16   2026-09-26  조별 카드 공용화, 점수 표시·정정 칸 (D-051·052)
  *  v15.1 2026-09-26  상대 시각 도우미 (N분 전 · 오늘 날짜 · HH:MM→분) (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  —     2026-09-18  진행 기록을 낙관적으로 반영하고, 실패하면 되돌린다
- *  —     2026-09-18  실패에 이름을, 왕복 시간에 서버 시간을 붙인다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -394,14 +394,10 @@
       [cell.arrivedAt, cell.completedAt].forEach(function (x) { if (x && x > last) last = x; });
       var cls = status === '완료' ? 'done' : status === '도착' ? 'here' : 'wait';
       var time = hhmm(cell.completedAt || cell.arrivedAt);
-      var hasScore = cell.score !== null && cell.score !== undefined && cell.score !== '';
       var inner =
         '<span class="step__top">' + (i + 1) + (time ? ' · ' + esc(time) : '') + '</span>' +
-        '<span class="step__name">' + esc(nameOf[code] || code) + '</span>' +
-        (hasScore ? '<span class="step__score">' + esc(cell.score) + '점' +
-          (cell.scoreSource === '스태프' ? ' ✓' : '') + '</span>' : '');
-      var title = (nameOf[code] || code) + ' · ' + status +
-        (hasScore ? ' · ' + cell.score + '점(' + (cell.scoreSource || '?') + ')' : '');
+        '<span class="step__name">' + esc(nameOf[code] || code) + '</span>';
+      var title = (nameOf[code] || code) + ' · ' + status;
       return '<li class="step step--' + cls + '" title="' + esc(title) + '">' +
         (o.editable
           ? '<button type="button" class="step__btn" data-edit-session="' + esc(t.session) +

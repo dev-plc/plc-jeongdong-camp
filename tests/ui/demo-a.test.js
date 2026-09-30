@@ -176,6 +176,24 @@ withBrowser(async (env) => {
   ok('넓은 화면은 여러 줄 (3열)', cols === 3, cols);
   await page.context().close();
 
+  section('콘솔 — 점수 입력·시상 퀴즈 없음 (D-056)');
+  page = await openAdmin('2026-10-31T15:25:00+09:00');
+  await admin(page);
+  await page.locator('.step__btn').first().click();
+  await page.waitForSelector('#cellForm');
+  ok('정정 창은 상태만 (대기·도착·완료)', (await page.locator('#cellForm input[name="status"]').count()) === 3);
+  ok('🔴 정정 창에 점수 칸이 없다', (await page.locator('#cellForm input[name="score"], #cellForm input[type="number"]').count()) === 0 &&
+    !/점수/.test((await text(page, '#cellForm')) || ''), await text(page, '#cellForm'));
+  await page.click('#cellForm [data-act="cancel"]');
+  ok('🔴 진행 카드에 "N점" 표시가 없다', !/\d+점/.test((await text(page, '.team-grid')) || ''));
+  await page.click('[data-view="awards"]');
+  await page.waitForSelector('.award');
+  const heads = await page.evaluate(() => [...document.querySelectorAll('.award .card__title')].map(h => h.textContent));
+  ok('시상은 소요 시간 · 사진 두 부문', heads.length === 2 && /소요 시간/.test(heads[0]) && /사진/.test(heads[1]), heads);
+  ok('🔴 시상에 퀴즈 부문·점수 글자가 없다', !/퀴즈|점수/.test((await text(page, '#view')) || ''));
+  ok('소요 시간 순위는 그대로', (await page.locator('.award .rank__row').count()) > 0);
+  await page.context().close();
+
   section('런타임 오류');
   ok('JS 오류 없음', env.errors.length === 0, env.errors);
 }).then(done, e => { console.error(e); process.exit(1); });
