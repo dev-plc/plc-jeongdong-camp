@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v16 · 2026-09-26
+ * app.js · v19 · 2026-09-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v19   2026-09-30  미션 점수 입력·표시 삭제 — 조장·스태프는 도착·완료만 (D-056)
  *  v16   2026-09-26  내 지점·진행 화면, 역할 카드, 조장 점수 칸 (D-051·052)
  *  v15.1 2026-09-26  홈 "지금·다음" 카드, 코스 다음 동작 버튼·접기 (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
- *  —     2026-09-19  진행 기록을 묶어서 보낸다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -392,7 +392,7 @@
       '</dl>' +
       '<p class="card__foot">' +
         (isStation
-          ? '이 지점에 오는 조의 도착·완료·퀴즈 점수를 기록합니다. '
+          ? '이 지점에 오는 조의 도착·완료를 기록합니다. '
           : '모든 조의 진행을 볼 수 있습니다(읽기 전용). 검수·공지·정정은 운영 콘솔에서 PIN 으로. ') +
         '<button type="button" class="btn btn--text" id="goRole">' + (isStation ? '내 지점 열기' : '진행 보기') + '</button>' +
       '</p>' +
@@ -457,26 +457,6 @@
       '</div>';
   }
 
-  /**
-   * 퀴즈 점수 (D-052). 조장도 넣을 수 있지만 **스태프가 넣은 점수가 우선**이다 —
-   * 출처가 스태프면 칸을 잠근다. 도착 전에는 점수 칸을 보이지 않는다.
-   */
-  function scoreHtml(p, canEdit) {
-    var has = p.score !== null && p.score !== undefined && p.score !== '';
-    if (p.scoreSource === '스태프' && has) {
-      return '<p class="cp__score is-locked">퀴즈 <strong>' + esc(p.score) + '점</strong> · 스태프 확인</p>';
-    }
-    if (canEdit && p.status !== '대기') {
-      return '<div class="cp__score" data-cp="' + esc(p.checkpoint) + '">' +
-        '<label>퀴즈 점수 <input class="input input--score" type="number" inputmode="numeric" min="0" max="100"' +
-          ' value="' + (has ? esc(p.score) : '') + '" aria-label="퀴즈 점수"></label>' +
-        '<button type="button" class="btn btn--ghost btn--sm" data-score-save>저장</button>' +
-        (has && p.scoreSource === '관리자' ? '<span class="hint">운영진이 고친 점수</span>' : '') +
-      '</div>';
-    }
-    return has ? '<p class="cp__score">퀴즈 <strong>' + esc(p.score) + '점</strong></p>' : '';
-  }
-
   /** 코스 순서상 아직 완료하지 않은 첫 지점. 모두 완료면 null. */
   function nextCheckpoint(list) {
     for (var i = 0; i < list.length; i++) if (list[i].status !== '완료') return list[i];
@@ -519,14 +499,11 @@
             : '') +
           (cp.openHours ? '<span class="cp__hours">' + esc(cp.openHours) + '</span>' : '') +
         '</div>' +
-        scoreHtml(p, canEdit) +
         (canEdit ? courseActions(p) : '');
 
       // 화면은 이미 바뀌었지만 아직 서버에 안 갔다 — 그 사실을 숨기지 않는다.
-      // data-score 는 **표시가 아니라 확인용**이다(D-039). 테스트와 현장 점검이 값을 본다.
       var attrs = ' id="cp-' + esc(p.checkpoint) + '" data-code="' + esc(p.checkpoint) + '"' +
-        ' data-status="' + esc(p.status) + '"' +
-        ' data-score="' + esc(p.score === null || p.score === undefined ? '' : p.score) + '"';
+        ' data-status="' + esc(p.status) + '"';
       var cls = 'cp cp--' + statusClass(p.status) + (p.pending ? ' is-saving' : '') + (isNext ? ' cp--next' : '');
 
       // 🔴 **다음 지점과 진행 중(도착)인 지점만 펼친다.** 나머지는 한 줄로 접는다 —
@@ -582,19 +559,13 @@
    *
    * · 도착·완료는 **최초 시각만** 남긴다 (되돌렸다 다시 눌러도 처음 시각 유지)
    * · 대기는 둘 다 비운다
-   * · 🔴 점수·메모는 **건드리지 않는다.** 보내지 않았으니 서버도 손대지 않는다.
-   *   (예전에는 서버가 덮어써서 여기서도 비웠다 — 그 손실을 서버에서 고쳤다.)
+   * · 🔴 점수·메모는 **건드리지 않는다.** 앱은 상태만 보낸다(점수 입력은 D-056 에서 뺐다).
    */
-  function applyProgressLocal(list, code, status, extra) {
+  function applyProgressLocal(list, code, status) {
     var now = UI.localIso();
     return list.map(function (p) {
       if (p.checkpoint !== code) return p;
       var next = Object.assign({}, p, { status: status, pending: true });
-      // 점수는 보낸 때만. 스태프 점수는 서버가 지키므로 화면도 건드리지 않는다 (D-052).
-      if (extra && extra.score !== undefined && p.scoreSource !== '스태프') {
-        next.score = extra.score === '' ? null : extra.score;
-        next.scoreSource = extra.score === '' ? '' : '조장';
-      }
       if (status === '대기') {
         next.arrivedAt = '';
         next.completedAt = '';
@@ -618,7 +589,7 @@
   // 여전히 모자란다. "앞 요청이 끝날 때까지 모은다" 는 **한가하면 0ms, 느리면
   // 최대한 묶는다** 를 알아서 한다 — 왕복 3초 동안 탭이 쌓이는 지금 문제에 맞는다.
 
-  var sendQueue = {};        // 지점코드 → {status, score?}. 같은 지점은 필드를 합치고 마지막 값이 남는다
+  var sendQueue = {};        // 지점코드 → 상태. 같은 지점은 마지막 값이 남는다
   var sending = false;       // 요청이 도는 중인가
 
   // 🔴 되돌릴 곳은 **마지막 서버 응답**이다. 화면 스냅샷이 아니다.
@@ -627,13 +598,10 @@
   // 표시가 남아 있으면** 되돌릴 때 그것까지 복원돼 영영 안 지워진다.
   // 테스트가 이걸 잡았다. 서버가 준 목록은 언제나 깨끗하다.
   var lastServerList = [];
-  var lastStatusBefore = {};   // 토스트 문구용 — 점수만 저장했는지 구분
 
-  function queueProgress(code, status, extra) {
-    // 🔴 같은 지점이면 **필드를 합친다.** 점수를 저장한 뒤 바로 '완료' 를 누르면
-    //    점수가 사라지면 안 된다 — 상태만 덮어쓰고 점수는 남긴다.
-    sendQueue[code] = Object.assign({}, sendQueue[code], { status: status }, extra || {});
-    state.progress = applyProgressLocal(state.progress, code, status, extra);
+  function queueProgress(code, status) {
+    sendQueue[code] = status;
+    state.progress = applyProgressLocal(state.progress, code, status);
     paintCourse();
 
     if (!sending) flushProgress();
@@ -643,33 +611,16 @@
     var codes = Object.keys(sendQueue);
     if (!codes.length) { sending = false; return; }
 
-    var items = codes.map(function (c) {
-      var q = sendQueue[c];
-      var it = { checkpoint: c, status: q.status };
-      if (q.score !== undefined) it.score = q.score;
-      return it;
-    });
+    var items = codes.map(function (c) { return { checkpoint: c, status: sendQueue[c] }; });
     sendQueue = {};
     sending = true;
-    lastStatusBefore = {};
-    lastServerList.forEach(function (p) { lastStatusBefore[p.checkpoint] = p.status; });
 
     API.progressSetBatch(items)
       .then(function (list) {
         state.progress = list;              // 권위는 서버다
         lastServerList = list;
         paintCourse();
-        // 스태프가 이미 확인한 점수는 서버가 그대로 둔다 — 조용히 넘기지 않는다.
-        var kept = items.filter(function (it) {
-          if (it.score === undefined) return false;
-          var p = list.filter(function (x) { return x.checkpoint === it.checkpoint; })[0];
-          return p && p.scoreSource === '스태프' && String(p.score) !== String(it.score);
-        });
-        if (kept.length) toast('스태프가 확인한 점수는 바꿀 수 없습니다. 상태만 기록했습니다.', 'error');
-        else toast(items.length === 1
-          ? (items[0].score !== undefined && items[0].status === (lastStatusBefore[items[0].checkpoint] || items[0].status)
-              ? '점수를 저장했습니다.' : '기록했습니다: ' + items[0].status)
-          : items.length + '곳을 기록했습니다.');
+        toast(items.length === 1 ? '기록했습니다: ' + items[0].status : items.length + '곳을 기록했습니다.');
       })
       .catch(function (err) {
         // 🔴 배치 전체를 되돌린다. 일부만 남기면 화면이 거짓말한다.
@@ -687,20 +638,6 @@
   });
 
   function onProgressClick(e) {
-    var save = e.target.closest('[data-score-save]');
-    if (save) {
-      var box = save.closest('[data-cp]');
-      var input = box && box.querySelector('input');
-      if (!input) return;
-      var raw = String(input.value).trim();
-      var n = Number(raw);
-      if (raw !== '' && (isNaN(n) || n < 0 || n > 100)) { toast('점수는 0~100 사이로 넣어 주세요.', 'error'); return; }
-      var code0 = box.getAttribute('data-cp');
-      var cur = state.progress.filter(function (p) { return p.checkpoint === code0; })[0];
-      if (!cur) return;
-      queueProgress(code0, cur.status, { score: raw === '' ? '' : n });
-      return;
-    }
     // 카드 자체에도 data-status(현재 상태)가 달려 있다 — 버튼만 잡는다.
     var btn = e.target.closest('button[data-status]');
     if (!btn) return;
@@ -753,7 +690,7 @@
     setView(
       '<section class="section-head"><h2>📍 ' + esc(cp.name) + '</h2>' +
         '<p class="hint">' + esc(b.session) + ' · 이 지점에 오는 순서대로입니다. 조가 오면 "도착 확인", ' +
-        '미션·퀴즈가 끝나면 "완료". 스태프가 넣은 점수가 조장 점수보다 우선합니다.</p></section>' +
+        '미션이 끝나면 "완료".</p></section>' +
       (cp.mission ? '<p class="cp__mission"><strong>미션</strong> ' + esc(cp.mission) + '</p>' : '') +
       '<div class="station-bar">' +
         '<span class="course-summary__count">도착 ' + here + '/' + n + ' · 완료 ' + done + '/' + n + '</span>' +
@@ -771,7 +708,6 @@
   function stationRow(t, canEdit) {
     var next = ST_NEXT[t.status];
     var undo = ST_UNDO[t.status];
-    var has = t.score !== null && t.score !== undefined && t.score !== '';
     var where = t.status !== '대기' ? ''
       : t.visitOrder === 1 ? '첫 지점'
       : t.prevStatus === '완료' ? '🚶 오는 중 — ' + esc(t.prevName) + ' 완료'
@@ -793,17 +729,8 @@
               esc(next.label) + '</button>' : '') +
             (undo ? '<button type="button" class="btn btn--text" data-st="set" data-status="' + undo.status + '"' +
               ' data-ask="' + esc(undo.ask) + '">' + esc(undo.label) + '</button>' : '') +
-          '</div>' +
-          (t.status !== '대기' || has
-            ? '<div class="cp__score">' +
-                '<label>퀴즈 점수 <input class="input input--score" type="number" inputmode="numeric" min="0" max="100"' +
-                  ' value="' + (has ? esc(t.score) : '') + '" aria-label="' + esc(t.name) + ' 퀴즈 점수"></label>' +
-                '<button type="button" class="btn btn--ghost btn--sm" data-st="score">저장</button>' +
-                (has && t.scoreSource && t.scoreSource !== '스태프'
-                  ? '<span class="hint">' + esc(t.scoreSource) + ' 입력 — 확인 후 저장하면 스태프 점수가 됩니다</span>' : '') +
-              '</div>'
-            : '')
-        : (has ? '<p class="cp__score">퀴즈 <strong>' + esc(t.score) + '점</strong></p>' : '')) +
+          '</div>'
+        : '') +
     '</article>';
   }
 
@@ -817,15 +744,8 @@
 
     var row = btn.closest('[data-group]');
     if (!row) return;
-    var item = { group: row.getAttribute('data-group') };
-    if (act === 'set') {
-      item.status = btn.getAttribute('data-status');
-    } else if (act === 'score') {
-      var raw = String(row.querySelector('input').value).trim();
-      var n = Number(raw);
-      if (raw !== '' && (isNaN(n) || n < 0 || n > 100)) { toast('점수는 0~100 사이로 넣어 주세요.', 'error'); return; }
-      item.score = raw === '' ? '' : n;
-    } else return;
+    if (act !== 'set') return;
+    var item = { group: row.getAttribute('data-group'), status: btn.getAttribute('data-status') };
 
     var ask = btn.getAttribute('data-ask');
     (ask ? UI.confirmDialog(ask, btn.textContent) : Promise.resolve(true)).then(function (yes) {
@@ -836,7 +756,7 @@
         .then(function (b) {
           state.station = b;
           paintStation();
-          toast(item.status ? item.group + ' ' + item.status : item.group + ' 점수 저장');
+          toast(item.group + ' ' + item.status);
         })
         .catch(function (err) {
           UI.$$('button', row).forEach(function (b) { b.disabled = false; });
@@ -861,7 +781,7 @@
     setView(
       '<section class="section-head"><h2>진행 현황</h2>' +
         '<p class="hint">' + esc(b.session) + ' · 조마다 코스 순서대로입니다. 완주 전인데 ' + UI.STALE_MIN +
-        '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다. 점수 옆 ✓ 는 스태프가 확인한 점수입니다. ' +
+        '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다. ' +
         '<strong>읽기 전용</strong>입니다.</p></section>' +
       '<div class="station-bar">' +
         '<button type="button" class="btn btn--ghost btn--sm" data-board="refresh">새로고침</button>' +

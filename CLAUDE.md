@@ -26,9 +26,9 @@ PLC 정동 가을캠프 "신앙탐험대" 현장 앱. 설계 결정은 `docs-dev
 
 고친 뒤 반드시: `node tools/check-versions.js` — 어긋나면 1 로 끝난다.
 
-**현재 배포**: GAS 배포 **18번** = 코드 **v18** (2026-09-30, 파일 끝 표시 D-054 — `health` 의 `problems` 가 `[]` 이면 정상).
-그 전: 17번 = v16 (16번 때 `Setup.gs` 끝이 잘려 `onOpen` 이 빠졌고 다시 붙여 17번으로 재배포 — 코드가 같아 헤더는 v16).
-**다음 v19 = 명단 사본 + 미션 점수 입력 삭제** (D-055·056, `claude/plc-jeongdong-camp-people-mirror`).
+**현재 배포**: GAS 배포 **19번** = 코드 **v19** (2026-09-30, health — Auth·Mirror v19, 나머지 다섯 v18, `problems` `[]`).
+v19 = 명단 사본(D-055, Supabase SQL `supabase-people.sql` 실행 완료) + 미션 점수 입력 삭제(D-056, 앱만).
+v18 = 파일 끝 표시(D-054, 18번). 17번 = v16 (16번 때 `Setup.gs` 끝이 잘려 `onOpen` 이 빠져 다시 붙여 재배포).
 C 단계(`claude/plc-jeongdong-camp-c-next`, 11/07 본 캠프 뒤)는 **v20** 으로 민다.
 배포 번호가 예상과 다르게 나왔다고 운영자가 알려 주면 이 줄과 헤더를 그 번호로 맞춘다.
 
@@ -55,7 +55,7 @@ v13 은 `Sheets.gs` 가 빠진 채 나갔다 — 공지 삭제만 터지고 나�
 node tools/check-versions.js      # 버전 헤더
 node tools/stamp-assets.js        # ?v= 해시 (브라우저 캐시를 깬다, D-036)
 node tools/build-demo.js          # docs/demo.html 은 생성물 — 손으로 고치지 않는다
-node tests/run.js                 # 테스트 전부 (서버·화면·도구). 화면 스위트는 새 demo.html 로 돈다
+node tests/run.js                 # 테스트 전부 (서버·앱·DB·화면·도구). 화면 스위트는 새 demo.html 로 돈다
 ```
 
 🔴 테스트는 **저장소 `tests/` 에만** 둔다. scratchpad 에만 있던 테스트 약 1,070건이 컨테이너 재시작으로
@@ -76,3 +76,5 @@ node tests/run.js                 # 테스트 전부 (서버·화면·도구). �
 - **테스트는 되돌려서 무는지 본다.** 고친 줄을 빼면 깨지는 테스트여야 한다.
 - 🔴 **`sb_secret_` · `service_role` 키는 `config.js` 에 절대 넣지 않는다** — 저장소가 공개다.
   명단·연락처도 커밋하지 않는다.
+- 🔴 **Supabase 에 명단을 올리는 곳은 `mirrorPeopleSync` 하나**(D-055) — 캠프 모드 동안만, 연락처 없이, 표는 함수로만 읽힌다.
+  표를 anon 이 읽게 하거나(GRANT·정책) 칸을 늘릴 때는 D-055 를 먼저 고친다. `tests/db` 가 anon 권한을 지킨다.

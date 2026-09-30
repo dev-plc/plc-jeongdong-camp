@@ -1,5 +1,6 @@
 /**
- * B 단계 화면 (D-051·052) — 스태프(내 지점) · 교역자(진행, 읽기 전용) · 조장 점수 칸.
+ * B 단계 화면 (D-051·052) — 스태프(내 지점) · 교역자(진행, 읽기 전용) · 조장 코스.
+ * 🔴 미션 점수 입력·표시는 D-056 에서 뺐다 — 어디에도 점수 칸·점수 글자가 없어야 한다.
  * 원본은 소실된 scratchpad 의 test-b-ui.js — 세션 기록에서 되살려 옮겼다. 시계는 10/31 15:25 KST.
  */
 const { ok, section, done } = require('../lib/check');
@@ -24,7 +25,7 @@ withBrowser(async (env) => {
     status: el.querySelector('.chip').textContent,
     meta: el.querySelector('.team-card__meta').textContent,
     buttons: [...el.querySelectorAll('.st-row__actions button')].map(b => b.textContent),
-    score: (el.querySelector('.input--score') || {}).value
+    scoreBox: !!el.querySelector('input, .cp__score')
   })));
   let r = await rows();
   ok('이 지점을 지나는 10/31 조 네 개', r.length === 4, r.map(x => x.group));
@@ -33,7 +34,9 @@ withBrowser(async (env) => {
   ok('직전 지점을 끝낸 조는 "오는 중"', g3.meta.includes('오는 중'), g3.meta);
   ok('대기 → "도착 확인" 하나', JSON.stringify(g3.buttons) === '["도착 확인"]', g3.buttons);
   const g2 = r.find(x => x.group === '2조');
-  ok('완료 → "완료 취소" 만 + 점수 10', JSON.stringify(g2.buttons) === '["완료 취소"]' && g2.score === '10', g2);
+  ok('완료 → "완료 취소" 만', JSON.stringify(g2.buttons) === '["완료 취소"]', g2);
+  ok('🔴 어느 행에도 점수 칸이 없다 (D-056)', r.every(x => !x.scoreBox), r.map(x => x.group + ':' + x.scoreBox));
+  ok('🔴 안내 문구에 점수 얘기가 없다', !/점수/.test((await text(page, '#view')) || ''), await text(page, '.section-head'));
   ok('제목에 지점 이름', ((await text(page, '.section-head h2')) || '').includes('배재학당역사박물관'));
 
   await page.click('.st-row[data-group="3조"] [data-st="set"]');
@@ -44,24 +47,12 @@ withBrowser(async (env) => {
   ok('station.set 에 조와 상태만 (지점은 서버가 정한다)', sent.length === 1 &&
     JSON.stringify(sent[0].items) === JSON.stringify([{ group: '3조', status: '도착' }]), sent.map(b => b.items));
 
-  await page.fill('.st-row[data-group="3조"] .input--score', '9');
-  await page.click('.st-row[data-group="3조"] [data-st="score"]');
-  await waitToast(page, '점수 저장');
-  r = await rows();
-  ok('점수 저장 → 9', r.find(x => x.group === '3조').score === '9');
-  ok('점수만 보냈다 (상태 없음)', JSON.stringify((await bodies(page, 'station.set')).pop().items) === JSON.stringify([{ group: '3조', score: 9 }]));
-
-  await page.fill('.st-row[data-group="3조"] .input--score', '150');
-  await page.click('.st-row[data-group="3조"] [data-st="score"]');
-  await waitToast(page, '0~100');
-  ok('범위 밖 점수는 보내지 않는다', (await bodies(page, 'station.set')).length === 2);
-
   // 취소는 확인창 — 취소하면 그대로
   await page.click('.st-row[data-group="2조"] [data-st="set"]');
   await page.waitForSelector('.modal');
   await page.click('.modal [data-act="cancel"]');
   await page.waitForTimeout(300);
-  ok('🔴 완료 취소 → 확인창에서 취소하면 요청 없음', (await bodies(page, 'station.set')).length === 2 &&
+  ok('🔴 완료 취소 → 확인창에서 취소하면 요청 없음', (await bodies(page, 'station.set')).length === 1 &&
     (await rows()).find(x => x.group === '2조').status === '완료');
   ok('390px 가로 넘침 없음 (내 지점)', await noHScroll(page));
   ok('13px 미만 글자 없음 (내 지점)', (await smallText(page)).length === 0, await smallText(page));
@@ -86,7 +77,8 @@ withBrowser(async (env) => {
   ok('내 회차 조 카드 네 개', (await page.locator('.team-card').count()) === 4);
   ok('🔴 읽기 전용 — 칸 버튼 없음', (await page.locator('.step__btn').count()) === 0);
   ok('⚠ 경고 줄', ((await text(page, '.team-alert')) || '').includes('1개 조'), await text(page, '.team-alert'));
-  ok('칸에 점수와 스태프 확인 표시', ((await text(page, '.team-card[data-team="10/31(토) 2조"]')) || '').includes('10점 ✓'));
+  ok('🔴 칸에 점수 표시가 없다 (데이터에 점수가 있어도)', !/\d+점/.test((await text(page, '.team-grid')) || '') &&
+    (await page.locator('.step__score').count()) === 0, await text(page, '.team-card[data-team="10/31(토) 2조"]'));
   ok('운영 콘솔(PIN) 링크', (await page.getAttribute('a[href="admin.html"]', 'href')) === 'admin.html');
   ok('390px 가로 넘침 없음 (진행)', await noHScroll(page));
   ok('13px 미만 글자 없음 (진행)', (await smallText(page)).length === 0, await smallText(page));
@@ -98,28 +90,18 @@ withBrowser(async (env) => {
   ok('내 정보 — 운영진 (조 없음)', ((await text(page, '#view')) || '').includes('운영진 (조 없음)'));
   await page.context().close();
 
-  // ------------------------------------------------------------ 조장 점수
-  section('조장 — 퀴즈 점수 (스태프 우선)');
+  // ------------------------------------------------------------ 조장 코스
+  section('조장 — 도착·완료만 (점수 칸 없음, D-056)');
   page = await open('leader');
   await login(page);
   await page.click('#tabbar [data-view="course"]');
   await page.waitForSelector('.cp');
-  ok('🔴 스태프가 넣은 점수는 잠겨 있다 (1번 지점 9점)',
-    ((await text(page, '.cp[data-code="CP3"] .cp__score')) || '').includes('스태프 확인') &&
-    (await page.locator('.cp[data-code="CP3"] .input--score').count()) === 0);
-  ok('도착한 지점에 점수 칸', await page.isVisible('.cp[data-code="CP4"] .input--score'));
-  ok('아직 안 간 지점엔 점수 칸 없음', (await page.locator('.cp[data-code="CP1"] .input--score').count()) === 0);
-  await page.fill('.cp[data-code="CP4"] .input--score', '7');
-  await page.click('.cp[data-code="CP4"] [data-score-save]');
-  await waitToast(page, '점수를 저장했습니다');
-  const ps = (await bodies(page, 'progress.set')).pop();
-  ok('상태(그대로)와 점수를 함께 보낸다', ps && JSON.stringify(ps.items) === JSON.stringify([{ checkpoint: 'CP4', status: '도착', score: 7 }]),
-    ps && ps.items);
-  ok('칸에 7', (await page.inputValue('.cp[data-code="CP4"] .input--score')) === '7');
+  ok('🔴 점수 칸·저장 버튼이 없다', (await page.locator('.input--score, [data-score-save], .cp__score').count()) === 0);
+  ok('🔴 코스 화면 어디에도 "N점" 이 없다 (스태프가 넣은 점수가 데이터에 있어도)', !/\d+점/.test((await text(page, '#view')) || ''));
   await page.click('.cp--next .cp__next');
   await waitToast(page, '기록했습니다');
-  ok('완료해도 점수는 남는다', ((await text(page, '.cp[data-code="CP4"]')) || '').includes('완료') &&
-    (await page.inputValue('.cp[data-code="CP4"] .input--score').catch(() => '')) === '7');
+  const ps = (await bodies(page, 'progress.set')).pop();
+  ok('🔴 보낸 것은 지점과 상태뿐', ps && JSON.stringify(ps.items) === JSON.stringify([{ checkpoint: 'CP4', status: '완료' }]), ps && ps.items);
   ok('13px 미만 글자 없음 (코스)', (await smallText(page)).length === 0, await smallText(page));
   await page.context().close();
 
