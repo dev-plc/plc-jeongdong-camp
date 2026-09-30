@@ -28,13 +28,15 @@ PLC 정동 가을캠프 "신앙탐험대" 현장 앱. 설계 결정은 `docs-dev
 
 **현재 배포**: GAS 배포 **17번** = 코드 **v16** (2026-09-26, health — Auth·Code·Journal·Setup·Sheets v16, MasterSync·Mirror v15).
 16번 배포 때 `Setup.gs` 끝이 잘려 붙어 `onOpen` 이 빠졌고(메뉴 사라짐), 다시 붙여 17번으로 재배포했다 —
-코드는 같으므로 헤더는 v16 그대로 둔다. **다음 `.gs` 변경은 v18** (C 단계, `claude/plc-jeongdong-camp-c-next`, 11/07 본 캠프 뒤).
+코드는 같으므로 헤더는 v16 그대로 둔다. **v18 = 파일 끝 표시만** (D-054, 운영자 배포 대기 — 결과를 받으면 이 줄을 고친다).
+C 단계(`claude/plc-jeongdong-camp-c-next`, 11/07 본 캠프 뒤)는 **v19** 로 민다.
 배포 번호가 예상과 다르게 나왔다고 운영자가 알려 주면 이 줄과 헤더를 그 번호로 맞춘다.
 
 ## 🔴 GAS 배포를 안내할 때
 
 v13 은 `Sheets.gs` 가 빠진 채 나갔다 — 공지 삭제만 터지고 나머지는 멀쩡해 늦게 발견되는 종류다.
 
+0. 안내하기 전에 **`node tests/run.js` 가 0 으로 끝나야 한다** (서버만은 `node tests/run.js server`, 1초). `tests/README.md`.
 1. **바뀐 `.gs` 를 전부** 표로 준다. 하나만 바뀌어도 다른 파일의 새 함수를 부르면 같이 올려야 한다.
    `git diff --stat <마지막 배포 커밋>..HEAD -- gas/` 로 확인한다.
 2. 파일마다 **붙여넣은 뒤 줄 수**를 함께 준다 (`wc -l`). 운영자는 줄 수로 대조한다.
@@ -53,7 +55,11 @@ v13 은 `Sheets.gs` 가 빠진 채 나갔다 — 공지 삭제만 터지고 나�
 node tools/check-versions.js      # 버전 헤더
 node tools/stamp-assets.js        # ?v= 해시 (브라우저 캐시를 깬다, D-036)
 node tools/build-demo.js          # docs/demo.html 은 생성물 — 손으로 고치지 않는다
+node tests/run.js                 # 테스트 전부 (서버·화면·도구). 화면 스위트는 새 demo.html 로 돈다
 ```
+
+🔴 테스트는 **저장소 `tests/` 에만** 둔다. scratchpad 에만 있던 테스트 약 1,070건이 컨테이너 재시작으로
+사라진 적이 있다(2026-09-29). 새 기능의 테스트도 같은 커밋에 넣는다.
 
 `docs/demo.html` 을 다시 만들었으면 **아티팩트 데모도 다시 올린다**
 (`https://claude.ai/artifact/DQQvR4awqr3iAXfcYZHdTM`). 안 올리면 3주 동안 첫 버전이
