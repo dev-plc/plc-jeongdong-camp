@@ -3,7 +3,7 @@
  * app.js · v20 · 2026-09-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
- *  v20   2026-09-30  탐험일지 기본은 우리 조, 탭으로 전체 · 내 일지 탭 삭제 (D-057)
+ *  v20   2026-09-30  탐험일지 기본은 우리 조, 탭으로 전체 · 내 일지 탭 삭제 · 글마다 작성자와 조 (D-057)
  *  v19.1 2026-09-30  코스 버튼을 누른 뒤 3초 잠금 — 연타로 두 단계가 넘어가지 않게
  *  v19   2026-09-30  미션 점수 입력·표시 삭제 — 조장·스태프는 도착·완료만 (D-056)
  *  v16   2026-09-26  내 지점·진행 화면, 역할 카드, 조장 점수 칸 (D-051·052)
@@ -1034,7 +1034,9 @@
         : '') +
       '<div class="jcard__body">' +
         '<p class="jcard__meta">' +
-          '<strong>' + esc(item.authorName) + '</strong>' +
+          // 작성자와 조를 함께 — "전체" 탭에서는 어느 조 글인지가 중요하다 (D-057)
+          '<strong class="jcard__author">' + esc(item.authorName) + '</strong>' +
+          (item.group ? ' <span class="jcard__group">' + esc(item.group) + '</span>' : '') +
           (cpName ? ' · ' + esc(cpName) : '') +
           ' · <time>' + esc(UI.prettyDateTime(item.createdAt)) + '</time>' +
           (item.status !== '승인' ? ' <span class="chip chip--' +

@@ -106,7 +106,7 @@ withBrowser(async (env) => {
   await page.context().close();
 
   // ------------------------------------------------------------ 탐험일지 탭 (D-057)
-  section('탐험일지 — 기본은 우리 조, 탭으로 전체 · 내 일지 없음');
+  section('탐험일지 — 기본은 우리 조, 탭으로 전체 · 내 일지 없음 · 작성자와 조');
   const journalView = async (persona) => {
     const pg = await open(persona);
     await login(pg);
@@ -129,6 +129,17 @@ withBrowser(async (env) => {
   await page.waitForSelector('#journalList .jcard');
   seen = await ids(page);
   ok('전체 탭 → 같은 회차의 다른 조 글도', seen.includes('J0003') && (await bodies(page, 'journal.list')).pop().scope === 'gallery', seen);
+  // 글마다 작성자와 조 — 전체 탭에서 어느 조 글인지 보여야 한다 (D-057)
+  const meta = (id) => page.evaluate((id) => {
+    const c = document.querySelector('#journalList .jcard[data-id="' + id + '"]');
+    const q = (s) => (c && c.querySelector(s) || {}).textContent || '';
+    return { author: q('.jcard__author'), group: q('.jcard__group'), line: q('.jcard__meta') };
+  }, id);
+  const m1 = await meta('J0001'), m3 = await meta('J0003');
+  ok('🔴 카드에 작성자 · 조 (1조 한지민)', m1.author === '한지민' && m1.group === '1조', m1);
+  ok('🔴 다른 조 글은 그 조로 (2조 박서준)', m3.author === '박서준' && m3.group === '2조', m3);
+  ok('조는 작성자 바로 뒤', m1.line.indexOf('한지민') < m1.line.indexOf('1조'), m1.line);
+  ok('13px 미만 글자 없음 (탐험일지)', (await smallText(page)).length === 0, await smallText(page));
   await page.context().close();
 
   page = await journalView('leader');
