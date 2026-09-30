@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Journal.gs · v18 · 2026-09-29
+ * Journal.gs · v20 · 2026-09-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20   2026-09-30  조원도 "우리 조" 일지를 본다 — 승인된 글과 본인 글만 (D-057)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *  v16   2026-09-26  일지 일괄 승인, ★ 사진 수상작 (D-052)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
- *  —     2026-09-19  시트에는 진짜 Date, 통신에는 ISO
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_JOURNAL = 'v18';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_JOURNAL = 'v20';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Journal.gs — 탐험일지 (글 + 사진)
@@ -124,8 +124,16 @@ function journalList_(ctx, body) {
   if (scope === 'mine') {
     rows = rows.filter(function (r) { return str_(r['참가자ID']) === ctx.pid; });
   } else if (scope === 'team') {
-    if (!ctx.isLeader && !ctx.isAdmin) throw new AppError('FORBIDDEN', '조장만 볼 수 있습니다.');
+    // 앱의 기본 탭 (D-057). 조원도 본다 — 조가 없으면(교역자·스태프) 볼 조가 없다.
+    if (!ctx.isAdmin && !ctx.group) throw new AppError('FORBIDDEN', '배정된 조가 없습니다.');
     rows = rows.filter(function (r) { return rowTeamKey_(r) === ctx.teamKey; });
+    // 🔴 조장은 검수·수정 권한이 있어 우리 조 글을 **모두** 본다(D-009).
+    //    조원에게는 갤러리와 같은 규칙 — 승인 전 사진이 승인 없이 조원에게 퍼지면 안 된다.
+    if (!ctx.isLeader && !ctx.isAdmin && confBool_('JOURNAL_REQUIRE_APPROVAL', true)) {
+      rows = rows.filter(function (r) {
+        return str_(r['상태']) === '승인' || str_(r['참가자ID']) === ctx.pid;
+      });
+    }
   } else {
     // gallery
     if (confBool_('JOURNAL_REQUIRE_APPROVAL', true) && !ctx.isAdmin) {
@@ -428,4 +436,4 @@ function normalizeCheckpoint_(code) {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_JOURNAL = 'v18';
+var END_JOURNAL = 'v20';
