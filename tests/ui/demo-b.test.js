@@ -105,6 +105,43 @@ withBrowser(async (env) => {
   ok('13px 미만 글자 없음 (코스)', (await smallText(page)).length === 0, await smallText(page));
   await page.context().close();
 
+  // ------------------------------------------------------------ 탐험일지 탭 (D-057)
+  section('탐험일지 — 기본은 우리 조, 탭으로 전체 · 내 일지 없음');
+  const journalView = async (persona) => {
+    const pg = await open(persona);
+    await login(pg);
+    await pg.click('#tabbar [data-view="journal"]');
+    await pg.waitForSelector('#journalList .jcard, #journalList .empty');
+    return pg;
+  };
+  const tabs = (pg) => pg.evaluate(() => [...document.querySelectorAll('#scopeTabs .tab')].map(t => t.textContent + (t.classList.contains('is-active') ? '*' : '')));
+  const ids = (pg) => pg.evaluate(() => [...document.querySelectorAll('#journalList .jcard')].map(c => c.getAttribute('data-id')));
+
+  page = await journalView('member');
+  ok('🔴 탭은 우리 조 · 전체 — 기본은 우리 조', JSON.stringify(await tabs(page)) === JSON.stringify(['우리 조*', '전체']), await tabs(page));
+  ok('🔴 "내 일지" 탭이 없다', !((await text(page, '#scopeTabs')) || '').includes('내 일지'));
+  ok('처음 부르는 목록이 우리 조', (await bodies(page, 'journal.list'))[0].scope === 'team');
+  let seen = await ids(page);
+  ok('조원은 우리 조의 승인된 글만 (조원의 확인 전 글 제외)', seen.join() === 'J0001,J0002' || seen.sort().join() === 'J0001,J0002', seen);
+  ok('다른 조 글은 없다', !seen.includes('J0003'));
+  await page.click('#scopeTabs [data-scope="gallery"]');
+  await page.waitForFunction(() => document.querySelector('#scopeTabs .tab.is-active').textContent === '전체');
+  await page.waitForSelector('#journalList .jcard');
+  seen = await ids(page);
+  ok('전체 탭 → 같은 회차의 다른 조 글도', seen.includes('J0003') && (await bodies(page, 'journal.list')).pop().scope === 'gallery', seen);
+  await page.context().close();
+
+  page = await journalView('leader');
+  ok('조장도 기본은 우리 조', JSON.stringify(await tabs(page)) === JSON.stringify(['우리 조*', '전체']), await tabs(page));
+  seen = await ids(page);
+  ok('조장은 우리 조의 확인 전 글까지 본다', seen.includes('J0007'), seen);
+  ok('안내: 조장은 확인 전 글도', ((await text(page, '#scopeHint')) || '').includes('확인 전'));
+  await page.context().close();
+
+  page = await journalView('pastor');
+  ok('조 없는 교역자는 전체 탭 하나', JSON.stringify(await tabs(page)) === JSON.stringify(['전체*']), await tabs(page));
+  await page.context().close();
+
   section('런타임 오류');
   ok('JS 오류 없음', env.errors.length === 0, env.errors);
 }).then(done, e => { console.error(e); process.exit(1); });
