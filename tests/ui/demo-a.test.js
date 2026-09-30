@@ -126,6 +126,23 @@ withBrowser(async (env) => {
   ok('요약도 2/4', ((await text(page, '.course-summary')) || '').includes('진행 2/4'));
   ok('완료한 2번은 접힌다', c[1].tag === 'DETAILS', c[1]);
 
+  // 🔴 누른 뒤 3초는 코스 버튼 전체가 잠긴다 (v19.1) — 연타로 두 단계가 넘어가지 않게
+  const btnState = () => page.evaluate(() => [...document.querySelectorAll('.cp__actions button')].map(b => b.disabled));
+  let st = await btnState();
+  ok('🔴 누른 직후 코스의 모든 버튼이 잠긴다', st.length > 0 && st.every(Boolean), st);
+  const sets = () => page.evaluate(() => window.__DEMO_CALLS.filter(a => a === 'progress.set').length);
+  const before = await sets();
+  await page.locator('.cp--next .cp__next').click({ force: true });           // 잠긴 버튼 연타
+  await page.evaluate(() => {                                                 // disabled 가 그려지기 전에 들어온 탭
+    const b = document.querySelector('.cp--next .cp__next'); b.disabled = false; b.click();
+  });
+  await page.waitForTimeout(400);
+  ok('🔴 잠금 중 연타는 요청을 보내지 않는다', (await sets()) === before, { before, after: await sets() });
+  ok('🔴 상태도 한 단계만 (다음 지점은 여전히 대기)', (await cards())[2].status === '대기', (await cards())[2]);
+  await page.clock.runFor(3100);
+  await page.waitForFunction(() => [...document.querySelectorAll('.cp__actions button')].every(b => !b.disabled));
+  ok('3초 뒤 다시 누를 수 있다', (await btnState()).every(x => !x));
+
   // 확인창에서 "완료 취소" 를 누르면 돌아간다
   await page.locator('.cp').nth(1).evaluate(el => { el.open = true; });
   await page.locator('.cp').nth(1).locator('.cp__undo').click();

@@ -2501,14 +2501,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v19 · 2026-09-30
+ * app.js · v19.1 · 2026-09-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v19.1 2026-09-30  코스 버튼을 누른 뒤 3초 잠금 — 연타로 두 단계가 넘어가지 않게
  *  v19   2026-09-30  미션 점수 입력·표시 삭제 — 조장·스태프는 도착·완료만 (D-056)
  *  v16   2026-09-26  내 지점·진행 화면, 역할 카드, 조장 점수 칸 (D-051·052)
  *  v15.1 2026-09-26  홈 "지금·다음" 카드, 코스 다음 동작 버튼·접기 (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
- *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -2946,16 +2946,37 @@ window.APP_CONFIG = {
     var next = NEXT_ACTION[p.status];
     var undo = UNDO_ACTION[p.status];
     if (!next && !undo) return '';
+    var off = coursePaused() ? ' disabled' : '';
     return '<div class="cp__actions" data-cp="' + esc(p.checkpoint) + '">' +
       (next
-        ? '<button type="button" class="btn btn--primary cp__next" data-status="' + next.status + '">' +
+        ? '<button type="button" class="btn btn--primary cp__next" data-status="' + next.status + '"' + off + '>' +
             esc(next.label) + '</button>'
         : '') +
       (undo
         ? '<button type="button" class="btn btn--text cp__undo" data-status="' + undo.status + '"' +
-            ' data-ask="' + esc(undo.ask) + '">' + esc(undo.label) + '</button>'
+            ' data-ask="' + esc(undo.ask) + '"' + off + '>' + esc(undo.label) + '</button>'
         : '') +
       '</div>';
+  }
+
+  /**
+   * 🔴 **누른 뒤 3초는 코스의 모든 버튼을 잠근다** (운영자 요청, v19.1).
+   *
+   * 화면이 누르는 즉시 바뀌므로(낙관적 UI) 같은 자리를 한 번 더 누르면 바뀐 버튼 — "도착했어요" 다음의
+   * "완료했어요" — 이 눌려 두 단계가 한꺼번에 넘어갔다. 한 지점이 아니라 **코스 전체**를 잠근다:
+   * 완료하면 다음 지점 카드가 바로 펼쳐지므로 그 버튼도 같은 연타에 걸린다.
+   * 서버 응답으로 다시 그려져도 잠금은 이 시각을 따라 유지된다.
+   */
+  var COURSE_PAUSE_MS = 3000;
+  var coursePauseUntil = 0;
+
+  function coursePaused() { return Date.now() < coursePauseUntil; }
+
+  function pauseCourse() {
+    coursePauseUntil = Date.now() + COURSE_PAUSE_MS;
+    setTimeout(function () {
+      if (state.view === 'course' && state.me && !coursePaused()) paintCourse();
+    }, COURSE_PAUSE_MS);
   }
 
   /** 코스 순서상 아직 완료하지 않은 첫 지점. 모두 완료면 null. */
@@ -3142,15 +3163,16 @@ window.APP_CONFIG = {
     // 카드 자체에도 data-status(현재 상태)가 달려 있다 — 버튼만 잡는다.
     var btn = e.target.closest('button[data-status]');
     if (!btn) return;
+    if (coursePaused()) return;          // 잠금 중 — disabled 가 그려지기 전에 들어온 탭까지 막는다
     var wrap = btn.closest('[data-cp]');
     if (!wrap) return;
     var code = wrap.getAttribute('data-cp');
     var target = btn.getAttribute('data-status');
     var ask = btn.getAttribute('data-ask');
-    if (!ask) { queueProgress(code, target); return; }
-    // 되돌리기는 기록을 지우므로 한 번 묻는다.
+    if (!ask) { pauseCourse(); queueProgress(code, target); return; }
+    // 되돌리기는 기록을 지우므로 한 번 묻는다. 잠금은 "확인" 을 누른 뒤부터.
     UI.confirmDialog(ask, btn.textContent).then(function (yes) {
-      if (yes) queueProgress(code, target);
+      if (yes && !coursePaused()) { pauseCourse(); queueProgress(code, target); }
     });
   }
 
