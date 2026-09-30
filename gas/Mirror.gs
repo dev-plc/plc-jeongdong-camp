@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Mirror.gs · v18 · 2026-09-29
+ * Mirror.gs · v19 · 2026-09-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v19   2026-09-30  명단 사본 — 캠프 모드 동안 로그인·내 정보를 사본에서 (D-055)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v13   2026-09-22  설정을 바꾸면 사본도 민다
  *  —     2026-09-19  진행 사본 정합
- *  —     2026-09-18  진행 쓰기 사본
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_MIRROR = 'v18';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_MIRROR = 'v19';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Mirror.gs — 공개 데이터를 Supabase 로 단방향 복제한다 (D-032)
@@ -24,7 +24,8 @@ var VERSION_MIRROR = 'v18';   // 헤더의 버전과 같아야 한다. health �
  * 그래서 미러가 죽어도 앱은 돈다 — 그 폴백이 이 구조의 전제다.
  *
  * 1단계 대상은 `bootstrap_()` 이 내려보내는 공개 데이터뿐이다(실측 4.5KB).
- * **개인정보(명단)와 쓰기(진행·일지)는 올리지 않는다.**
+ * **쓰기(진행·일지)는 올리지 않는다.** 명단은 D-055 부터 **캠프 모드 동안만**, 그 회차 인원만,
+ * 연락처 없이, 직접 못 읽는 표로 올린다(`mirrorPeopleSync`).
  *
  * 설정: 스크립트 속성 `SUPABASE_URL` · `SUPABASE_SERVICE_KEY`
  *       (둘 중 하나라도 비면 **아무 일도 하지 않는다** — 설정 전에도 안전하다)
@@ -238,7 +239,11 @@ function mirrorDaily() {
   }
   // 진행 사본 정합 (D-041). 공개 데이터와 한 함수에서 같이 한다 —
   // 같은 일을 하는 트리거가 둘이면 하나는 반드시 낡는다.
-  return mirrorProgressSync() && ok;
+  var progressOk = mirrorProgressSync();
+  // 명단 사본 (D-055). 캠프 모드가 아니면 **지운다** — 끄기에서 지우기가 실패했어도
+  // 다음 날 04시에 여기서 다시 지운다. 개인정보가 남아 있는 시간을 하루로 묶는다.
+  if (campMode_()) mirrorPeopleSync(); else mirrorPeoplePurge_();
+  return progressOk && ok;
 }
 
 /**
@@ -327,6 +332,7 @@ function mirrorPushNow() {
   }
   clearConfigCache();
   var ok = mirrorPush();
+  if (campMode_()) ok = mirrorPeopleSync() && ok;
   var msg = ok
     ? '✅ 미러를 갱신했습니다.'
     : '❌ 미러 갱신에 실패했습니다. Log 탭에서 mirror.push 행을 확인해 주세요.';
@@ -347,23 +353,141 @@ function mirrorPushNow() {
 function installCampSync() {
   clearMirrorTriggers_();
   ScriptApp.newTrigger('mirrorDaily').timeBased().everyMinutes(10).create();
+  PropertiesService.getScriptProperties().setProperty('CAMP_MODE', 'TRUE');
 
-  var msg = '✅ 캠프 모드: 10분마다 동기화합니다.\n\n' +
-    '🔴 캠프가 끝나면 "캠프 모드 끄기" 를 눌러 주세요.\n' +
-    '   평소에 10분마다 도는 것은 낭비입니다.';
+  // 명단 사본은 **지금** 올린다 (D-055). 10분 뒤 첫 트리거를 기다리면 그동안 로그인이 느리다.
+  var people = mirrorPeopleSync();
+  var msg = '✅ 캠프 모드: 10분마다 동기화합니다.\n' +
+    (people.ok
+      ? '   명단 사본: ' + people.session + ' ' + people.rows + '명을 올렸습니다 (로그인·내 정보가 빨라집니다).\n'
+      : '   ⚠ 명단 사본을 올리지 못했습니다' + (people.reason ? ' — ' + people.reason : '') +
+        '. 로그인은 지금처럼 GAS 로 됩니다.\n') +
+    '\n🔴 캠프가 끝나면 "캠프 모드 끄기" 를 눌러 주세요.\n' +
+    '   명단 사본을 지우고, 평소에 10분마다 도는 낭비도 멈춥니다.';
   try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
   return true;
 }
 
-/** 캠프 모드를 끄고 평소(하루 1회)로 되돌린다. */
+/** 캠프 모드를 끄고 평소(하루 1회)로 되돌린다. 명단 사본을 지운다 (D-055). */
 function stopCampSync() {
   clearMirrorTriggers_();
   ScriptApp.newTrigger('mirrorDaily').timeBased().everyDays(1).atHour(4).create();
+  PropertiesService.getScriptProperties().deleteProperty('CAMP_MODE');
 
-  var msg = '✅ 평소대로 돌아왔습니다. 매일 04시에 한 번 갱신합니다.';
+  var purged = mirrorPeoplePurge_();
+  var msg = '✅ 평소대로 돌아왔습니다. 매일 04시에 한 번 갱신합니다.\n' +
+    (purged || !mirrorEnabled_()
+      ? '   명단 사본을 지웠습니다.'
+      : '   ⚠ 명단 사본을 지우지 못했습니다(Log 탭 mirror.people). 내일 04시에 다시 지웁니다 — ' +
+        '급하면 이 메뉴를 한 번 더 눌러 주세요.');
   try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
   return true;
 }
 
+// ---------------------------------------------------------------- 명단 사본 (D-055)
+
+/** 명단 사본 테이블. anon 은 표를 못 읽고 `camp_login`·`camp_me` 함수로만 꺼낸다. */
+var MIRROR_PEOPLE_TABLE = 'people_cache';
+
+/** 캠프 모드인가. 켜기·끄기 메뉴가 스크립트 속성에 적는다. */
+function campMode_() {
+  return str_(PropertiesService.getScriptProperties().getProperty('CAMP_MODE')) === 'TRUE';
+}
+
+/** 서울 자정(ms). `yyyy-MM-dd` 에서 n 일 뒤. 한국은 서머타임이 없다. */
+function kstMidnight_(ymd, plusDays) {
+  return new Date(ymd + 'T00:00:00+09:00').getTime() + (plusDays || 0) * 86400000;
+}
+
+/**
+ * 지금 회차 인원을 명단 사본에 올린다.
+ *
+ * 🔴 올리는 사람: 명단의 `참여 일자` 칸이 **지금 회차와 같은** 사람만(운영자 결정).
+ *    공란(조 없는 교역자·스태프)은 올리지 않는다 — 그들은 지금처럼 GAS 로 들어온다.
+ *    `effectiveSession_` 을 쓰면 공란이 지금 회차로 바뀌어 올라가므로 **쓰지 않는다.**
+ * 🔴 연락처는 올리지 않는다. 로그인 키(SHA-256)와 `buildMe_` 결과(연락처 없음, D-003)만.
+ * 🔴 두 사람이 같은 키를 가지면 그 키는 **뺀다** — 어느 쪽인지는 GAS 가 판단한다(AMBIGUOUS).
+ *
+ * 토큰은 **서울 날짜로 고정**한다: 오늘 토큰은 모레 0시, 어제 토큰은 내일 0시에 끝난다.
+ * 같은 날 10분마다 다시 올려도 **같은 문자열**이라 앱이 들고 있는 토큰으로 `camp_me` 가 계속 된다.
+ *
+ * 순서는 진행 사본과 같다: 넣고 → 이번에 안 넣은(낡은) 행을 지운다. 표가 한순간도 비지 않는다.
+ * 실패해도 던지지 않는다. 원장은 시트고, 앱은 사본이 없으면 GAS 로 간다.
+ *
+ * @return {{ok:boolean, session:string, rows:number, reason:string}}
+ */
+function mirrorPeopleSync() {
+  var out = { ok: false, session: '', rows: 0, reason: '' };
+  if (!mirrorEnabled_()) { out.reason = 'Supabase 설정 없음'; return out; }
+  if (!campMode_()) { out.reason = '캠프 모드가 아님'; return out; }
+
+  var label = currentSessionLabel_();
+  if (!label || !isActiveSession_(label)) {
+    out.reason = '열려 있는 회차가 없음';
+    mirrorPeoplePurge_();
+    return out;
+  }
+  out.session = label;
+
+  var people = readTable_(SHEETS.PARTICIPANTS).filter(function (p) {
+    return str_(p[COL.SESSION]) === label && str_(p['참가자ID']);
+  });
+
+  // 키 → 몇 명. 둘 이상이면 그 키는 사본에서 뺀다.
+  var keysOf = {};
+  var owners = {};
+  people.forEach(function (p) {
+    var pid = str_(p['참가자ID']);
+    keysOf[pid] = loginKeys_(p);
+    keysOf[pid].forEach(function (k) { owners[k] = (owners[k] || 0) + 1; });
+  });
+
+  var today = todayStr_();
+  var expToday = kstMidnight_(today, 2);
+  var expPrev = kstMidnight_(today, 1);
+  var stamp = nowIso_();
+
+  var rows = people.map(function (p) {
+    var pid = str_(p['참가자ID']);
+    var me = buildMe_(p);
+    me.isAdmin = false;          // `meHandler_` 와 **같은 모양** — 앱이 두 경로를 구분하지 않는다
+    return {
+      pid: pid,
+      session: label,
+      me: me,
+      keys: keysOf[pid].filter(function (k) { return owners[k] === 1; }),
+      token: tokenUntil_(pid, expToday).token,
+      token_prev: tokenUntil_(pid, expPrev).token,
+      updated_at: stamp
+    };
+  });
+
+  if (rows.length && !supabaseUpsert_(MIRROR_PEOPLE_TABLE, rows, 'mirror.people', label)) {
+    out.reason = '올리기 실패 (Log 탭 mirror.people)';
+    return out;
+  }
+  // 이번에 안 올린 행(회차가 바뀌었거나 명단에서 빠진 사람)을 지운다.
+  if (!supabaseDelete_(MIRROR_PEOPLE_TABLE, 'updated_at=lt.' + encodeURIComponent(stamp),
+      'mirror.people', 'sweep')) {
+    out.reason = '낡은 행 지우기 실패 (Log 탭 mirror.people)';
+    return out;
+  }
+  supabaseUpsert_(MIRROR_TABLE, [{
+    key: 'people_meta',
+    value: { syncedAt: stamp, session: label, rows: rows.length },
+    updated_at: stamp
+  }], 'mirror.people', 'people_meta');
+
+  out.ok = true;
+  out.rows = rows.length;
+  return out;
+}
+
+/** 명단 사본을 모두 지운다. 🔴 조건 없는 DELETE 는 쓰지 않는다(`supabaseDelete_`) — `pid` 가 있는 행 = 전부. */
+function mirrorPeoplePurge_() {
+  if (!mirrorEnabled_()) return false;
+  return supabaseDelete_(MIRROR_PEOPLE_TABLE, 'pid=not.is.null', 'mirror.people', 'purge');
+}
+
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_MIRROR = 'v18';
+var END_MIRROR = 'v19';

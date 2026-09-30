@@ -4,20 +4,25 @@
  *
  *   node tests/run.js            전부
  *   node tests/run.js server     서버(GAS 모의)만 — 몇 초
+ *   node tests/run.js app        앱 통신 계층(api.js, 브라우저 없이)만
+ *   node tests/run.js db         Supabase SQL(로컬 Postgres)만
  *   node tests/run.js ui         화면(데모 + Chromium)만
  *   node tests/run.js tools      도구·생성물만
  *   node tests/run.js -v         스위트 출력을 전부 보인다 (기본은 실패한 스위트만)
  *
- * 하나라도 실패하거나 죽으면 1 로 끝난다. 화면 스위트가 Playwright 가 없어 건너뛰면 **건너뜀** 으로 따로 센다.
+ * 하나라도 실패하거나 죽으면 1 로 끝난다. Playwright·Postgres 가 없어 건너뛴 스위트는 **건너뜀** 으로 따로 센다.
  */
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
 const DIR = __dirname;
+const suites = (d) => fs.readdirSync(path.join(DIR, d)).filter(f => f.endsWith('.test.js')).map(f => d + '/' + f);
 const GROUPS = {
-  server: fs.readdirSync(path.join(DIR, 'server')).filter(f => f.endsWith('.test.js')).map(f => 'server/' + f),
-  ui: fs.readdirSync(path.join(DIR, 'ui')).filter(f => f.endsWith('.test.js')).map(f => 'ui/' + f),
+  server: suites('server'),
+  app: suites('app'),
+  db: suites('db'),
+  ui: suites('ui'),
   tools: ['tools.test.js']
 };
 
@@ -26,7 +31,7 @@ const verbose = args.includes('-v');
 const picked = args.filter(a => !a.startsWith('-'));
 const groups = picked.length ? picked : Object.keys(GROUPS);
 const unknown = groups.filter(g => !GROUPS[g]);
-if (unknown.length) { console.error('모르는 묶음: ' + unknown.join(', ') + ' (server · ui · tools)'); process.exit(2); }
+if (unknown.length) { console.error('모르는 묶음: ' + unknown.join(', ') + ' (' + Object.keys(GROUPS).join(' · ') + ')'); process.exit(2); }
 
 let totalPass = 0, totalFail = 0, broken = 0, skipped = 0;
 const rows = [];
@@ -39,7 +44,7 @@ groups.forEach(g => GROUPS[g].forEach(rel => {
   const m = /(\d+) passed, (\d+) failed\s*$/.exec(out.trim());
   const sec = ((Date.now() - t) / 1000).toFixed(1) + 's';
   let line;
-  if (/^SKIPPED$/m.test(out)) { skipped++; line = `  ⚠ ${rel}  건너뜀 (Playwright 없음)`; }
+  if (/^SKIPPED$/m.test(out)) { skipped++; line = `  ⚠ ${rel}  건너뜀 (Playwright·Postgres 없음)`; }
   else if (!m) { broken++; line = `  ✗ ${rel}  죽음 (exit ${r.status})`; }
   else {
     const p = +m[1], f = +m[2];

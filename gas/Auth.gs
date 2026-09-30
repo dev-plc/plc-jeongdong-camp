@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Auth.gs · v18 · 2026-09-29
+ * Auth.gs · v19 · 2026-09-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v19   2026-09-30  명단 사본 — 로그인 키·날짜 고정 토큰 (D-055)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *  v16   2026-09-26  조 없는 교역자·스태프 모드, 공란 회차, 오늘 회차 행 (D-051)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  —     2026-09-19  쓰기 8.5초의 범인은 락 대기였다
- *  —     2026-09-17  회차 활성/비활성 스위치 + 관리자 콘솔 회차 필터
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_AUTH = 'v18';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_AUTH = 'v19';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Auth.gs — 인증 / 토큰 / 권한
@@ -122,9 +122,46 @@ function safeEquals_(a, b) {
  */
 function issueToken_(claims) {
   var ttlHours = confInt_('TOKEN_TTL_HOURS', 12);
-  var payload = { pid: claims.pid, exp: Date.now() + ttlHours * 3600 * 1000 };
+  return tokenUntil_(claims.pid, Date.now() + ttlHours * 3600 * 1000);
+}
+
+/**
+ * 만료 시각을 정해 토큰을 만든다. 로그인(`issueToken_`)과 명단 사본(D-055)이 같이 쓴다.
+ * 🔴 페이로드 키 순서 `{pid, exp}` 를 바꾸지 않는다 — 명단 사본은 같은 입력이면
+ *    **같은 문자열**이 나와야 10분마다 다시 올려도 앱의 토큰이 안 끊긴다.
+ */
+function tokenUntil_(pid, expMs) {
+  var payload = { pid: pid, exp: expMs };
   var b64 = Utilities.base64EncodeWebSafe(JSON.stringify(payload));
   return { token: b64 + '.' + sign_(b64), expiresAt: new Date(payload.exp).toISOString() };
+}
+
+/**
+ * 명단 사본(D-055)의 로그인 키 — 이 사람으로 **로그인이 되는** 이름·4자리 조합 전부.
+ *
+ * 🔴 `matchesParticipant_` 과 **같은 규칙**이어야 한다. 하나라도 어긋나면
+ *    GAS 로는 들어가는 사람이 사본에서는 못 찾거나(느려질 뿐), 그 반대가 된다.
+ *    이름: 저장값 전체 · 끝 4자리를 뗀 이름. 4자리: 연락처 뒷자리 · (허용 시) 이름 끝 4자리.
+ * 키는 `SHA-256(정규화 이름 + '|' + 4자리)` 의 hex. 앱(`api.js` loginKey)이 같은 식으로 만든다.
+ * 연락처 원문은 사본에 가지 않는다.
+ */
+function loginKeys_(row) {
+  var name = splitName_(row[COL.NAME]);
+  var names = [name.full, name.base].filter(function (n, i, a) { return n && a.indexOf(n) === i; });
+  var digits = [phoneLast4_(row[COL.PHONE])];
+  if (confBool_('LOGIN_ALLOW_NAME_DIGITS', true) && name.digits) digits.push(name.digits);
+  digits = digits.filter(function (d, i, a) { return d && a.indexOf(d) === i; });
+
+  var keys = [];
+  names.forEach(function (n) {
+    digits.forEach(function (d) { keys.push(sha256Hex_(n + '|' + d)); });
+  });
+  return keys;
+}
+
+function sha256Hex_(text) {
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text, Utilities.Charset.UTF_8);
+  return bytes.map(function (b) { return ((b + 256) % 256 + 0x100).toString(16).slice(1); }).join('');
 }
 
 function verifyToken_(token) {
@@ -471,4 +508,4 @@ function defaultRoute_() {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_AUTH = 'v18';
+var END_AUTH = 'v19';

@@ -1369,14 +1369,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * api.js · v15 · 2026-09-26
+ * api.js · v19 · 2026-09-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v19   2026-09-30  캠프 모드 동안 로그인·내 정보·회비를 명단 사본에서 (D-055)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  —     2026-09-19  진행 기록을 묶어서 보낸다
  *  —     2026-09-19  진행을 미러에서 읽는다
  *  —     2026-09-18  표본이 0건인 액션에 '기준 초과' 가 찍히던 거짓 경보 수정
- *  —     2026-09-18  요청에 시간 상한을 둔다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -1412,7 +1412,7 @@ window.APP_CONFIG = {
   /** 기준선. DATABASE.md 의 '넘어갈 기준' 과 같은 값이어야 한다. */
   var PERF_BUDGET = {
     'bootstrap': 3000, 'bootstrap:supabase': 3000,   // 미러가 빨라졌는지 나란히 본다
-    'me': 2000,
+    'me': 2000, 'me:supabase': 2000,
     'progress.list': 2000, 'progress.list:supabase': 2000   // 두 경로를 나란히 본다
   };
 
@@ -1860,6 +1860,86 @@ window.APP_CONFIG = {
     });
   }
 
+  // ---------------------------------------------------------------- 명단 사본 (D-055)
+  //
+  // 캠프 모드 동안 GAS 가 그 회차 인원을 `people_cache` 에 올린다. 표는 직접 못 읽고
+  // 함수 둘(`camp_login`·`camp_me`)로만 꺼낸다. 로그인 3.0초(D-043)를 사본으로 줄인다.
+  // 🔴 사본이 없거나·낡았거나·못 찾으면 **null** — 호출부가 GAS 로 간다. 쓰기는 전부 GAS 다.
+
+  /**
+   * 사본 함수 호출. **절대 던지지 않는다.** 함수가 null 을 돌려주면(못 찾음) 그대로 null.
+   * 404(SQL 을 아직 안 돌림)·시간 초과·네트워크 오류도 null.
+   */
+  function mirrorRpc(fn, args, label) {
+    if (!mirrorEnabled()) return Promise.resolve(null);
+    var started = now();
+    var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, CFG.MIRROR_TIMEOUT) : null;
+
+    var headers = { apikey: CFG.SUPABASE_ANON_KEY, 'Content-Type': 'application/json' };
+    if (/^eyJ/.test(CFG.SUPABASE_ANON_KEY)) {
+      headers.Authorization = 'Bearer ' + CFG.SUPABASE_ANON_KEY;
+    }
+
+    return fetch(CFG.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/rpc/' + fn, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(args),
+      signal: ctrl ? ctrl.signal : undefined
+    })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (data) {
+        if (timer) clearTimeout(timer);
+        perfRecord(label, now() - started, !!data, data ? null : { code: 'MIRROR_MISS' });
+        return data || null;
+      })
+      .catch(function () {
+        if (timer) clearTimeout(timer);
+        perfRecord(label, now() - started, false, { code: 'MIRROR_MISS' });
+        return null;
+      });
+  }
+
+  /**
+   * 로그인 키 — `SHA-256(정규화 이름 + '|' + 4자리)` 의 hex.
+   * 🔴 서버 `loginKeys_`(gas/Auth.gs)와 **같은 식**이어야 한다: 이름은 공백을 모두 빼고 소문자
+   *    (`normalizeName_`), 4자리는 숫자만. 테스트(tests/db)가 둘을 맞대 본다.
+   * 연락처 뒷자리를 그대로 보내지 않는다. `crypto.subtle` 이 없으면(옛 브라우저·http) null.
+   */
+  function loginKey(name, last4) {
+    var n = String(name === null || name === undefined ? '' : name).trim().replace(/\s+/g, '').toLowerCase();
+    var d = String(last4 === null || last4 === undefined ? '' : last4).trim().replace(/\D/g, '');
+    var subtle = global.crypto && global.crypto.subtle;
+    if (!n || d.length !== 4 || !subtle || typeof TextEncoder !== 'function') return Promise.resolve(null);
+    return subtle.digest('SHA-256', new TextEncoder().encode(n + '|' + d)).then(function (buf) {
+      return Array.prototype.map.call(new Uint8Array(buf), function (b) {
+        return (b + 0x100).toString(16).slice(1);
+      }).join('');
+    }, function () { return null; });
+  }
+
+  /** 내 정보를 사본에서. 토큰이 사본에 있는 것(캠프 모드 로그인)일 때만 찾는다. */
+  function meFromMirror() {
+    var token = getToken();
+    if (!token) return Promise.resolve(null);
+    return mirrorRpc('camp_me', { p_token: token }, 'me:supabase').then(function (me) {
+      return (me && me.participant) ? me : null;
+    });
+  }
+
+  /**
+   * 회비 — `fee.status` 와 **같은 모양**을 내 정보에서 만든다(서버 `feeStatus_`).
+   * 조장이면 조원 상태까지, 금액·납부일은 없다(내 정보에도 없다).
+   */
+  function feeFromMe(me) {
+    return {
+      me: { status: me.participant.feeStatus || '미납' },
+      members: (me.isLeader && me.participant.group ? me.members : []).map(function (m) {
+        return { id: m.id, name: m.name, status: m.feeStatus || '미납' };
+      })
+    };
+  }
+
   /**
    * bootstrap 은 공개 데이터라 sessionStorage 에 잠깐 캐시한다.
    * 캐시가 없으면 **미러 → GAS** 순으로 간다. 미러가 없거나 낡으면 예전 그대로다.
@@ -1905,15 +1985,28 @@ window.APP_CONFIG = {
     setToken: setToken,
     ApiError: ApiError,
 
+    /** 사본(캠프 모드) → 없으면 GAS. 참여 일자 힌트는 GAS 만 쓴다(사본은 이미 그 회차 인원뿐). */
     login: function (session, name, phoneLast4) {
-      return call('auth.login', { session: session, name: name, phoneLast4: phoneLast4 }, { anonymous: true })
-        .then(function (data) { setToken(data.token); return data; });
+      return (mirrorEnabled() ? loginKey(name, phoneLast4) : Promise.resolve(null))
+        .then(function (key) {
+          return key ? mirrorRpc('camp_login', { p_key: key }, 'auth.login:supabase') : null;
+        })
+        .then(function (hit) {
+          if (hit && hit.token && hit.me && hit.me.participant) {
+            setToken(hit.token);
+            return { token: hit.token, me: hit.me };
+          }
+          return call('auth.login', { session: session, name: name, phoneLast4: phoneLast4 }, { anonymous: true })
+            .then(function (data) { setToken(data.token); return data; });
+        });
     },
     logout: function () {
       setToken('');
       try { sessionStorage.clear(); } catch (e) { /* 무시 */ }
     },
-    me: function () { return call('me'); },
+    me: function () {
+      return meFromMirror().then(function (me) { return me || call('me'); });
+    },
 
     /**
      * `team` 을 주면 **미러 → GAS** 순으로 간다. 안 주면 예전 그대로 GAS 다.
@@ -1943,7 +2036,11 @@ window.APP_CONFIG = {
     journalCreate: function (payload) { return call('journal.create', payload); },
     journalUpdate: function (payload) { return call('journal.update', payload); },
     journalDelete: function (id) { return call('journal.delete', { id: id }); },
-    feeStatus: function () { return call('fee.status'); }
+    feeStatus: function () {
+      return meFromMirror().then(function (me) { return me ? feeFromMe(me) : call('fee.status'); });
+    },
+    /** 테스트용 — 서버 `loginKeys_` 와 같은 키를 만드는지 맞대 본다. */
+    loginKey: loginKey
   };
 })(window);
 
