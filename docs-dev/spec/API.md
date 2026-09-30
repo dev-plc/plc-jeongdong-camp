@@ -104,6 +104,10 @@ fetch(API_BASE, {
 - `phoneLast4` 는 기본적으로 `연락처` 의 마지막 4자리입니다.
   `Config.LOGIN_ALLOW_NAME_DIGITS=TRUE` 인 동안에만 이름 뒤에 붙은 4자리도 대체로 인정합니다 —
   연락처가 임시값인 기간용 임시 조치이며, 실제 연락처를 채우면 `FALSE` 로 내려야 합니다 (D-003).
+- **캠프 모드 동안**(D-055) 앱은 이 액션보다 먼저 Supabase 함수 `camp_login({p_key})` 를 부릅니다.
+  `p_key = SHA-256(공백 뺀 소문자 이름 | 4자리)` hex. 맞으면 `{token, me}` — 위 응답과 같은 모양(`sessionCorrected`·`expiresAt` 없음).
+  못 찾으면 null 이고 이 액션으로 옵니다. `me`·`fee.status` 도 같은 식으로 `camp_me({p_token})` 을 먼저 봅니다.
+  사본 토큰은 GAS 가 만든 진짜 토큰이라 이 문서의 모든 액션에 그대로 씁니다(만료는 서울 날짜 기준 최대 48시간).
 
 ---
 

@@ -246,6 +246,12 @@ function load(opt) {
       formatDate,
       getUuid: () => crypto.randomUUID(),
       computeHmacSha256Signature: (v, k) => signed(crypto.createHmac('sha256', toBuf(k)).update(toBuf(v)).digest()),
+      DigestAlgorithm: { SHA_256: 'SHA_256', MD5: 'MD5' },
+      Charset: { UTF_8: 'UTF_8' },
+      computeDigest(alg, v) {
+        if (alg !== 'SHA_256') throw new Error('모의 환경은 SHA_256 만: ' + alg);
+        return signed(crypto.createHash('sha256').update(toBuf(v)).digest());
+      },
       base64Encode: (v) => toBuf(v).toString('base64'),
       base64EncodeWebSafe: (v) => toBuf(v).toString('base64').replace(/\+/g, '-').replace(/\//g, '_'),
       base64Decode: (s) => signed(Buffer.from(String(s), 'base64')),

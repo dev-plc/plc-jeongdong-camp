@@ -1,6 +1,7 @@
 /**
  * 모든 화면 한 바퀴 — 페르소나 넷(조장·조원·스태프·교역자) × 탭 전부 + 운영 콘솔 탭 전부.
- * 각 화면에서: 내용이 그려진다 · JS 오류 없음 · 오류 토스트 없음 · 390px 가로 넘침 없음 · 13px 미만 글자 없음(D-050).
+ * 각 화면에서: 내용이 그려진다 · JS 오류 없음 · 오류 토스트 없음 · 390px 가로 넘침 없음 · 13px 미만 글자 없음(D-050)
+ *            · 점수 칸·점수 표시 없음(D-056).
  * 새 탭을 만들면 여기 목록에 더한다.
  */
 const { ok, section, done } = require('../lib/check');
@@ -19,6 +20,13 @@ async function check(page, label) {
   ok(label + ' — 가로 넘침 없음', await noHScroll(page));
   const small = await smallText(page);
   ok(label + ' — 13px 미만 글자 없음', small.length === 0, small);
+  // 🔴 미션 점수 입력·표시는 D-056 에서 뺐다. 데모 데이터에는 점수가 남아 있다 — 새어 나오면 여기서 잡힌다.
+  const score = await page.evaluate(() => ({
+    fields: document.querySelectorAll('.input--score, [data-score-save], [data-st="score"], input[name="score"], .cp__score, .step__score').length,
+    // "13:30" 뒤에 "점심식사" 가 붙어 읽히는 일정표는 뺀다 — 시각(:) 뒤 숫자·"점심" 은 점수가 아니다
+    text: (document.querySelector('#view').textContent.match(/퀴즈 점수|(?:^|[^:\d])\d{1,3}점(?!심)/) || [''])[0]
+  }));
+  ok(label + ' — 점수 칸·점수 표시 없음', !score.fields && !score.text, score);
 }
 
 withBrowser(async (env) => {

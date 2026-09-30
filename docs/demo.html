@@ -15,14 +15,14 @@
 <style>
 /*
    ────────────────────────────────────────────────────────────────
-    app.css · v16 · 2026-09-26
+    app.css · v19 · 2026-09-30
    ────────────────────────────────────────────────────────────────
     변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+     v19   2026-09-30  점수 칸·표시 스타일 삭제 (D-056)
      v16   2026-09-26  내 지점·점수·시상·크게 보기 (D-051·052)
      v15.1 2026-09-26  글자 하한 13px · 조별 카드 · 코스 접기 (D-050)
      v15   2026-09-26  파일 버전 표시 시작
      —     2026-09-18  진행 기록을 낙관적으로 반영하고, 실패하면 되돌린다
-     —     2026-09-18  실패에 이름을, 왕복 시간에 서버 시간을 붙인다
 
     버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
           — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -676,12 +676,6 @@ details.cp:not([open]) { padding-top: 12px; padding-bottom: 12px; }
 
 .card--role { --team-color: #6b5d57; }
 
-/* 퀴즈 점수 — 조장 코스 카드와 스태프 행이 같이 쓴다 */
-.cp__score { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 0; font-size: 14px; }
-.cp__score label { display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
-.cp__score.is-locked { color: var(--ok); }
-.input--score { width: 84px; padding: 8px 10px; text-align: center; }
-
 /* 거점 스태프 — 내 지점 */
 .station-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
 .station-bar .course-summary__count { margin-right: auto; }
@@ -697,7 +691,6 @@ details.cp:not([open]) { padding-top: 12px; padding-bottom: 12px; }
 .st-row__actions .btn--primary { flex: 1; padding: 13px 16px; font-size: 16px; }
 
 /* 콘솔 진행 카드 — 칸을 누르면 정정 (D-052) */
-.step__score { display: block; font-weight: 700; }
 .step__btn {
   display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit;
   font: inherit; text-align: left; cursor: pointer;
@@ -1369,14 +1362,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * api.js · v15 · 2026-09-26
+ * api.js · v19 · 2026-09-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v19   2026-09-30  캠프 모드 동안 로그인·내 정보·회비를 명단 사본에서 (D-055)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  —     2026-09-19  진행 기록을 묶어서 보낸다
  *  —     2026-09-19  진행을 미러에서 읽는다
  *  —     2026-09-18  표본이 0건인 액션에 '기준 초과' 가 찍히던 거짓 경보 수정
- *  —     2026-09-18  요청에 시간 상한을 둔다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -1412,7 +1405,7 @@ window.APP_CONFIG = {
   /** 기준선. DATABASE.md 의 '넘어갈 기준' 과 같은 값이어야 한다. */
   var PERF_BUDGET = {
     'bootstrap': 3000, 'bootstrap:supabase': 3000,   // 미러가 빨라졌는지 나란히 본다
-    'me': 2000,
+    'me': 2000, 'me:supabase': 2000,
     'progress.list': 2000, 'progress.list:supabase': 2000   // 두 경로를 나란히 본다
   };
 
@@ -1860,6 +1853,86 @@ window.APP_CONFIG = {
     });
   }
 
+  // ---------------------------------------------------------------- 명단 사본 (D-055)
+  //
+  // 캠프 모드 동안 GAS 가 그 회차 인원을 `people_cache` 에 올린다. 표는 직접 못 읽고
+  // 함수 둘(`camp_login`·`camp_me`)로만 꺼낸다. 로그인 3.0초(D-043)를 사본으로 줄인다.
+  // 🔴 사본이 없거나·낡았거나·못 찾으면 **null** — 호출부가 GAS 로 간다. 쓰기는 전부 GAS 다.
+
+  /**
+   * 사본 함수 호출. **절대 던지지 않는다.** 함수가 null 을 돌려주면(못 찾음) 그대로 null.
+   * 404(SQL 을 아직 안 돌림)·시간 초과·네트워크 오류도 null.
+   */
+  function mirrorRpc(fn, args, label) {
+    if (!mirrorEnabled()) return Promise.resolve(null);
+    var started = now();
+    var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, CFG.MIRROR_TIMEOUT) : null;
+
+    var headers = { apikey: CFG.SUPABASE_ANON_KEY, 'Content-Type': 'application/json' };
+    if (/^eyJ/.test(CFG.SUPABASE_ANON_KEY)) {
+      headers.Authorization = 'Bearer ' + CFG.SUPABASE_ANON_KEY;
+    }
+
+    return fetch(CFG.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/rpc/' + fn, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(args),
+      signal: ctrl ? ctrl.signal : undefined
+    })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (data) {
+        if (timer) clearTimeout(timer);
+        perfRecord(label, now() - started, !!data, data ? null : { code: 'MIRROR_MISS' });
+        return data || null;
+      })
+      .catch(function () {
+        if (timer) clearTimeout(timer);
+        perfRecord(label, now() - started, false, { code: 'MIRROR_MISS' });
+        return null;
+      });
+  }
+
+  /**
+   * 로그인 키 — `SHA-256(정규화 이름 + '|' + 4자리)` 의 hex.
+   * 🔴 서버 `loginKeys_`(gas/Auth.gs)와 **같은 식**이어야 한다: 이름은 공백을 모두 빼고 소문자
+   *    (`normalizeName_`), 4자리는 숫자만. 테스트(tests/db)가 둘을 맞대 본다.
+   * 연락처 뒷자리를 그대로 보내지 않는다. `crypto.subtle` 이 없으면(옛 브라우저·http) null.
+   */
+  function loginKey(name, last4) {
+    var n = String(name === null || name === undefined ? '' : name).trim().replace(/\s+/g, '').toLowerCase();
+    var d = String(last4 === null || last4 === undefined ? '' : last4).trim().replace(/\D/g, '');
+    var subtle = global.crypto && global.crypto.subtle;
+    if (!n || d.length !== 4 || !subtle || typeof TextEncoder !== 'function') return Promise.resolve(null);
+    return subtle.digest('SHA-256', new TextEncoder().encode(n + '|' + d)).then(function (buf) {
+      return Array.prototype.map.call(new Uint8Array(buf), function (b) {
+        return (b + 0x100).toString(16).slice(1);
+      }).join('');
+    }, function () { return null; });
+  }
+
+  /** 내 정보를 사본에서. 토큰이 사본에 있는 것(캠프 모드 로그인)일 때만 찾는다. */
+  function meFromMirror() {
+    var token = getToken();
+    if (!token) return Promise.resolve(null);
+    return mirrorRpc('camp_me', { p_token: token }, 'me:supabase').then(function (me) {
+      return (me && me.participant) ? me : null;
+    });
+  }
+
+  /**
+   * 회비 — `fee.status` 와 **같은 모양**을 내 정보에서 만든다(서버 `feeStatus_`).
+   * 조장이면 조원 상태까지, 금액·납부일은 없다(내 정보에도 없다).
+   */
+  function feeFromMe(me) {
+    return {
+      me: { status: me.participant.feeStatus || '미납' },
+      members: (me.isLeader && me.participant.group ? me.members : []).map(function (m) {
+        return { id: m.id, name: m.name, status: m.feeStatus || '미납' };
+      })
+    };
+  }
+
   /**
    * bootstrap 은 공개 데이터라 sessionStorage 에 잠깐 캐시한다.
    * 캐시가 없으면 **미러 → GAS** 순으로 간다. 미러가 없거나 낡으면 예전 그대로다.
@@ -1905,15 +1978,28 @@ window.APP_CONFIG = {
     setToken: setToken,
     ApiError: ApiError,
 
+    /** 사본(캠프 모드) → 없으면 GAS. 참여 일자 힌트는 GAS 만 쓴다(사본은 이미 그 회차 인원뿐). */
     login: function (session, name, phoneLast4) {
-      return call('auth.login', { session: session, name: name, phoneLast4: phoneLast4 }, { anonymous: true })
-        .then(function (data) { setToken(data.token); return data; });
+      return (mirrorEnabled() ? loginKey(name, phoneLast4) : Promise.resolve(null))
+        .then(function (key) {
+          return key ? mirrorRpc('camp_login', { p_key: key }, 'auth.login:supabase') : null;
+        })
+        .then(function (hit) {
+          if (hit && hit.token && hit.me && hit.me.participant) {
+            setToken(hit.token);
+            return { token: hit.token, me: hit.me };
+          }
+          return call('auth.login', { session: session, name: name, phoneLast4: phoneLast4 }, { anonymous: true })
+            .then(function (data) { setToken(data.token); return data; });
+        });
     },
     logout: function () {
       setToken('');
       try { sessionStorage.clear(); } catch (e) { /* 무시 */ }
     },
-    me: function () { return call('me'); },
+    me: function () {
+      return meFromMirror().then(function (me) { return me || call('me'); });
+    },
 
     /**
      * `team` 을 주면 **미러 → GAS** 순으로 간다. 안 주면 예전 그대로 GAS 다.
@@ -1943,7 +2029,11 @@ window.APP_CONFIG = {
     journalCreate: function (payload) { return call('journal.create', payload); },
     journalUpdate: function (payload) { return call('journal.update', payload); },
     journalDelete: function (id) { return call('journal.delete', { id: id }); },
-    feeStatus: function () { return call('fee.status'); }
+    feeStatus: function () {
+      return meFromMirror().then(function (me) { return me ? feeFromMe(me) : call('fee.status'); });
+    },
+    /** 테스트용 — 서버 `loginKeys_` 와 같은 키를 만드는지 맞대 본다. */
+    loginKey: loginKey
   };
 })(window);
 
@@ -1951,14 +2041,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v16 · 2026-09-26
+ * ui.js · v19 · 2026-09-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v19   2026-09-30  조별 카드에서 점수 표시 삭제 (D-056)
  *  v16   2026-09-26  조별 카드 공용화, 점수 표시·정정 칸 (D-051·052)
  *  v15.1 2026-09-26  상대 시각 도우미 (N분 전 · 오늘 날짜 · HH:MM→분) (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  —     2026-09-18  진행 기록을 낙관적으로 반영하고, 실패하면 되돌린다
- *  —     2026-09-18  실패에 이름을, 왕복 시간에 서버 시간을 붙인다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -2345,14 +2435,10 @@ window.APP_CONFIG = {
       [cell.arrivedAt, cell.completedAt].forEach(function (x) { if (x && x > last) last = x; });
       var cls = status === '완료' ? 'done' : status === '도착' ? 'here' : 'wait';
       var time = hhmm(cell.completedAt || cell.arrivedAt);
-      var hasScore = cell.score !== null && cell.score !== undefined && cell.score !== '';
       var inner =
         '<span class="step__top">' + (i + 1) + (time ? ' · ' + esc(time) : '') + '</span>' +
-        '<span class="step__name">' + esc(nameOf[code] || code) + '</span>' +
-        (hasScore ? '<span class="step__score">' + esc(cell.score) + '점' +
-          (cell.scoreSource === '스태프' ? ' ✓' : '') + '</span>' : '');
-      var title = (nameOf[code] || code) + ' · ' + status +
-        (hasScore ? ' · ' + cell.score + '점(' + (cell.scoreSource || '?') + ')' : '');
+        '<span class="step__name">' + esc(nameOf[code] || code) + '</span>';
+      var title = (nameOf[code] || code) + ' · ' + status;
       return '<li class="step step--' + cls + '" title="' + esc(title) + '">' +
         (o.editable
           ? '<button type="button" class="step__btn" data-edit-session="' + esc(t.session) +
@@ -2415,14 +2501,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v16 · 2026-09-26
+ * app.js · v19 · 2026-09-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v19   2026-09-30  미션 점수 입력·표시 삭제 — 조장·스태프는 도착·완료만 (D-056)
  *  v16   2026-09-26  내 지점·진행 화면, 역할 카드, 조장 점수 칸 (D-051·052)
  *  v15.1 2026-09-26  홈 "지금·다음" 카드, 코스 다음 동작 버튼·접기 (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
- *  —     2026-09-19  진행 기록을 묶어서 보낸다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -2807,7 +2893,7 @@ window.APP_CONFIG = {
       '</dl>' +
       '<p class="card__foot">' +
         (isStation
-          ? '이 지점에 오는 조의 도착·완료·퀴즈 점수를 기록합니다. '
+          ? '이 지점에 오는 조의 도착·완료를 기록합니다. '
           : '모든 조의 진행을 볼 수 있습니다(읽기 전용). 검수·공지·정정은 운영 콘솔에서 PIN 으로. ') +
         '<button type="button" class="btn btn--text" id="goRole">' + (isStation ? '내 지점 열기' : '진행 보기') + '</button>' +
       '</p>' +
@@ -2872,26 +2958,6 @@ window.APP_CONFIG = {
       '</div>';
   }
 
-  /**
-   * 퀴즈 점수 (D-052). 조장도 넣을 수 있지만 **스태프가 넣은 점수가 우선**이다 —
-   * 출처가 스태프면 칸을 잠근다. 도착 전에는 점수 칸을 보이지 않는다.
-   */
-  function scoreHtml(p, canEdit) {
-    var has = p.score !== null && p.score !== undefined && p.score !== '';
-    if (p.scoreSource === '스태프' && has) {
-      return '<p class="cp__score is-locked">퀴즈 <strong>' + esc(p.score) + '점</strong> · 스태프 확인</p>';
-    }
-    if (canEdit && p.status !== '대기') {
-      return '<div class="cp__score" data-cp="' + esc(p.checkpoint) + '">' +
-        '<label>퀴즈 점수 <input class="input input--score" type="number" inputmode="numeric" min="0" max="100"' +
-          ' value="' + (has ? esc(p.score) : '') + '" aria-label="퀴즈 점수"></label>' +
-        '<button type="button" class="btn btn--ghost btn--sm" data-score-save>저장</button>' +
-        (has && p.scoreSource === '관리자' ? '<span class="hint">운영진이 고친 점수</span>' : '') +
-      '</div>';
-    }
-    return has ? '<p class="cp__score">퀴즈 <strong>' + esc(p.score) + '점</strong></p>' : '';
-  }
-
   /** 코스 순서상 아직 완료하지 않은 첫 지점. 모두 완료면 null. */
   function nextCheckpoint(list) {
     for (var i = 0; i < list.length; i++) if (list[i].status !== '완료') return list[i];
@@ -2934,14 +3000,11 @@ window.APP_CONFIG = {
             : '') +
           (cp.openHours ? '<span class="cp__hours">' + esc(cp.openHours) + '</span>' : '') +
         '</div>' +
-        scoreHtml(p, canEdit) +
         (canEdit ? courseActions(p) : '');
 
       // 화면은 이미 바뀌었지만 아직 서버에 안 갔다 — 그 사실을 숨기지 않는다.
-      // data-score 는 **표시가 아니라 확인용**이다(D-039). 테스트와 현장 점검이 값을 본다.
       var attrs = ' id="cp-' + esc(p.checkpoint) + '" data-code="' + esc(p.checkpoint) + '"' +
-        ' data-status="' + esc(p.status) + '"' +
-        ' data-score="' + esc(p.score === null || p.score === undefined ? '' : p.score) + '"';
+        ' data-status="' + esc(p.status) + '"';
       var cls = 'cp cp--' + statusClass(p.status) + (p.pending ? ' is-saving' : '') + (isNext ? ' cp--next' : '');
 
       // 🔴 **다음 지점과 진행 중(도착)인 지점만 펼친다.** 나머지는 한 줄로 접는다 —
@@ -2997,19 +3060,13 @@ window.APP_CONFIG = {
    *
    * · 도착·완료는 **최초 시각만** 남긴다 (되돌렸다 다시 눌러도 처음 시각 유지)
    * · 대기는 둘 다 비운다
-   * · 🔴 점수·메모는 **건드리지 않는다.** 보내지 않았으니 서버도 손대지 않는다.
-   *   (예전에는 서버가 덮어써서 여기서도 비웠다 — 그 손실을 서버에서 고쳤다.)
+   * · 🔴 점수·메모는 **건드리지 않는다.** 앱은 상태만 보낸다(점수 입력은 D-056 에서 뺐다).
    */
-  function applyProgressLocal(list, code, status, extra) {
+  function applyProgressLocal(list, code, status) {
     var now = UI.localIso();
     return list.map(function (p) {
       if (p.checkpoint !== code) return p;
       var next = Object.assign({}, p, { status: status, pending: true });
-      // 점수는 보낸 때만. 스태프 점수는 서버가 지키므로 화면도 건드리지 않는다 (D-052).
-      if (extra && extra.score !== undefined && p.scoreSource !== '스태프') {
-        next.score = extra.score === '' ? null : extra.score;
-        next.scoreSource = extra.score === '' ? '' : '조장';
-      }
       if (status === '대기') {
         next.arrivedAt = '';
         next.completedAt = '';
@@ -3033,7 +3090,7 @@ window.APP_CONFIG = {
   // 여전히 모자란다. "앞 요청이 끝날 때까지 모은다" 는 **한가하면 0ms, 느리면
   // 최대한 묶는다** 를 알아서 한다 — 왕복 3초 동안 탭이 쌓이는 지금 문제에 맞는다.
 
-  var sendQueue = {};        // 지점코드 → {status, score?}. 같은 지점은 필드를 합치고 마지막 값이 남는다
+  var sendQueue = {};        // 지점코드 → 상태. 같은 지점은 마지막 값이 남는다
   var sending = false;       // 요청이 도는 중인가
 
   // 🔴 되돌릴 곳은 **마지막 서버 응답**이다. 화면 스냅샷이 아니다.
@@ -3042,13 +3099,10 @@ window.APP_CONFIG = {
   // 표시가 남아 있으면** 되돌릴 때 그것까지 복원돼 영영 안 지워진다.
   // 테스트가 이걸 잡았다. 서버가 준 목록은 언제나 깨끗하다.
   var lastServerList = [];
-  var lastStatusBefore = {};   // 토스트 문구용 — 점수만 저장했는지 구분
 
-  function queueProgress(code, status, extra) {
-    // 🔴 같은 지점이면 **필드를 합친다.** 점수를 저장한 뒤 바로 '완료' 를 누르면
-    //    점수가 사라지면 안 된다 — 상태만 덮어쓰고 점수는 남긴다.
-    sendQueue[code] = Object.assign({}, sendQueue[code], { status: status }, extra || {});
-    state.progress = applyProgressLocal(state.progress, code, status, extra);
+  function queueProgress(code, status) {
+    sendQueue[code] = status;
+    state.progress = applyProgressLocal(state.progress, code, status);
     paintCourse();
 
     if (!sending) flushProgress();
@@ -3058,33 +3112,16 @@ window.APP_CONFIG = {
     var codes = Object.keys(sendQueue);
     if (!codes.length) { sending = false; return; }
 
-    var items = codes.map(function (c) {
-      var q = sendQueue[c];
-      var it = { checkpoint: c, status: q.status };
-      if (q.score !== undefined) it.score = q.score;
-      return it;
-    });
+    var items = codes.map(function (c) { return { checkpoint: c, status: sendQueue[c] }; });
     sendQueue = {};
     sending = true;
-    lastStatusBefore = {};
-    lastServerList.forEach(function (p) { lastStatusBefore[p.checkpoint] = p.status; });
 
     API.progressSetBatch(items)
       .then(function (list) {
         state.progress = list;              // 권위는 서버다
         lastServerList = list;
         paintCourse();
-        // 스태프가 이미 확인한 점수는 서버가 그대로 둔다 — 조용히 넘기지 않는다.
-        var kept = items.filter(function (it) {
-          if (it.score === undefined) return false;
-          var p = list.filter(function (x) { return x.checkpoint === it.checkpoint; })[0];
-          return p && p.scoreSource === '스태프' && String(p.score) !== String(it.score);
-        });
-        if (kept.length) toast('스태프가 확인한 점수는 바꿀 수 없습니다. 상태만 기록했습니다.', 'error');
-        else toast(items.length === 1
-          ? (items[0].score !== undefined && items[0].status === (lastStatusBefore[items[0].checkpoint] || items[0].status)
-              ? '점수를 저장했습니다.' : '기록했습니다: ' + items[0].status)
-          : items.length + '곳을 기록했습니다.');
+        toast(items.length === 1 ? '기록했습니다: ' + items[0].status : items.length + '곳을 기록했습니다.');
       })
       .catch(function (err) {
         // 🔴 배치 전체를 되돌린다. 일부만 남기면 화면이 거짓말한다.
@@ -3102,20 +3139,6 @@ window.APP_CONFIG = {
   });
 
   function onProgressClick(e) {
-    var save = e.target.closest('[data-score-save]');
-    if (save) {
-      var box = save.closest('[data-cp]');
-      var input = box && box.querySelector('input');
-      if (!input) return;
-      var raw = String(input.value).trim();
-      var n = Number(raw);
-      if (raw !== '' && (isNaN(n) || n < 0 || n > 100)) { toast('점수는 0~100 사이로 넣어 주세요.', 'error'); return; }
-      var code0 = box.getAttribute('data-cp');
-      var cur = state.progress.filter(function (p) { return p.checkpoint === code0; })[0];
-      if (!cur) return;
-      queueProgress(code0, cur.status, { score: raw === '' ? '' : n });
-      return;
-    }
     // 카드 자체에도 data-status(현재 상태)가 달려 있다 — 버튼만 잡는다.
     var btn = e.target.closest('button[data-status]');
     if (!btn) return;
@@ -3168,7 +3191,7 @@ window.APP_CONFIG = {
     setView(
       '<section class="section-head"><h2>📍 ' + esc(cp.name) + '</h2>' +
         '<p class="hint">' + esc(b.session) + ' · 이 지점에 오는 순서대로입니다. 조가 오면 "도착 확인", ' +
-        '미션·퀴즈가 끝나면 "완료". 스태프가 넣은 점수가 조장 점수보다 우선합니다.</p></section>' +
+        '미션이 끝나면 "완료".</p></section>' +
       (cp.mission ? '<p class="cp__mission"><strong>미션</strong> ' + esc(cp.mission) + '</p>' : '') +
       '<div class="station-bar">' +
         '<span class="course-summary__count">도착 ' + here + '/' + n + ' · 완료 ' + done + '/' + n + '</span>' +
@@ -3186,7 +3209,6 @@ window.APP_CONFIG = {
   function stationRow(t, canEdit) {
     var next = ST_NEXT[t.status];
     var undo = ST_UNDO[t.status];
-    var has = t.score !== null && t.score !== undefined && t.score !== '';
     var where = t.status !== '대기' ? ''
       : t.visitOrder === 1 ? '첫 지점'
       : t.prevStatus === '완료' ? '🚶 오는 중 — ' + esc(t.prevName) + ' 완료'
@@ -3208,17 +3230,8 @@ window.APP_CONFIG = {
               esc(next.label) + '</button>' : '') +
             (undo ? '<button type="button" class="btn btn--text" data-st="set" data-status="' + undo.status + '"' +
               ' data-ask="' + esc(undo.ask) + '">' + esc(undo.label) + '</button>' : '') +
-          '</div>' +
-          (t.status !== '대기' || has
-            ? '<div class="cp__score">' +
-                '<label>퀴즈 점수 <input class="input input--score" type="number" inputmode="numeric" min="0" max="100"' +
-                  ' value="' + (has ? esc(t.score) : '') + '" aria-label="' + esc(t.name) + ' 퀴즈 점수"></label>' +
-                '<button type="button" class="btn btn--ghost btn--sm" data-st="score">저장</button>' +
-                (has && t.scoreSource && t.scoreSource !== '스태프'
-                  ? '<span class="hint">' + esc(t.scoreSource) + ' 입력 — 확인 후 저장하면 스태프 점수가 됩니다</span>' : '') +
-              '</div>'
-            : '')
-        : (has ? '<p class="cp__score">퀴즈 <strong>' + esc(t.score) + '점</strong></p>' : '')) +
+          '</div>'
+        : '') +
     '</article>';
   }
 
@@ -3232,15 +3245,8 @@ window.APP_CONFIG = {
 
     var row = btn.closest('[data-group]');
     if (!row) return;
-    var item = { group: row.getAttribute('data-group') };
-    if (act === 'set') {
-      item.status = btn.getAttribute('data-status');
-    } else if (act === 'score') {
-      var raw = String(row.querySelector('input').value).trim();
-      var n = Number(raw);
-      if (raw !== '' && (isNaN(n) || n < 0 || n > 100)) { toast('점수는 0~100 사이로 넣어 주세요.', 'error'); return; }
-      item.score = raw === '' ? '' : n;
-    } else return;
+    if (act !== 'set') return;
+    var item = { group: row.getAttribute('data-group'), status: btn.getAttribute('data-status') };
 
     var ask = btn.getAttribute('data-ask');
     (ask ? UI.confirmDialog(ask, btn.textContent) : Promise.resolve(true)).then(function (yes) {
@@ -3251,7 +3257,7 @@ window.APP_CONFIG = {
         .then(function (b) {
           state.station = b;
           paintStation();
-          toast(item.status ? item.group + ' ' + item.status : item.group + ' 점수 저장');
+          toast(item.group + ' ' + item.status);
         })
         .catch(function (err) {
           UI.$$('button', row).forEach(function (b) { b.disabled = false; });
@@ -3276,7 +3282,7 @@ window.APP_CONFIG = {
     setView(
       '<section class="section-head"><h2>진행 현황</h2>' +
         '<p class="hint">' + esc(b.session) + ' · 조마다 코스 순서대로입니다. 완주 전인데 ' + UI.STALE_MIN +
-        '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다. 점수 옆 ✓ 는 스태프가 확인한 점수입니다. ' +
+        '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다. ' +
         '<strong>읽기 전용</strong>입니다.</p></section>' +
       '<div class="station-bar">' +
         '<button type="button" class="btn btn--ghost btn--sm" data-board="refresh">새로고침</button>' +
@@ -3710,14 +3716,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v16 · 2026-09-26
+ * admin.js · v19 · 2026-09-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v19   2026-09-30  점수 칸·시상 퀴즈 부문 삭제 — 정정은 상태만 (D-056)
  *  v16   2026-09-26  진행 칸 정정, 🏆 시상, 일지 일괄 승인 (D-052)
  *  v15.1 2026-09-26  진행표를 조별 카드로 + 40분 무소식 ⚠ (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v14   2026-09-22  공지를 운영콘솔에서 쓴다
- *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -4272,7 +4278,7 @@ window.APP_CONFIG = {
         setView(
           '<section class="section-head"><h2>' + esc(L('group', '조 배정')) + '별 진행 현황</h2>' +
             '<p class="hint">조마다 배정 코스 순서대로 보입니다. 완주 전인데 ' + STALE_MIN +
-            '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다. 점수 옆 ✓ 는 스태프가 확인한 점수 · 칸을 누르면 고칠 수 있습니다.</p></section>' +
+            '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다. 칸을 누르면 상태를 고칠 수 있습니다.</p></section>' +
           sessionFilterHtml() +
           audienceFilterHtml() +
           (teams.length
@@ -4291,6 +4297,7 @@ window.APP_CONFIG = {
   /**
    * 진행 칸 정정 (D-052). 예전에는 시트에서만 고칠 수 있었고, 시트 편집은 사본에 안 가서
    * 조장 화면이 옛 값을 보였다(캠프 모드가 필요했다). 여기서 고치면 사본까지 밀린다.
+   * 상태만 고친다 — 점수 입력은 D-056 에서 뺐다.
    */
   function onProgressEdit(e) {
     var btn = e.target.closest('[data-edit-code]');
@@ -4304,23 +4311,18 @@ window.APP_CONFIG = {
     if (!team) return;
     var cell = team.cells[code] || {};
     var cur = cell.status || '대기';
-    var hasScore = cell.score !== null && cell.score !== undefined && cell.score !== '';
 
     var wrap = document.createElement('div');
     wrap.className = 'modal';
     wrap.innerHTML =
       '<form class="modal__panel" id="cellForm" role="dialog" aria-modal="true">' +
         '<p class="modal__msg"><strong>' + esc(team.name) + '</strong> · ' + esc(cp.name) + '<br>' +
-          '<span class="hint">' + esc(session) + ' · 지금 ' + esc(cur) +
-          (hasScore ? ' · ' + esc(cell.score) + '점(' + esc(cell.scoreSource || '?') + ')' : '') + '</span></p>' +
+          '<span class="hint">' + esc(session) + ' · 지금 ' + esc(cur) + '</span></p>' +
         '<div class="seg">' + ['대기', '도착', '완료'].map(function (st) {
           return '<label class="seg__item"><input type="radio" name="status" value="' + st + '"' +
             (st === cur ? ' checked' : '') + '><span>' + st + '</span></label>';
         }).join('') + '</div>' +
-        '<label class="field" style="margin-top:14px"><span class="field__label">퀴즈 점수 <em>(비우면 지웁니다)</em></span>' +
-          '<input class="input" name="score" type="number" inputmode="numeric" min="0" max="100" value="' +
-          (hasScore ? esc(cell.score) : '') + '"></label>' +
-        '<p class="hint">여기서 넣은 점수는 "관리자" 출처로 남고, 조장·스태프 화면에도 바로 반영됩니다.</p>' +
+        '<p class="hint">고친 상태는 조장·스태프 화면에도 바로 반영됩니다.</p>' +
         '<div class="modal__actions">' +
           '<button type="button" class="btn btn--ghost" data-act="cancel">취소</button>' +
           '<button type="submit" class="btn btn--primary">저장</button>' +
@@ -4336,16 +4338,8 @@ window.APP_CONFIG = {
       ev.preventDefault();
       var f = ev.target;
       var status = (f.querySelector('input[name="status"]:checked') || {}).value;
-      var raw = String(f.score.value).trim();
-      var payload = { session: session, group: group, checkpoint: code };
-      if (status && status !== cur) payload.status = status;
-      var oldScore = hasScore ? String(cell.score) : '';
-      if (raw !== oldScore) {
-        var n = Number(raw);
-        if (raw !== '' && (isNaN(n) || n < 0 || n > 100)) { toast('점수는 0~100 사이로 넣어 주세요.', 'error'); return; }
-        payload.score = raw === '' ? '' : n;
-      }
-      if (payload.status === undefined && payload.score === undefined) { close(); return; }
+      if (!status || status === cur) { close(); return; }
+      var payload = { session: session, group: group, checkpoint: code, status: status };
       var submit = f.querySelector('button[type="submit"]');
       UI.setBusy(submit, true, '저장 중…');
       API.call('admin.progress.set', payload)
@@ -4361,7 +4355,7 @@ window.APP_CONFIG = {
 
   // ------------------------------------------------------------ 🏆 시상 (D-052)
   //
-  // 시상은 분야별이다(운영자 결정): 퀴즈 점수 · 소요 시간 · 사진(운영진이 ★ 지정).
+  // 시상은 분야별이다(운영자 결정): 소요 시간 · 사진(운영진이 ★ 지정). 퀴즈 점수 부문은 D-056 에서 뺐다.
   // 새 서버 집계를 만들지 않는다 — 진행 보드와 일지 목록을 **그대로** 받아 여기서 센다.
   // 같은 데이터를 두 곳에서 집계하면 하나는 반드시 어긋난다.
 
@@ -4383,21 +4377,6 @@ window.APP_CONFIG = {
       if (prev === null || x[key] !== prev) { rank = i + 1; prev = x[key]; }
       return Object.assign({ rank: rank }, x);
     });
-  }
-
-  function quizRanking(teams) {
-    return withRanks(teams.map(function (t) {
-      var sum = 0, n = 0, src = {};
-      t.route.forEach(function (code) {
-        var c = t.cells[code];
-        if (!c || c.score === null || c.score === undefined || c.score === '') return;
-        sum += Number(c.score); n++;
-        var s = c.scoreSource || '미상';
-        src[s] = (src[s] || 0) + 1;
-      });
-      return { team: t, sum: sum, n: n, total: t.route.length, src: src };
-    }).filter(function (x) { return x.n > 0; })
-      .sort(function (a, b) { return (b.sum - a.sum) || (b.n - a.n); }), 'sum');
   }
 
   /** 첫 지점 도착 → 마지막 지점 완료. **네 곳 모두 완료한 조만** — 출발 시차와 무관하다. */
@@ -4425,7 +4404,6 @@ window.APP_CONFIG = {
   function paintAwards(data) {
     var teams = data.board.teams.filter(function (t) { return matchesSession(t.session); });
     var showSession = state.session === '전체';
-    var quiz = quizRanking(teams);
     var time = timeRanking(teams);
     var photos = data.journals.filter(function (j) {
       return j.status === '승인' && j.photoUrl && matchesSession(j.session);
@@ -4433,19 +4411,6 @@ window.APP_CONFIG = {
     var starred = photos.filter(function (j) { return j.award; });
     var top = state.present ? 3 : Infinity;
     var label = function (t) { return (showSession ? esc(t.session) + ' ' : '') + esc(t.name); };
-
-    var quizHtml = quiz.length
-      ? '<ol class="rank">' + quiz.filter(function (x) { return x.rank <= top; }).map(function (x) {
-          var needCheck = Object.keys(x.src).some(function (k) { return k !== '스태프'; });
-          return '<li class="rank__row"><span class="rank__no">' + x.rank + '</span>' +
-            '<span class="rank__name">' + label(x.team) + '</span>' +
-            '<span class="rank__val">' + x.sum + '점</span>' +
-            (state.present ? '' : '<span class="rank__meta">' + x.n + '/' + x.total + '곳 · ' +
-              Object.keys(x.src).map(function (k) { return esc(k) + ' ' + x.src[k]; }).join(' · ') +
-              (needCheck ? ' · <strong>조장·관리자 입력 포함 — 확인</strong>' : '') + '</span>') +
-            '</li>';
-        }).join('') + '</ol>'
-      : '<p class="empty">아직 입력된 점수가 없습니다.</p>';
 
     var timeHtml = time.length
       ? '<ol class="rank">' + time.filter(function (x) { return x.rank <= top; }).map(function (x) {
@@ -4472,7 +4437,7 @@ window.APP_CONFIG = {
 
     setView(
       '<section class="section-head"><h2>🏆 시상</h2>' +
-        (state.present ? '' : '<p class="hint">분야별 — 퀴즈 점수 합계 · 소요 시간(첫 도착 → 마지막 완료, 네 곳 모두 마친 조만) · ' +
+        (state.present ? '' : '<p class="hint">분야별 — 소요 시간(첫 도착 → 마지막 완료, 네 곳 모두 마친 조만) · ' +
           '사진(★ 를 눌러 수상작 지정). 발표 때는 "크게 보기".</p>') + '</section>' +
       (state.present ? '' : sessionFilterHtml()) +
       '<div class="review-tools">' +
@@ -4480,7 +4445,6 @@ window.APP_CONFIG = {
           (state.present ? '닫기' : '크게 보기') + '</button>' +
         (state.present ? '' : '<button type="button" class="btn btn--ghost btn--sm" data-reload>새로고침</button>') +
       '</div>' +
-      '<section class="card award"><h3 class="card__title">🧩 퀴즈 점수</h3>' + quizHtml + '</section>' +
       '<section class="card award"><h3 class="card__title">⏱ 소요 시간</h3>' + timeHtml + '</section>' +
       '<section class="card award"><h3 class="card__title">📷 사진' +
         (state.present ? '' : ' <span class="hint">★ ' + starred.length + '장</span>') + '</h3>' + photoHtml + '</section>',

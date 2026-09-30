@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v16 · 2026-09-26
+ * admin.js · v19 · 2026-09-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v19   2026-09-30  점수 칸·시상 퀴즈 부문 삭제 — 정정은 상태만 (D-056)
  *  v16   2026-09-26  진행 칸 정정, 🏆 시상, 일지 일괄 승인 (D-052)
  *  v15.1 2026-09-26  진행표를 조별 카드로 + 40분 무소식 ⚠ (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v14   2026-09-22  공지를 운영콘솔에서 쓴다
- *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -562,7 +562,7 @@
         setView(
           '<section class="section-head"><h2>' + esc(L('group', '조 배정')) + '별 진행 현황</h2>' +
             '<p class="hint">조마다 배정 코스 순서대로 보입니다. 완주 전인데 ' + STALE_MIN +
-            '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다. 점수 옆 ✓ 는 스태프가 확인한 점수 · 칸을 누르면 고칠 수 있습니다.</p></section>' +
+            '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다. 칸을 누르면 상태를 고칠 수 있습니다.</p></section>' +
           sessionFilterHtml() +
           audienceFilterHtml() +
           (teams.length
@@ -581,6 +581,7 @@
   /**
    * 진행 칸 정정 (D-052). 예전에는 시트에서만 고칠 수 있었고, 시트 편집은 사본에 안 가서
    * 조장 화면이 옛 값을 보였다(캠프 모드가 필요했다). 여기서 고치면 사본까지 밀린다.
+   * 상태만 고친다 — 점수 입력은 D-056 에서 뺐다.
    */
   function onProgressEdit(e) {
     var btn = e.target.closest('[data-edit-code]');
@@ -594,23 +595,18 @@
     if (!team) return;
     var cell = team.cells[code] || {};
     var cur = cell.status || '대기';
-    var hasScore = cell.score !== null && cell.score !== undefined && cell.score !== '';
 
     var wrap = document.createElement('div');
     wrap.className = 'modal';
     wrap.innerHTML =
       '<form class="modal__panel" id="cellForm" role="dialog" aria-modal="true">' +
         '<p class="modal__msg"><strong>' + esc(team.name) + '</strong> · ' + esc(cp.name) + '<br>' +
-          '<span class="hint">' + esc(session) + ' · 지금 ' + esc(cur) +
-          (hasScore ? ' · ' + esc(cell.score) + '점(' + esc(cell.scoreSource || '?') + ')' : '') + '</span></p>' +
+          '<span class="hint">' + esc(session) + ' · 지금 ' + esc(cur) + '</span></p>' +
         '<div class="seg">' + ['대기', '도착', '완료'].map(function (st) {
           return '<label class="seg__item"><input type="radio" name="status" value="' + st + '"' +
             (st === cur ? ' checked' : '') + '><span>' + st + '</span></label>';
         }).join('') + '</div>' +
-        '<label class="field" style="margin-top:14px"><span class="field__label">퀴즈 점수 <em>(비우면 지웁니다)</em></span>' +
-          '<input class="input" name="score" type="number" inputmode="numeric" min="0" max="100" value="' +
-          (hasScore ? esc(cell.score) : '') + '"></label>' +
-        '<p class="hint">여기서 넣은 점수는 "관리자" 출처로 남고, 조장·스태프 화면에도 바로 반영됩니다.</p>' +
+        '<p class="hint">고친 상태는 조장·스태프 화면에도 바로 반영됩니다.</p>' +
         '<div class="modal__actions">' +
           '<button type="button" class="btn btn--ghost" data-act="cancel">취소</button>' +
           '<button type="submit" class="btn btn--primary">저장</button>' +
@@ -626,16 +622,8 @@
       ev.preventDefault();
       var f = ev.target;
       var status = (f.querySelector('input[name="status"]:checked') || {}).value;
-      var raw = String(f.score.value).trim();
-      var payload = { session: session, group: group, checkpoint: code };
-      if (status && status !== cur) payload.status = status;
-      var oldScore = hasScore ? String(cell.score) : '';
-      if (raw !== oldScore) {
-        var n = Number(raw);
-        if (raw !== '' && (isNaN(n) || n < 0 || n > 100)) { toast('점수는 0~100 사이로 넣어 주세요.', 'error'); return; }
-        payload.score = raw === '' ? '' : n;
-      }
-      if (payload.status === undefined && payload.score === undefined) { close(); return; }
+      if (!status || status === cur) { close(); return; }
+      var payload = { session: session, group: group, checkpoint: code, status: status };
       var submit = f.querySelector('button[type="submit"]');
       UI.setBusy(submit, true, '저장 중…');
       API.call('admin.progress.set', payload)
@@ -651,7 +639,7 @@
 
   // ------------------------------------------------------------ 🏆 시상 (D-052)
   //
-  // 시상은 분야별이다(운영자 결정): 퀴즈 점수 · 소요 시간 · 사진(운영진이 ★ 지정).
+  // 시상은 분야별이다(운영자 결정): 소요 시간 · 사진(운영진이 ★ 지정). 퀴즈 점수 부문은 D-056 에서 뺐다.
   // 새 서버 집계를 만들지 않는다 — 진행 보드와 일지 목록을 **그대로** 받아 여기서 센다.
   // 같은 데이터를 두 곳에서 집계하면 하나는 반드시 어긋난다.
 
@@ -673,21 +661,6 @@
       if (prev === null || x[key] !== prev) { rank = i + 1; prev = x[key]; }
       return Object.assign({ rank: rank }, x);
     });
-  }
-
-  function quizRanking(teams) {
-    return withRanks(teams.map(function (t) {
-      var sum = 0, n = 0, src = {};
-      t.route.forEach(function (code) {
-        var c = t.cells[code];
-        if (!c || c.score === null || c.score === undefined || c.score === '') return;
-        sum += Number(c.score); n++;
-        var s = c.scoreSource || '미상';
-        src[s] = (src[s] || 0) + 1;
-      });
-      return { team: t, sum: sum, n: n, total: t.route.length, src: src };
-    }).filter(function (x) { return x.n > 0; })
-      .sort(function (a, b) { return (b.sum - a.sum) || (b.n - a.n); }), 'sum');
   }
 
   /** 첫 지점 도착 → 마지막 지점 완료. **네 곳 모두 완료한 조만** — 출발 시차와 무관하다. */
@@ -715,7 +688,6 @@
   function paintAwards(data) {
     var teams = data.board.teams.filter(function (t) { return matchesSession(t.session); });
     var showSession = state.session === '전체';
-    var quiz = quizRanking(teams);
     var time = timeRanking(teams);
     var photos = data.journals.filter(function (j) {
       return j.status === '승인' && j.photoUrl && matchesSession(j.session);
@@ -723,19 +695,6 @@
     var starred = photos.filter(function (j) { return j.award; });
     var top = state.present ? 3 : Infinity;
     var label = function (t) { return (showSession ? esc(t.session) + ' ' : '') + esc(t.name); };
-
-    var quizHtml = quiz.length
-      ? '<ol class="rank">' + quiz.filter(function (x) { return x.rank <= top; }).map(function (x) {
-          var needCheck = Object.keys(x.src).some(function (k) { return k !== '스태프'; });
-          return '<li class="rank__row"><span class="rank__no">' + x.rank + '</span>' +
-            '<span class="rank__name">' + label(x.team) + '</span>' +
-            '<span class="rank__val">' + x.sum + '점</span>' +
-            (state.present ? '' : '<span class="rank__meta">' + x.n + '/' + x.total + '곳 · ' +
-              Object.keys(x.src).map(function (k) { return esc(k) + ' ' + x.src[k]; }).join(' · ') +
-              (needCheck ? ' · <strong>조장·관리자 입력 포함 — 확인</strong>' : '') + '</span>') +
-            '</li>';
-        }).join('') + '</ol>'
-      : '<p class="empty">아직 입력된 점수가 없습니다.</p>';
 
     var timeHtml = time.length
       ? '<ol class="rank">' + time.filter(function (x) { return x.rank <= top; }).map(function (x) {
@@ -762,7 +721,7 @@
 
     setView(
       '<section class="section-head"><h2>🏆 시상</h2>' +
-        (state.present ? '' : '<p class="hint">분야별 — 퀴즈 점수 합계 · 소요 시간(첫 도착 → 마지막 완료, 네 곳 모두 마친 조만) · ' +
+        (state.present ? '' : '<p class="hint">분야별 — 소요 시간(첫 도착 → 마지막 완료, 네 곳 모두 마친 조만) · ' +
           '사진(★ 를 눌러 수상작 지정). 발표 때는 "크게 보기".</p>') + '</section>' +
       (state.present ? '' : sessionFilterHtml()) +
       '<div class="review-tools">' +
@@ -770,7 +729,6 @@
           (state.present ? '닫기' : '크게 보기') + '</button>' +
         (state.present ? '' : '<button type="button" class="btn btn--ghost btn--sm" data-reload>새로고침</button>') +
       '</div>' +
-      '<section class="card award"><h3 class="card__title">🧩 퀴즈 점수</h3>' + quizHtml + '</section>' +
       '<section class="card award"><h3 class="card__title">⏱ 소요 시간</h3>' + timeHtml + '</section>' +
       '<section class="card award"><h3 class="card__title">📷 사진' +
         (state.present ? '' : ' <span class="hint">★ ' + starred.length + '장</span>') + '</h3>' + photoHtml + '</section>',
