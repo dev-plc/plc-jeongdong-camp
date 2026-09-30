@@ -26,18 +26,27 @@ PLC 정동 가을캠프 "신앙탐험대" 현장 앱. 설계 결정은 `docs-dev
 
 고친 뒤 반드시: `node tools/check-versions.js` — 어긋나면 1 로 끝난다.
 
-**현재 배포**: GAS **v15** (2026-09-26, health 7개 파일 모두 v15 확인). 다음 `.gs` 변경은 **v16**.
+**현재 배포**: GAS 배포 **18번** = 코드 **v18** (2026-09-30, 파일 끝 표시 D-054 — `health` 의 `problems` 가 `[]` 이면 정상).
+그 전: 17번 = v16 (16번 때 `Setup.gs` 끝이 잘려 `onOpen` 이 빠졌고 다시 붙여 17번으로 재배포 — 코드가 같아 헤더는 v16).
+**다음 v19 = 명단 사본 + 미션 점수 입력 삭제** (D-055·056, `claude/plc-jeongdong-camp-people-mirror`).
+C 단계(`claude/plc-jeongdong-camp-c-next`, 11/07 본 캠프 뒤)는 **v20** 으로 민다.
 배포 번호가 예상과 다르게 나왔다고 운영자가 알려 주면 이 줄과 헤더를 그 번호로 맞춘다.
 
 ## 🔴 GAS 배포를 안내할 때
 
 v13 은 `Sheets.gs` 가 빠진 채 나갔다 — 공지 삭제만 터지고 나머지는 멀쩡해 늦게 발견되는 종류다.
 
+0. 안내하기 전에 **`node tests/run.js` 가 0 으로 끝나야 한다** (서버만은 `node tests/run.js server`, 1초). `tests/README.md`.
 1. **바뀐 `.gs` 를 전부** 표로 준다. 하나만 바뀌어도 다른 파일의 새 함수를 부르면 같이 올려야 한다.
    `git diff --stat <마지막 배포 커밋>..HEAD -- gas/` 로 확인한다.
 2. 파일마다 **붙여넣은 뒤 줄 수**를 함께 준다 (`wc -l`). 운영자는 줄 수로 대조한다.
+   🔴 링크는 **Raw** 로 준다 (`https://raw.githubusercontent.com/dev-plc/plc-jeongdong-camp/<브랜치>/gas/X.gs`).
+   GitHub 코드 화면에서 전체 선택하면 긴 파일은 보이는 부분만 복사돼 **끝이 잘린다** —
+   v16 에서 `Setup.gs` 가 함수 경계에서 잘려 저장·배포·health 는 멀쩡한 채 `onOpen`(메뉴)만 사라졌다.
 3. 배포 뒤 **`{API_BASE}?action=health`** 의 `versions` 에서 볼 값을 알려 준다.
-   `null` 이 보이면 버전 표시 전의 옛 파일이다.
+   `null` 이 보이면 버전 표시 전의 옛 파일이다. v18 부터는 **`problems` 가 빈 배열(`[]`)** 인지도 보게 한다 —
+   `.gs` 맨 끝의 `var END_X` 가 없으면 "끝이 잘렸습니다" 가 뜬다 (D-054). `.gs` 버전을 올릴 때 **끝 표시도 같이** 고친다
+   (`check-versions.js` 가 막는다).
 4. **GAS 가 먼저, `docs/` 머지가 나중.** 앱이 먼저 올라가면 없는 액션을 부른다.
 
 ## 앱(`docs/`)을 고친 뒤
@@ -46,7 +55,11 @@ v13 은 `Sheets.gs` 가 빠진 채 나갔다 — 공지 삭제만 터지고 나�
 node tools/check-versions.js      # 버전 헤더
 node tools/stamp-assets.js        # ?v= 해시 (브라우저 캐시를 깬다, D-036)
 node tools/build-demo.js          # docs/demo.html 은 생성물 — 손으로 고치지 않는다
+node tests/run.js                 # 테스트 전부 (서버·화면·도구). 화면 스위트는 새 demo.html 로 돈다
 ```
+
+🔴 테스트는 **저장소 `tests/` 에만** 둔다. scratchpad 에만 있던 테스트 약 1,070건이 컨테이너 재시작으로
+사라진 적이 있다(2026-09-29). 새 기능의 테스트도 같은 커밋에 넣는다.
 
 `docs/demo.html` 을 다시 만들었으면 **아티팩트 데모도 다시 올린다**
 (`https://claude.ai/artifact/DQQvR4awqr3iAXfcYZHdTM`). 안 올리면 3주 동안 첫 버전이
