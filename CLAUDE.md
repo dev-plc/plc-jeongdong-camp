@@ -26,10 +26,10 @@ PLC 정동 가을캠프 "신앙탐험대" 현장 앱. 설계 결정은 `docs-dev
 
 고친 뒤 반드시: `node tools/check-versions.js` — 어긋나면 1 로 끝난다.
 
-**현재 배포**: GAS 배포 **19번** = 코드 **v19** (2026-09-30, health — Auth·Mirror v19, 나머지 다섯 v18, `problems` `[]`).
-v19 = 명단 사본(D-055, Supabase SQL `supabase-people.sql` 실행 완료) + 미션 점수 입력 삭제(D-056, 앱만).
-v18 = 파일 끝 표시(D-054, 18번). 17번 = v16 (16번 때 `Setup.gs` 끝이 잘려 `onOpen` 이 빠져 다시 붙여 재배포).
-C 단계(`claude/plc-jeongdong-camp-c-next`, 11/07 본 캠프 뒤)는 **v20** 으로 민다.
+**현재 배포**: GAS 배포 **20번** = 코드 **v20** (2026-10-02, 운영자 배포 완료 — Journal v20, Auth·Mirror v19, 나머지 넷 v18).
+v20 = 탐험일지 기본 우리 조·전체 탭, 글마다 작성자와 조(D-057). v19 = 명단 사본(D-055, Supabase SQL `supabase-people.sql` 실행 완료) +
+미션 점수 입력 삭제(D-056, 앱만). v18 = 파일 끝 표시(D-054, 18번). 17번 = v16 (16번 때 `Setup.gs` 끝이 잘려 `onOpen` 이 빠져 다시 붙여 재배포).
+C 단계(`claude/plc-jeongdong-camp-c-next`, 11/07 본 캠프 뒤)는 **v21** 로 민다.
 배포 번호가 예상과 다르게 나왔다고 운영자가 알려 주면 이 줄과 헤더를 그 번호로 맞춘다.
 
 ## 🔴 GAS 배포를 안내할 때

@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
  * ────────────────────────────────────────────────────────────────
- * build-demo.js · v16 · 2026-09-26
+ * build-demo.js · v20 · 2026-09-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20   2026-09-30  가짜 서버의 우리 조 일지 규칙을 서버와 맞춤 (D-057)
  *  v16   2026-09-26  스태프·교역자 페르소나, 조별 칸 한 벌 (D-051·052)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  v14   2026-09-22  공지를 운영콘솔에서 쓴다
  *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
- *  —     2026-09-17  회차 활성/비활성 스위치 + 관리자 콘솔 회차 필터
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -485,9 +485,11 @@ body { padding-top: var(--demobar-h, 76px); }
         if (body.scope === 'mine') {
           items = journals.filter(function (j) { return j.authorId === m2.participant.id && j.status !== '삭제'; }).map(decorate);
         } else if (body.scope === 'team') {
-          if (!m2.isLeader) return { __error: { code: 'FORBIDDEN', message: '조장만 볼 수 있습니다.' } };
+          // 서버 journalList_ 와 같은 규칙 (D-057) — 조원은 승인된 글과 본인 글만, 조장은 전부
+          if (!m2.participant.group) return { __error: { code: 'FORBIDDEN', message: '배정된 조가 없습니다.' } };
           items = journals.filter(function (j) {
-            return j.group === m2.participant.group && j.session === m2.participant.session && j.status !== '삭제';
+            return j.group === m2.participant.group && j.session === m2.participant.session && j.status !== '삭제' &&
+              (m2.isLeader || !CONFIG.JOURNAL_REQUIRE_APPROVAL || j.status === '승인' || j.authorId === m2.participant.id);
           }).map(decorate);
         } else {
           items = galleryList();
