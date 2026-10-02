@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v19.1 · 2026-09-30
+ * app.js · v20 · 2026-09-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20   2026-09-30  탐험일지 기본은 우리 조, 탭으로 전체 · 내 일지 탭 삭제 · 글마다 작성자와 조 (D-057)
  *  v19.1 2026-09-30  코스 버튼을 누른 뒤 3초 잠금 — 연타로 두 단계가 넘어가지 않게
  *  v19   2026-09-30  미션 점수 입력·표시 삭제 — 조장·스태프는 도착·완료만 (D-056)
  *  v16   2026-09-26  내 지점·진행 화면, 역할 카드, 조장 점수 칸 (D-051·052)
  *  v15.1 2026-09-26  홈 "지금·다음" 카드, 코스 다음 동작 버튼·접기 (D-050)
- *  v15   2026-09-26  파일 버전 표시 시작
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -41,7 +41,7 @@
     me: null,            // me 응답
     view: 'home',
     progress: [],
-    journal: { items: [], total: 0, nextCursor: null, scope: 'gallery' },
+    journal: { items: [], total: 0, nextCursor: null, scope: '' },   // '' = 기본 탭 (journalScopes 의 첫째)
     fee: null,
     pendingPhoto: null,  // 작성 폼에 붙인 사진
     editing: null,       // 수정 중인 일지 id
@@ -828,9 +828,20 @@
 
   // ------------------------------------------------------------ 탐험일지
 
+  /**
+   * 탐험일지 탭 (D-057). **기본은 우리 조**, 탭으로 전체. "내 일지" 탭은 없앴다 —
+   * 내가 올린 글은 우리 조·전체 어디서나 보인다(확인 전이어도 본인에게는 보인다).
+   * 조가 없는 사람(교역자·스태프)은 볼 조가 없으니 전체만.
+   */
+  function journalScopes() {
+    return state.me.team ? [['team', '우리 조'], ['gallery', '전체']] : [['gallery', '전체']];
+  }
+
   function renderJournal() {
-    var scopeTabs = [['gallery', '갤러리'], ['mine', '내 일지']];
-    if (state.me.isLeader) scopeTabs.push(['team', '우리 조']);
+    var scopeTabs = journalScopes();
+    if (!scopeTabs.some(function (t) { return t[0] === state.journal.scope; })) {
+      state.journal.scope = scopeTabs[0][0];
+    }
 
     setView(
       '<section class="section-head"><h2>탐험일지</h2>' +
@@ -977,7 +988,9 @@
     if (!list) return;
 
     var hint = $('#scopeHint');
-    if (hint && state.journal.scope === 'gallery') {
+    if (hint && state.journal.scope === 'team') {
+      hint.textContent = '우리 조의 기록입니다.' + (state.me.isLeader ? ' 조장은 확인 전 글도 봅니다.' : '');
+    } else if (hint && state.journal.scope === 'gallery') {
       hint.textContent = meta.galleryScope === 'TEAM'
         ? '같은 조의 기록이 보입니다.'
         : meta.galleryScope === 'SELF'
@@ -1021,7 +1034,9 @@
         : '') +
       '<div class="jcard__body">' +
         '<p class="jcard__meta">' +
-          '<strong>' + esc(item.authorName) + '</strong>' +
+          // 작성자와 조를 함께 — "전체" 탭에서는 어느 조 글인지가 중요하다 (D-057)
+          '<strong class="jcard__author">' + esc(item.authorName) + '</strong>' +
+          (item.group ? ' <span class="jcard__group">' + esc(item.group) + '</span>' : '') +
           (cpName ? ' · ' + esc(cpName) : '') +
           ' · <time>' + esc(UI.prettyDateTime(item.createdAt)) + '</time>' +
           (item.status !== '승인' ? ' <span class="chip chip--' +
@@ -1201,6 +1216,7 @@
         API.logout();
         forgetLogin();          // 기기를 넘기는 신호로 본다
         state.me = null;
+        state.journal.scope = '';   // 다음 사람은 기본 탭(우리 조)부터
         state.view = 'home';
         render();
       });

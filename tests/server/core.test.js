@@ -104,7 +104,8 @@ const gallery = (tok) => post({ action: 'journal.list', token: tok }).data.items
 ok('🔴 승인 전에는 남에게 안 보인다', !gallery(other).includes(j1.id));
 ok('본인에게는 보인다', gallery(member).includes(j1.id));
 ok('조장은 우리 조 탭에서 본다', post({ action: 'journal.list', token: leader, scope: 'team' }).data.items.some(j => j.id === j1.id));
-ok('조원은 우리 조 탭 불가', post({ action: 'journal.list', token: member, scope: 'team' }).error.code === 'FORBIDDEN');
+r = post({ action: 'journal.list', token: member, scope: 'team' });
+ok('조원도 우리 조 탭을 본다 (D-057) — 확인 전인 내 글 포함', r.ok && r.data.items.some(j => j.id === j1.id), r.error || r.data.items);
 ok('대기 목록에 있다', post({ action: 'admin.journal.pending', token: admin }).data.items.some(j => j.id === j1.id));
 
 r = post({ action: 'admin.journal.review', token: admin, id: j1.id, decision: '반려', reason: '얼굴이 보입니다' });
@@ -135,6 +136,24 @@ post({ action: 'admin.journal.review', token: admin, id: j2.id, decision: '승�
 ok('GALLERY_SCOPE=TEAM → 다른 조 글은 안 보인다', !gallery(member).includes(j2.id) && gallery(other).includes(j2.id));
 run("configSet_({isAdmin:true}, {key:'GALLERY_SCOPE', value:'ALL'})");
 ok('ALL → 같은 회차 글이 보인다', gallery(member).includes(j2.id));
+
+section('우리 조 탭 (D-057) — 앱의 기본 탭');
+const teamIds = (tok) => post({ action: 'journal.list', token: tok, scope: 'team' }).data.items.map(j => j.id);
+const jL = post({ action: 'journal.create', token: leader, text: '조장 글 — 아직 확인 전' }).data;
+ok('🔴 조원에게 조원의 확인 전 글은 안 보인다', !teamIds(member).includes(jL.id), teamIds(member));
+ok('조장은 우리 조 글을 확인 전이어도 본다 (검수·수정 권한, D-009)', teamIds(leader).includes(jL.id));
+post({ action: 'admin.journal.review', token: admin, id: jL.id, decision: '승인' });
+ok('승인되면 조원에게도 보인다', teamIds(member).includes(jL.id));
+ok('🔴 다른 조 글은 승인돼도 우리 조 탭에 없다', !teamIds(member).includes(j2.id) && !teamIds(leader).includes(j2.id));
+run("configSet_({isAdmin:true}, {key:'JOURNAL_REQUIRE_APPROVAL', value:'FALSE'})");
+const jM = post({ action: 'journal.create', token: member, text: '승인 없이 바로' }).data;
+ok('승인 절차를 끄면 바로 보인다', teamIds(leader).includes(jM.id) && teamIds(member).includes(jM.id));
+run("configSet_({isAdmin:true}, {key:'JOURNAL_REQUIRE_APPROVAL', value:'TRUE'})");
+G.addPeople([['', '바교역', '', '교역자', '010-2000-0009', '', '']]);
+r = post({ action: 'journal.list', token: G.token('바교역', '0009'), scope: 'team' });
+ok('조가 없는 교역자는 우리 조 탭 없음 (FORBIDDEN)', !r.ok && r.error.code === 'FORBIDDEN', r);
+ok('관리자는 조 없이도 된다 (콘솔 호환)', post({ action: 'journal.list', token: admin, scope: 'team' }).ok);
+ok('옛 앱의 "내 일지" 요청도 아직 받는다 (캐시된 옛 화면 호환)', post({ action: 'journal.list', token: member, scope: 'mine' }).ok);
 
 // ------------------------------------------------------------------ 공지
 section('공지 — 만들기·고치기·지우기');
