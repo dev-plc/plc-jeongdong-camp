@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v19 · 2026-09-30
+ * ui.js · v20.1 · 2026-10-16
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20.1 2026-10-16  알림 5초(오류 6초) · 전화번호 링크 (D-058)
  *  v19   2026-09-30  조별 카드에서 점수 표시 삭제 (D-056)
  *  v16   2026-09-26  조별 카드 공용화, 점수 표시·정정 칸 (D-051·052)
  *  v15.1 2026-09-26  상대 시각 도우미 (N분 전 · 오늘 날짜 · HH:MM→분) (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
- *  —     2026-09-18  진행 기록을 낙관적으로 반영하고, 실패하면 되돌린다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -41,6 +41,20 @@
     return String(escaped).replace(/\n/g, '<br>');
   }
 
+  /**
+   * 전화번호를 눌러 거는 링크로. 반드시 esc() 이후에 쓴다 (nl2br 와 같은 규칙).
+   * 010-1234-5678 · 01012345678 · 02-123-4567 · 031.123.4567 — 구분자는 앞뒤가 같아야 한다.
+   * 숫자에 붙은 번호(날짜·시각 일부)는 건드리지 않는다.
+   */
+  function telLinks(escaped) {
+    return String(escaped).replace(/(^|[^\d])(0\d{1,2})([-.]?)(\d{3,4})\3(\d{4})(?!\d)/g,
+      function (all, pre, a, sep, b, c) {
+        return pre + '<a class="tel" href="tel:' + a + b + c + '">' + a + sep + b + sep + c + '</a>';
+      });
+  }
+
+  // 걸으면서 보면 3초는 짧다 — 오류는 더 오래 둔다 (D-058)
+  var TOAST_MS = 5000, TOAST_ERROR_MS = 6000;
   var toastTimer = null;
   function toast(message, kind) {
     var el = $('#toast');
@@ -48,7 +62,7 @@
     el.textContent = message;
     el.className = 'toast show' + (kind ? ' toast--' + kind : '');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.className = 'toast'; }, 3200);
+    toastTimer = setTimeout(function () { el.className = 'toast'; }, kind === 'error' ? TOAST_ERROR_MS : TOAST_MS);
   }
 
   /** window.confirm 대체. Promise<boolean> */
@@ -447,7 +461,7 @@
   }
 
   global.UI = {
-    $: $, $$: $$, esc: esc, nl2br: nl2br,
+    $: $, $$: $$, esc: esc, nl2br: nl2br, telLinks: telLinks,
     toast: toast, confirmDialog: confirmDialog, setBusy: setBusy,
     resizePhoto: resizePhoto, hhmm: hhmm, localIso: localIso, prettyDateTime: prettyDateTime,
     localDate: localDate, hmToMin: hmToMin, minutesSince: minutesSince, agoText: agoText,

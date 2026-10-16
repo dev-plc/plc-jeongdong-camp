@@ -1,13 +1,13 @@
 /*
    ────────────────────────────────────────────────────────────────
-    app.css · v20 · 2026-09-30
+    app.css · v20.1 · 2026-10-16
    ────────────────────────────────────────────────────────────────
     변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+     v20.1 2026-10-16  제목·지점명 고딕, 본문 글씨 키움, 저장됨 표시 (D-058)
      v20   2026-09-30  탐험일지 글의 조 표시 (D-057)
      v19   2026-09-30  점수 칸·표시 스타일 삭제 (D-056)
      v16   2026-09-26  내 지점·점수·시상·크게 보기 (D-051·052)
      v15.1 2026-09-26  글자 하한 13px · 조별 카드 · 코스 접기 (D-050)
-     v15   2026-09-26  파일 버전 표시 시작
 
     버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
           — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -115,9 +115,11 @@ a { color: var(--brick); }
 body.is-auth .view { padding-bottom: calc(var(--tabbar-h) + 28px + env(safe-area-inset-bottom)); }
 
 .section-head { margin: 4px 2px 14px; }
+/* 제목·지점명은 고딕 굵게 — 명조의 가는 획은 햇빛 아래에서 날아간다 (D-058). 앱바·로그인 제목은 브랜드라 명조 */
 .section-head h2 {
   margin: 0;
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
+  font-weight: 700;
   font-size: 20px;
 }
 
@@ -153,7 +155,7 @@ body.is-auth .view { padding-bottom: calc(var(--tabbar-h) + 28px + env(safe-area
 }
 .card__title {
   margin: 0 0 12px;
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 17px;
   font-weight: 700;
 }
@@ -318,7 +320,8 @@ textarea.input { resize: vertical; min-height: 96px; }
 .notice:last-child { border-bottom: 0; padding-bottom: 0; }
 .notice:first-child { padding-top: 0; }
 .notice h3 { margin: 0 0 4px; font-size: 15px; }
-.notice p { margin: 0; font-size: 14px; color: var(--ink-2); }
+.notice p { margin: 0; font-size: 15px; color: var(--ink-2); }
+.notice a.tel { font-weight: 700; white-space: nowrap; }
 .notice--pinned h3::before { content: '📌 '; }
 
 .timeline { list-style: none; margin: 0; padding: 0; }
@@ -337,7 +340,7 @@ textarea.input { resize: vertical; min-height: 96px; }
   font-variant-numeric: tabular-nums;
   padding-top: 2px;
 }
-.timeline__body { font-size: 14.5px; }
+.timeline__body { font-size: 15px; }
 .timeline__body em { font-style: normal; font-size: 13px; color: var(--ink-2); margin-left: 6px; }
 .timeline__note { display: block; font-size: 13px; color: var(--ink-2); }
 
@@ -371,17 +374,20 @@ textarea.input { resize: vertical; min-height: 96px; }
   place-items: center;
   margin-top: 2px;
 }
-.cp__name { margin: 0; font-family: var(--font-serif); font-size: 16.5px; }
+.cp__name { margin: 0; font-family: var(--font-sans); font-weight: 700; font-size: 17px; line-height: 1.45; }
 .cp__sum { margin: 2px 0 0; font-size: 13px; color: var(--ink-2); }
-.cp__desc { margin: 12px 0 0; font-size: 14px; }
+.cp__desc { margin: 12px 0 0; font-size: 16px; }
 .cp__mission {
   margin: 10px 0 0;
   padding: 10px 12px;
   background: #f6f0e8;
   border-radius: var(--radius-sm);
-  font-size: 13.5px;
+  font-size: 15px;
 }
 .cp__mission strong { color: var(--brick); margin-right: 4px; }
+/* 서버에 들어간 기록 — 토스트가 사라져도 카드에 남는다 (D-058) */
+.cp__saved { margin: 3px 0 0; font-size: 13px; font-weight: 500; color: var(--ok); }
+.cp__saved.is-pending { color: var(--warn); }
 .cp__times { margin: 10px 0 0; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .cp__links { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .cp__hours { font-size: 13px; color: var(--ink-2); }
@@ -432,7 +438,8 @@ textarea.input { resize: vertical; min-height: 96px; }
   display: inline-block; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px;
   background: #fff; color: var(--ink-2); font-size: 13px; line-height: 1.6; vertical-align: 1px;
 }
-.jcard__text { margin: 0; font-size: 14px; white-space: normal; }
+.draft-hint { margin: -4px 0 12px; color: var(--ok); }
+.jcard__text { margin: 0; font-size: 15px; white-space: normal; }
 .jcard__reject {
   margin: 8px 0 0;
   font-size: 13px;
