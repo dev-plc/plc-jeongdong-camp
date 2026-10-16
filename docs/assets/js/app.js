@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v20 · 2026-09-30
+ * app.js · v20.1 · 2026-10-16
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20.1 2026-10-16  일지 임시저장 · 코스 "운영본부에 저장됨" · 공지 번호 누르면 전화 (D-058)
  *  v20   2026-09-30  탐험일지 기본은 우리 조, 탭으로 전체 · 내 일지 탭 삭제 · 글마다 작성자와 조 (D-057)
  *  v19.1 2026-09-30  코스 버튼을 누른 뒤 3초 잠금 — 연타로 두 단계가 넘어가지 않게
  *  v19   2026-09-30  미션 점수 입력·표시 삭제 — 조장·스태프는 도착·완료만 (D-056)
  *  v16   2026-09-26  내 지점·진행 화면, 역할 카드, 조장 점수 칸 (D-051·052)
- *  v15.1 2026-09-26  홈 "지금·다음" 카드, 코스 다음 동작 버튼·접기 (D-050)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -176,6 +176,38 @@
   }
   function forgetLogin() {
     try { localStorage.removeItem(REMEMBER_KEY); } catch (e) { /* 무시 */ }
+  }
+
+  // ---------------------------------------------------------------- 일지 임시저장 (D-058)
+  //
+  // 쓰던 소감·지점을 사람별로 기기에 둔다. 올리면 지우고, 로그아웃하면 **모두** 지운다
+  // (로그아웃 = 기기를 넘기는 신호, 위와 같다). 사진은 크기 때문에 담지 않는다.
+  var DRAFT_PREFIX = 'plc_jd_draft:';
+
+  function draftKey() {
+    return DRAFT_PREFIX + ((state.me && state.me.participant && state.me.participant.id) || '');
+  }
+  function loadDraft() {
+    try { return JSON.parse(localStorage.getItem(draftKey()) || 'null'); } catch (e) { return null; }
+  }
+  function saveDraft(d) {
+    try {
+      if (d.text || d.checkpoint) localStorage.setItem(draftKey(), JSON.stringify(d));
+      else localStorage.removeItem(draftKey());
+    } catch (e) { /* 시크릿 모드 등 */ }
+  }
+  function clearDraft() {
+    try { localStorage.removeItem(draftKey()); } catch (e) { /* 무시 */ }
+  }
+  function clearAllDrafts() {
+    try {
+      var keys = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(DRAFT_PREFIX) === 0) keys.push(k);
+      }
+      keys.forEach(function (k) { localStorage.removeItem(k); });
+    } catch (e) { /* 무시 */ }
   }
 
   function renderLogin() {
@@ -357,7 +389,8 @@
         notices.map(function (n) {
           return '<article class="notice' + (n.pinned ? ' notice--pinned' : '') + '">' +
             '<h3>' + esc(n.title) + '</h3>' +
-            '<p>' + nl2br(esc(n.body)) + '</p></article>';
+            // 본문의 전화번호는 눌러서 건다 — "운영본부 010-…" 고정 공지가 긴급 연락처다 (D-058)
+            '<p>' + nl2br(UI.telLinks(esc(n.body))) + '</p></article>';
         }).join('') + '</section>' : '') +
 
       '<section class="card"><h2 class="card__title">오늘 일정</h2>' +
@@ -478,6 +511,18 @@
     }, COURSE_PAUSE_MS);
   }
 
+  /**
+   * 기록이 서버에 들어갔는지를 카드에 **남겨 둔다** (D-058).
+   * 토스트는 몇 초 뒤 사라져, 걷다가 놓친 조장이 "들어갔나요?" 하고 스태프에게 되물었다.
+   * 서버가 준 목록에는 pending 이 없다 — 그 상태가 곧 "저장됨" 이다.
+   */
+  function savedLine(p) {
+    if (p.status !== '도착' && p.status !== '완료') return '';
+    return p.pending
+      ? '<p class="cp__saved is-pending">저장 중… 화면을 닫지 마세요</p>'
+      : '<p class="cp__saved">✓ 운영본부에 저장됨</p>';
+  }
+
   /** 코스 순서상 아직 완료하지 않은 첫 지점. 모두 완료면 null. */
   function nextCheckpoint(list) {
     for (var i = 0; i < list.length; i++) if (list[i].status !== '완료') return list[i];
@@ -505,7 +550,8 @@
         '<div><h3 class="cp__name">' + esc(cp.name) + '</h3>' +
         (p.status === '완료'
           ? '<p class="cp__sum">' + times + '</p>'
-          : (cp.summary ? '<p class="cp__sum">' + esc(cp.summary) + '</p>' : '')) + '</div>' +
+          : (cp.summary ? '<p class="cp__sum">' + esc(cp.summary) + '</p>' : '')) +
+        savedLine(p) + '</div>' +
         '<span class="chip chip--' + statusClass(p.status) + '">' + esc(p.status) +
         (p.pending ? ' · 저장 중' : '') + '</span>';
 
@@ -871,6 +917,7 @@
     var cps = state.boot.checkpoints || [];
     return '<form id="journalForm" class="card card--form">' +
       '<h2 class="card__title">오늘의 기록 남기기</h2>' +
+      '<p class="hint draft-hint" id="draftHint" hidden>작성 중이던 글을 불러왔습니다. 사진은 다시 골라 주세요.</p>' +
       '<label class="field"><span class="field__label">어느 지점인가요? <em>(선택)</em></span>' +
         '<select class="input" name="checkpoint">' +
           '<option value="">지점 없이 자유롭게</option>' +
@@ -908,6 +955,17 @@
     // 촬영·갤러리 두 입력을 똑같이 다룬다. 어느 쪽으로 넣었든 결과는 사진 한 장이다.
     var inputs = [].slice.call(form.querySelectorAll('input[type="file"]'));
     var preview = $('#photoPreview');
+
+    // 쓰던 글을 되살린다 — 사진 고르러·메신저 보러 나갔다 오면 브라우저가 화면을 새로 그린다 (D-058)
+    var draft = loadDraft();
+    if (draft && (draft.text || draft.checkpoint)) {
+      form.text.value = draft.text || '';
+      if (draft.checkpoint) form.checkpoint.value = draft.checkpoint;
+      $('#draftHint').hidden = false;
+    }
+    function keepDraft() { saveDraft({ text: form.text.value, checkpoint: form.checkpoint.value }); }
+    form.text.addEventListener('input', keepDraft);
+    form.checkpoint.addEventListener('change', keepDraft);
 
     inputs.forEach(function (input) {
       input.addEventListener('change', function () {
@@ -956,6 +1014,8 @@
       })
         .then(function () {
           form.reset();
+          clearDraft();
+          $('#draftHint').hidden = true;
           state.pendingPhoto = null;
           preview.hidden = true;
           UI.setBusy(btn, false);
@@ -1211,10 +1271,12 @@
     );
 
     $('#logoutBtn').addEventListener('click', function () {
-      UI.confirmDialog('로그아웃할까요?', '로그아웃').then(function (yes) {
+      // 실수로 눌러도 놀라지 않게 — 기록은 서버에 있다 (D-058)
+      UI.confirmDialog('로그아웃할까요?\n코스 기록과 일지는 그대로 남습니다.', '로그아웃').then(function (yes) {
         if (!yes) return;
         API.logout();
         forgetLogin();          // 기기를 넘기는 신호로 본다
+        clearAllDrafts();
         state.me = null;
         state.journal.scope = '';   // 다음 사람은 기본 탭(우리 조)부터
         state.view = 'home';
