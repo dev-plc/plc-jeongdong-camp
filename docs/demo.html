@@ -15,14 +15,14 @@
 <style>
 /*
    ────────────────────────────────────────────────────────────────
-    app.css · v20 · 2026-09-30
+    app.css · v20.1 · 2026-10-16
    ────────────────────────────────────────────────────────────────
     변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+     v20.1 2026-10-16  제목·지점명 고딕, 본문 글씨 키움, 저장됨 표시 (D-058)
      v20   2026-09-30  탐험일지 글의 조 표시 (D-057)
      v19   2026-09-30  점수 칸·표시 스타일 삭제 (D-056)
      v16   2026-09-26  내 지점·점수·시상·크게 보기 (D-051·052)
      v15.1 2026-09-26  글자 하한 13px · 조별 카드 · 코스 접기 (D-050)
-     v15   2026-09-26  파일 버전 표시 시작
 
     버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
           — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -130,9 +130,11 @@ a { color: var(--brick); }
 body.is-auth .view { padding-bottom: calc(var(--tabbar-h) + 28px + env(safe-area-inset-bottom)); }
 
 .section-head { margin: 4px 2px 14px; }
+/* 제목·지점명은 고딕 굵게 — 명조의 가는 획은 햇빛 아래에서 날아간다 (D-058). 앱바·로그인 제목은 브랜드라 명조 */
 .section-head h2 {
   margin: 0;
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
+  font-weight: 700;
   font-size: 20px;
 }
 
@@ -168,7 +170,7 @@ body.is-auth .view { padding-bottom: calc(var(--tabbar-h) + 28px + env(safe-area
 }
 .card__title {
   margin: 0 0 12px;
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-size: 17px;
   font-weight: 700;
 }
@@ -333,7 +335,8 @@ textarea.input { resize: vertical; min-height: 96px; }
 .notice:last-child { border-bottom: 0; padding-bottom: 0; }
 .notice:first-child { padding-top: 0; }
 .notice h3 { margin: 0 0 4px; font-size: 15px; }
-.notice p { margin: 0; font-size: 14px; color: var(--ink-2); }
+.notice p { margin: 0; font-size: 15px; color: var(--ink-2); }
+.notice a.tel { font-weight: 700; white-space: nowrap; }
 .notice--pinned h3::before { content: '📌 '; }
 
 .timeline { list-style: none; margin: 0; padding: 0; }
@@ -352,7 +355,7 @@ textarea.input { resize: vertical; min-height: 96px; }
   font-variant-numeric: tabular-nums;
   padding-top: 2px;
 }
-.timeline__body { font-size: 14.5px; }
+.timeline__body { font-size: 15px; }
 .timeline__body em { font-style: normal; font-size: 13px; color: var(--ink-2); margin-left: 6px; }
 .timeline__note { display: block; font-size: 13px; color: var(--ink-2); }
 
@@ -386,17 +389,20 @@ textarea.input { resize: vertical; min-height: 96px; }
   place-items: center;
   margin-top: 2px;
 }
-.cp__name { margin: 0; font-family: var(--font-serif); font-size: 16.5px; }
+.cp__name { margin: 0; font-family: var(--font-sans); font-weight: 700; font-size: 17px; line-height: 1.45; }
 .cp__sum { margin: 2px 0 0; font-size: 13px; color: var(--ink-2); }
-.cp__desc { margin: 12px 0 0; font-size: 14px; }
+.cp__desc { margin: 12px 0 0; font-size: 16px; }
 .cp__mission {
   margin: 10px 0 0;
   padding: 10px 12px;
   background: #f6f0e8;
   border-radius: var(--radius-sm);
-  font-size: 13.5px;
+  font-size: 15px;
 }
 .cp__mission strong { color: var(--brick); margin-right: 4px; }
+/* 서버에 들어간 기록 — 토스트가 사라져도 카드에 남는다 (D-058) */
+.cp__saved { margin: 3px 0 0; font-size: 13px; font-weight: 500; color: var(--ok); }
+.cp__saved.is-pending { color: var(--warn); }
 .cp__times { margin: 10px 0 0; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .cp__links { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .cp__hours { font-size: 13px; color: var(--ink-2); }
@@ -447,7 +453,8 @@ textarea.input { resize: vertical; min-height: 96px; }
   display: inline-block; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px;
   background: #fff; color: var(--ink-2); font-size: 13px; line-height: 1.6; vertical-align: 1px;
 }
-.jcard__text { margin: 0; font-size: 14px; white-space: normal; }
+.draft-hint { margin: -4px 0 12px; color: var(--ok); }
+.jcard__text { margin: 0; font-size: 15px; white-space: normal; }
 .jcard__reject {
   margin: 8px 0 0;
   font-size: 13px;
@@ -886,6 +893,9 @@ body { padding-top: var(--demobar-h, 76px); }
   };
 
   var NOTICES = [
+    // 번호는 가짜다 — 실제 운영본부 번호는 시트 공지에만 둔다 (공개 저장소)
+    { id: 'N0', target: '전체', title: '긴급 연락', pinned: true,
+      body: '길을 잃거나 몸이 불편하면 운영본부 010-0000-0000 으로 전화해 주세요.', publishedAt: '2026-10-20T08:00:00+09:00' },
     { id: 'N1', target: '전체', title: '점심 도시락 안내', pinned: true,
       body: '도시락은 조별로 한 번에 받습니다. 조장이 인원수를 확인해 주세요.', publishedAt: '2026-10-20T09:00:00+09:00' },
     { id: 'N2', target: '10/31(토)', title: '교통카드 지참', pinned: false,
@@ -2048,14 +2058,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v19 · 2026-09-30
+ * ui.js · v20.1 · 2026-10-16
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20.1 2026-10-16  알림 5초(오류 6초) · 전화번호 링크 (D-058)
  *  v19   2026-09-30  조별 카드에서 점수 표시 삭제 (D-056)
  *  v16   2026-09-26  조별 카드 공용화, 점수 표시·정정 칸 (D-051·052)
  *  v15.1 2026-09-26  상대 시각 도우미 (N분 전 · 오늘 날짜 · HH:MM→분) (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
- *  —     2026-09-18  진행 기록을 낙관적으로 반영하고, 실패하면 되돌린다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -2089,6 +2099,20 @@ window.APP_CONFIG = {
     return String(escaped).replace(/\n/g, '<br>');
   }
 
+  /**
+   * 전화번호를 눌러 거는 링크로. 반드시 esc() 이후에 쓴다 (nl2br 와 같은 규칙).
+   * 010-1234-5678 · 01012345678 · 02-123-4567 · 031.123.4567 — 구분자는 앞뒤가 같아야 한다.
+   * 숫자에 붙은 번호(날짜·시각 일부)는 건드리지 않는다.
+   */
+  function telLinks(escaped) {
+    return String(escaped).replace(/(^|[^\d])(0\d{1,2})([-.]?)(\d{3,4})\3(\d{4})(?!\d)/g,
+      function (all, pre, a, sep, b, c) {
+        return pre + '<a class="tel" href="tel:' + a + b + c + '">' + a + sep + b + sep + c + '</a>';
+      });
+  }
+
+  // 걸으면서 보면 3초는 짧다 — 오류는 더 오래 둔다 (D-058)
+  var TOAST_MS = 5000, TOAST_ERROR_MS = 6000;
   var toastTimer = null;
   function toast(message, kind) {
     var el = $('#toast');
@@ -2096,7 +2120,7 @@ window.APP_CONFIG = {
     el.textContent = message;
     el.className = 'toast show' + (kind ? ' toast--' + kind : '');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.className = 'toast'; }, 3200);
+    toastTimer = setTimeout(function () { el.className = 'toast'; }, kind === 'error' ? TOAST_ERROR_MS : TOAST_MS);
   }
 
   /** window.confirm 대체. Promise<boolean> */
@@ -2495,7 +2519,7 @@ window.APP_CONFIG = {
   }
 
   global.UI = {
-    $: $, $$: $$, esc: esc, nl2br: nl2br,
+    $: $, $$: $$, esc: esc, nl2br: nl2br, telLinks: telLinks,
     toast: toast, confirmDialog: confirmDialog, setBusy: setBusy,
     resizePhoto: resizePhoto, hhmm: hhmm, localIso: localIso, prettyDateTime: prettyDateTime,
     localDate: localDate, hmToMin: hmToMin, minutesSince: minutesSince, agoText: agoText,
@@ -2508,14 +2532,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v20 · 2026-09-30
+ * app.js · v20.1 · 2026-10-16
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20.1 2026-10-16  일지 임시저장 · 코스 "운영본부에 저장됨" · 공지 번호 누르면 전화 (D-058)
  *  v20   2026-09-30  탐험일지 기본은 우리 조, 탭으로 전체 · 내 일지 탭 삭제 · 글마다 작성자와 조 (D-057)
  *  v19.1 2026-09-30  코스 버튼을 누른 뒤 3초 잠금 — 연타로 두 단계가 넘어가지 않게
  *  v19   2026-09-30  미션 점수 입력·표시 삭제 — 조장·스태프는 도착·완료만 (D-056)
  *  v16   2026-09-26  내 지점·진행 화면, 역할 카드, 조장 점수 칸 (D-051·052)
- *  v15.1 2026-09-26  홈 "지금·다음" 카드, 코스 다음 동작 버튼·접기 (D-050)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -2684,6 +2708,38 @@ window.APP_CONFIG = {
   }
   function forgetLogin() {
     try { localStorage.removeItem(REMEMBER_KEY); } catch (e) { /* 무시 */ }
+  }
+
+  // ---------------------------------------------------------------- 일지 임시저장 (D-058)
+  //
+  // 쓰던 소감·지점을 사람별로 기기에 둔다. 올리면 지우고, 로그아웃하면 **모두** 지운다
+  // (로그아웃 = 기기를 넘기는 신호, 위와 같다). 사진은 크기 때문에 담지 않는다.
+  var DRAFT_PREFIX = 'plc_jd_draft:';
+
+  function draftKey() {
+    return DRAFT_PREFIX + ((state.me && state.me.participant && state.me.participant.id) || '');
+  }
+  function loadDraft() {
+    try { return JSON.parse(localStorage.getItem(draftKey()) || 'null'); } catch (e) { return null; }
+  }
+  function saveDraft(d) {
+    try {
+      if (d.text || d.checkpoint) localStorage.setItem(draftKey(), JSON.stringify(d));
+      else localStorage.removeItem(draftKey());
+    } catch (e) { /* 시크릿 모드 등 */ }
+  }
+  function clearDraft() {
+    try { localStorage.removeItem(draftKey()); } catch (e) { /* 무시 */ }
+  }
+  function clearAllDrafts() {
+    try {
+      var keys = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf(DRAFT_PREFIX) === 0) keys.push(k);
+      }
+      keys.forEach(function (k) { localStorage.removeItem(k); });
+    } catch (e) { /* 무시 */ }
   }
 
   function renderLogin() {
@@ -2865,7 +2921,8 @@ window.APP_CONFIG = {
         notices.map(function (n) {
           return '<article class="notice' + (n.pinned ? ' notice--pinned' : '') + '">' +
             '<h3>' + esc(n.title) + '</h3>' +
-            '<p>' + nl2br(esc(n.body)) + '</p></article>';
+            // 본문의 전화번호는 눌러서 건다 — "운영본부 010-…" 고정 공지가 긴급 연락처다 (D-058)
+            '<p>' + nl2br(UI.telLinks(esc(n.body))) + '</p></article>';
         }).join('') + '</section>' : '') +
 
       '<section class="card"><h2 class="card__title">오늘 일정</h2>' +
@@ -2986,6 +3043,18 @@ window.APP_CONFIG = {
     }, COURSE_PAUSE_MS);
   }
 
+  /**
+   * 기록이 서버에 들어갔는지를 카드에 **남겨 둔다** (D-058).
+   * 토스트는 몇 초 뒤 사라져, 걷다가 놓친 조장이 "들어갔나요?" 하고 스태프에게 되물었다.
+   * 서버가 준 목록에는 pending 이 없다 — 그 상태가 곧 "저장됨" 이다.
+   */
+  function savedLine(p) {
+    if (p.status !== '도착' && p.status !== '완료') return '';
+    return p.pending
+      ? '<p class="cp__saved is-pending">저장 중… 화면을 닫지 마세요</p>'
+      : '<p class="cp__saved">✓ 운영본부에 저장됨</p>';
+  }
+
   /** 코스 순서상 아직 완료하지 않은 첫 지점. 모두 완료면 null. */
   function nextCheckpoint(list) {
     for (var i = 0; i < list.length; i++) if (list[i].status !== '완료') return list[i];
@@ -3013,7 +3082,8 @@ window.APP_CONFIG = {
         '<div><h3 class="cp__name">' + esc(cp.name) + '</h3>' +
         (p.status === '완료'
           ? '<p class="cp__sum">' + times + '</p>'
-          : (cp.summary ? '<p class="cp__sum">' + esc(cp.summary) + '</p>' : '')) + '</div>' +
+          : (cp.summary ? '<p class="cp__sum">' + esc(cp.summary) + '</p>' : '')) +
+        savedLine(p) + '</div>' +
         '<span class="chip chip--' + statusClass(p.status) + '">' + esc(p.status) +
         (p.pending ? ' · 저장 중' : '') + '</span>';
 
@@ -3379,6 +3449,7 @@ window.APP_CONFIG = {
     var cps = state.boot.checkpoints || [];
     return '<form id="journalForm" class="card card--form">' +
       '<h2 class="card__title">오늘의 기록 남기기</h2>' +
+      '<p class="hint draft-hint" id="draftHint" hidden>작성 중이던 글을 불러왔습니다. 사진은 다시 골라 주세요.</p>' +
       '<label class="field"><span class="field__label">어느 지점인가요? <em>(선택)</em></span>' +
         '<select class="input" name="checkpoint">' +
           '<option value="">지점 없이 자유롭게</option>' +
@@ -3416,6 +3487,17 @@ window.APP_CONFIG = {
     // 촬영·갤러리 두 입력을 똑같이 다룬다. 어느 쪽으로 넣었든 결과는 사진 한 장이다.
     var inputs = [].slice.call(form.querySelectorAll('input[type="file"]'));
     var preview = $('#photoPreview');
+
+    // 쓰던 글을 되살린다 — 사진 고르러·메신저 보러 나갔다 오면 브라우저가 화면을 새로 그린다 (D-058)
+    var draft = loadDraft();
+    if (draft && (draft.text || draft.checkpoint)) {
+      form.text.value = draft.text || '';
+      if (draft.checkpoint) form.checkpoint.value = draft.checkpoint;
+      $('#draftHint').hidden = false;
+    }
+    function keepDraft() { saveDraft({ text: form.text.value, checkpoint: form.checkpoint.value }); }
+    form.text.addEventListener('input', keepDraft);
+    form.checkpoint.addEventListener('change', keepDraft);
 
     inputs.forEach(function (input) {
       input.addEventListener('change', function () {
@@ -3464,6 +3546,8 @@ window.APP_CONFIG = {
       })
         .then(function () {
           form.reset();
+          clearDraft();
+          $('#draftHint').hidden = true;
           state.pendingPhoto = null;
           preview.hidden = true;
           UI.setBusy(btn, false);
@@ -3719,10 +3803,12 @@ window.APP_CONFIG = {
     );
 
     $('#logoutBtn').addEventListener('click', function () {
-      UI.confirmDialog('로그아웃할까요?', '로그아웃').then(function (yes) {
+      // 실수로 눌러도 놀라지 않게 — 기록은 서버에 있다 (D-058)
+      UI.confirmDialog('로그아웃할까요?\n코스 기록과 일지는 그대로 남습니다.', '로그아웃').then(function (yes) {
         if (!yes) return;
         API.logout();
         forgetLogin();          // 기기를 넘기는 신호로 본다
+        clearAllDrafts();
         state.me = null;
         state.journal.scope = '';   // 다음 사람은 기본 탭(우리 조)부터
         state.view = 'home';
