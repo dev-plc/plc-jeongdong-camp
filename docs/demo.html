@@ -15,14 +15,14 @@
 <style>
 /*
    ────────────────────────────────────────────────────────────────
-    app.css · v20.3 · 2026-10-17
+    app.css · v20.4 · 2026-10-17
    ────────────────────────────────────────────────────────────────
     변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+     v20.4 2026-10-17  미션 ※ 주의 줄 (D-061)
      v20.3 2026-10-17  사진 버튼 주석 — 갤러리 하나 (D-060)
      v20.2 2026-10-17  조별 카드: 지점을 한 줄씩 이름 전체로, 카드 최소 폭 260px (D-059)
      v20.1 2026-10-16  제목·지점명 고딕, 본문 글씨 키움, 저장됨 표시 (D-058)
      v20   2026-09-30  탐험일지 글의 조 표시 (D-057)
-     v15.1 2026-09-26  글자 하한 13px · 조별 카드 · 코스 접기 (D-050)
 
     버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
           — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -400,6 +400,8 @@ textarea.input { resize: vertical; min-height: 96px; }
   font-size: 15px;
 }
 .cp__mission strong { color: var(--brick); margin-right: 4px; }
+/* 미션의 ※ 주의·범위 줄 (D-061) — 미션 카드의 빨간 글씨 */
+.cp__mission-note { color: #a33; font-weight: 500; }
 /* 서버에 들어간 기록 — 토스트가 사라져도 카드에 남는다 (D-058) */
 .cp__saved { margin: 3px 0 0; font-size: 13px; font-weight: 500; color: var(--ok); }
 .cp__saved.is-pending { color: var(--warn); }
@@ -857,23 +859,26 @@ body { padding-top: var(--demobar-h, 76px); }
     { code: 'CP1', order: 1, name: '배재학당역사박물관',
       summary: '아펜젤러가 세운 한국 최초의 근대식 중등교육기관',
       description: '1885년 아펜젤러가 시작한 배재학당의 자리입니다. 근대 교육과 선교가 어떻게 함께 시작되었는지 확인합니다.',
-      mission: '배재학당의 설립 연도와 교훈을 찾아 적어 보세요.',
+      address: '서울 중구 서소문로11길 19',
+      mission: '[글자 찾기 미션] "흩어진 글자 완성하기"\n배재학당 역사박물관 내부 전시물에 있는 글자들을 사진으로 찍어 "크고자 하거든 남을 섬기라" 문장을 완성하면 통과.\n(글자를 모아 게임스텝에게 순차적으로 보여주면 됩니다.)\n※ 주의: 교훈이 완성된 형태로 적힌 간판이나 문구 전체를 찍는 것은 무효. 반드시 다른 곳에서 낱글자를 찾아야 함.',
       quizUrl: 'https://smore.im/', photoUrl: '', openHours: '10:00–17:00, 월요일 휴관',
       lat: null, lng: null },
     { code: 'CP2', order: 2, name: '러시아 공사관과 킹스로드',
       summary: '아관파천의 현장과 고종이 걸었던 길',
       description: '구 러시아공사관 탑과 덕수궁으로 이어지는 길입니다. 격동기 조선의 정세와 그 속의 신앙 공동체를 봅니다.',
-      mission: '공사관 건물에서 지금 남아 있는 부분은 어디까지인지 확인해 보세요.',
+      address: '서울 중구 정동길 21-18',
+      mission: '[사진 미션] "킹스로드 호위무사 릴레이"\n팀원 중 한 명을 ‘왕(고종)’으로 정하고 나머지 팀원들이 궁녀와 호위무사가 되어 왕을 비밀리에 호위하며 피신하는 설정샷(긴박한 표정 연기)을 찍고 AI를 활용하여 상황을 더 부각시켜 보기!',
       quizUrl: '', photoUrl: '', openHours: '상시 개방', lat: null, lng: null },
     { code: 'CP3', order: 3, name: '보구여관 터',
       summary: '한국 최초의 여성 전용 병원이 있던 자리',
       description: '1887년 스크랜턴이 세운 여성 전용 병원입니다. 의료 선교가 여성의 삶을 어떻게 바꾸었는지 살펴봅니다.',
-      mission: '보구여관이라는 이름의 뜻을 찾아보세요.',
+      mission: '[숨은 공간 찾기 미션] "정동의 숨은 조각을 찾아라"\n보구여관 터 주변의 특정 건축 양식, 머릿돌, 표지판의 일부를 가까이서 촬영한 사진 6개를 준다(텔레그램 확인). 팀원들은 해당 위치를 찾아내어 똑같은 장소에서 단체 인증샷을 찍어야 한다.\n6장소 중 3곳에서 촬영하면 미션 통과.\n※ 범위: 이화여고부터 정동제일교회 입구까지',
       quizUrl: '', photoUrl: '', openHours: '', lat: null, lng: null },
     { code: 'CP4', order: 4, name: '이화여고 박물관',
       summary: '이화학당에서 시작된 한국 여성 교육의 출발점',
       description: '메리 스크랜턴이 학생 한 명으로 시작한 이화학당입니다. 심슨기념관에 남은 흔적을 따라갑니다.',
-      mission: '이화학당의 첫 학생 이름을 찾아보세요.',
+      address: '서울 중구 정동길 26',
+      mission: '[창작 삼행시 미션] "유·관·순 3행시"\n[유관순]으로 신앙과 역사성을 담은 창의적이고 감동적인 삼행시를 작성하여 발표하기.\n※ 게임스텝에게 감동 또는 웃음을 주지 못하면 통과할 수 없음.',
       quizUrl: 'https://smore.im/', photoUrl: '', openHours: '10:00–16:00', lat: null, lng: null }
   ];
 
@@ -2064,13 +2069,13 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v20.2 · 2026-10-17
+ * ui.js · v20.4 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20.4 2026-10-17  미션 여러 줄 · ※ 주의 줄 강조 · 지도는 좌표 → 주소 → 이름 순 (D-061)
  *  v20.2 2026-10-17  조별 카드: 조를 숫자 순서로(10조는 9조 다음) · 지점을 한 줄씩 이름 전체로 (D-059)
  *  v20.1 2026-10-16  알림 5초(오류 6초) · 전화번호 링크 (D-058)
  *  v19   2026-09-30  조별 카드에서 점수 표시 삭제 (D-056)
- *  v16   2026-09-26  조별 카드 공용화, 점수 표시·정정 칸 (D-051·052)
  *  v15   2026-09-26  파일 버전 표시 시작
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
@@ -2115,6 +2120,35 @@ window.APP_CONFIG = {
       function (all, pre, a, sep, b, c) {
         return pre + '<a class="tel" href="tel:' + a + b + c + '">' + a + sep + b + sep + c + '</a>';
       });
+  }
+
+  /**
+   * 지점 미션 (D-061). 시트 `미션` 칸에 줄을 바꿔 적은 그대로 보인다.
+   * `※` 나 `*` 로 시작하는 줄(주의·범위)은 눈에 띄게 한다 — 미션 카드의 빨간 글씨와 같은 역할.
+   */
+  function missionHtml(text) {
+    var lines = String(text === null || text === undefined ? '' : text).replace(/\r/g, '').split('\n');
+    var body = lines.map(function (line) {
+      var t = line.trim();
+      if (!t) return '';
+      return /^[※*]/.test(t) ? '<span class="cp__mission-note">' + esc(t) + '</span>' : esc(t);
+    }).filter(String).join('<br>');
+    return body ? '<p class="cp__mission"><strong>미션</strong> ' + body + '</p>' : '';
+  }
+
+  /**
+   * 지점 지도 링크 (D-061) — 카카오맵.
+   * 시트에 위도·경도가 있으면 **그 자리에 핀**, 없으면 **주소로**, 주소도 없으면 이름으로 찾는다.
+   * 이름 검색은 "보구여관" 이 마곡의 이대서울병원 보구녀관으로 가는 식으로 엉뚱한 곳이 먼저 뜬다.
+   */
+  function mapUrl(cp) {
+    var name = (cp && cp.name) || '';
+    var lat = Number(cp && cp.lat), lng = Number(cp && cp.lng);
+    if (lat && lng && isFinite(lat) && isFinite(lng)) {
+      return 'https://map.kakao.com/link/map/' + encodeURIComponent(name) + ',' + lat + ',' + lng;
+    }
+    var q = (cp && cp.address) ? String(cp.address).trim() : name;
+    return 'https://map.kakao.com/link/search/' + encodeURIComponent(q);
   }
 
   // 걸으면서 보면 3초는 짧다 — 오류는 더 오래 둔다 (D-058)
@@ -2548,7 +2582,7 @@ window.APP_CONFIG = {
   }
 
   global.UI = {
-    $: $, $$: $$, esc: esc, nl2br: nl2br, telLinks: telLinks,
+    $: $, $$: $$, esc: esc, nl2br: nl2br, telLinks: telLinks, missionHtml: missionHtml, mapUrl: mapUrl,
     toast: toast, confirmDialog: confirmDialog, setBusy: setBusy,
     resizePhoto: resizePhoto, hhmm: hhmm, localIso: localIso, prettyDateTime: prettyDateTime,
     localDate: localDate, hmToMin: hmToMin, minutesSince: minutesSince, agoText: agoText,
@@ -2561,14 +2595,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v20.3 · 2026-10-17
+ * app.js · v20.4 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20.4 2026-10-17  미션을 시트에 적은 줄 그대로 · 지도는 좌표 → 주소 → 이름 순 (D-061)
  *  v20.3 2026-10-17  일지 사진: "촬영" 버튼 삭제 — 갤러리 하나만 (D-060)
  *  v20.2 2026-10-17  일지 사진: "갤러리에서 선택" 은 사진 고르는 화면이 바로 뜨게 — 형식을 나열 (D-059)
  *  v20.1 2026-10-16  일지 임시저장 · 코스 "운영본부에 저장됨" · 공지 번호 누르면 전화 (D-058)
  *  v20   2026-09-30  탐험일지 기본은 우리 조, 탭으로 전체 · 내 일지 탭 삭제 · 글마다 작성자와 조 (D-057)
- *  v19   2026-09-30  미션 점수 입력·표시 삭제 — 조장·스태프는 도착·완료만 (D-056)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -3099,9 +3133,7 @@ window.APP_CONFIG = {
 
     var cards = state.progress.map(function (p) {
       var cp = byCode[p.checkpoint] || { name: p.checkpoint };
-      var mapUrl = cp.lat && cp.lng
-        ? 'https://map.kakao.com/link/map/' + encodeURIComponent(cp.name) + ',' + cp.lat + ',' + cp.lng
-        : 'https://map.kakao.com/link/search/' + encodeURIComponent(cp.name);
+      var mapUrl = UI.mapUrl(cp);     // 좌표 → 주소 → 이름 (D-061)
       var isNext = next && next.checkpoint === p.checkpoint;
       var times = (p.arrivedAt ? '도착 ' + esc(UI.hhmm(p.arrivedAt)) : '') +
         (p.completedAt ? ' · 완료 ' + esc(UI.hhmm(p.completedAt)) : '');
@@ -3118,7 +3150,7 @@ window.APP_CONFIG = {
 
       var body =
         (cp.description ? '<p class="cp__desc">' + nl2br(esc(cp.description)) + '</p>' : '') +
-        (cp.mission ? '<p class="cp__mission"><strong>미션</strong> ' + esc(cp.mission) + '</p>' : '') +
+        UI.missionHtml(cp.mission) +
         (times && p.status !== '완료' ? '<p class="cp__times">' + times + '</p>' : '') +
         '<div class="cp__links">' +
           '<a class="btn btn--ghost btn--sm" href="' + esc(mapUrl) + '" target="_blank" rel="noopener">지도</a>' +
@@ -3320,7 +3352,7 @@ window.APP_CONFIG = {
       '<section class="section-head"><h2>📍 ' + esc(cp.name) + '</h2>' +
         '<p class="hint">' + esc(b.session) + ' · 이 지점에 오는 순서대로입니다. 조가 오면 "도착 확인", ' +
         '미션이 끝나면 "완료".</p></section>' +
-      (cp.mission ? '<p class="cp__mission"><strong>미션</strong> ' + esc(cp.mission) + '</p>' : '') +
+      UI.missionHtml(cp.mission) +
       '<div class="station-bar">' +
         '<span class="course-summary__count">도착 ' + here + '/' + n + ' · 완료 ' + done + '/' + n + '</span>' +
         (cp.quizUrl ? '<a class="btn btn--ghost btn--sm" href="' + esc(cp.quizUrl) + '" target="_blank" rel="noopener">퀴즈</a>' : '') +

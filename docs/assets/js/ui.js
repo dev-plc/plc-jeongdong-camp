@@ -1,12 +1,12 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v20.2 · 2026-10-17
+ * ui.js · v20.4 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20.4 2026-10-17  미션 여러 줄 · ※ 주의 줄 강조 · 지도는 좌표 → 주소 → 이름 순 (D-061)
  *  v20.2 2026-10-17  조별 카드: 조를 숫자 순서로(10조는 9조 다음) · 지점을 한 줄씩 이름 전체로 (D-059)
  *  v20.1 2026-10-16  알림 5초(오류 6초) · 전화번호 링크 (D-058)
  *  v19   2026-09-30  조별 카드에서 점수 표시 삭제 (D-056)
- *  v16   2026-09-26  조별 카드 공용화, 점수 표시·정정 칸 (D-051·052)
  *  v15   2026-09-26  파일 버전 표시 시작
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
@@ -51,6 +51,35 @@
       function (all, pre, a, sep, b, c) {
         return pre + '<a class="tel" href="tel:' + a + b + c + '">' + a + sep + b + sep + c + '</a>';
       });
+  }
+
+  /**
+   * 지점 미션 (D-061). 시트 `미션` 칸에 줄을 바꿔 적은 그대로 보인다.
+   * `※` 나 `*` 로 시작하는 줄(주의·범위)은 눈에 띄게 한다 — 미션 카드의 빨간 글씨와 같은 역할.
+   */
+  function missionHtml(text) {
+    var lines = String(text === null || text === undefined ? '' : text).replace(/\r/g, '').split('\n');
+    var body = lines.map(function (line) {
+      var t = line.trim();
+      if (!t) return '';
+      return /^[※*]/.test(t) ? '<span class="cp__mission-note">' + esc(t) + '</span>' : esc(t);
+    }).filter(String).join('<br>');
+    return body ? '<p class="cp__mission"><strong>미션</strong> ' + body + '</p>' : '';
+  }
+
+  /**
+   * 지점 지도 링크 (D-061) — 카카오맵.
+   * 시트에 위도·경도가 있으면 **그 자리에 핀**, 없으면 **주소로**, 주소도 없으면 이름으로 찾는다.
+   * 이름 검색은 "보구여관" 이 마곡의 이대서울병원 보구녀관으로 가는 식으로 엉뚱한 곳이 먼저 뜬다.
+   */
+  function mapUrl(cp) {
+    var name = (cp && cp.name) || '';
+    var lat = Number(cp && cp.lat), lng = Number(cp && cp.lng);
+    if (lat && lng && isFinite(lat) && isFinite(lng)) {
+      return 'https://map.kakao.com/link/map/' + encodeURIComponent(name) + ',' + lat + ',' + lng;
+    }
+    var q = (cp && cp.address) ? String(cp.address).trim() : name;
+    return 'https://map.kakao.com/link/search/' + encodeURIComponent(q);
   }
 
   // 걸으면서 보면 3초는 짧다 — 오류는 더 오래 둔다 (D-058)
@@ -484,7 +513,7 @@
   }
 
   global.UI = {
-    $: $, $$: $$, esc: esc, nl2br: nl2br, telLinks: telLinks,
+    $: $, $$: $$, esc: esc, nl2br: nl2br, telLinks: telLinks, missionHtml: missionHtml, mapUrl: mapUrl,
     toast: toast, confirmDialog: confirmDialog, setBusy: setBusy,
     resizePhoto: resizePhoto, hhmm: hhmm, localIso: localIso, prettyDateTime: prettyDateTime,
     localDate: localDate, hmToMin: hmToMin, minutesSince: minutesSince, agoText: agoText,
