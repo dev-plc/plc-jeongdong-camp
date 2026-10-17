@@ -15,14 +15,14 @@
 <style>
 /*
    ────────────────────────────────────────────────────────────────
-    app.css · v20.4 · 2026-10-17
+    app.css · v22 · 2026-10-17
    ────────────────────────────────────────────────────────────────
     변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+     v22   2026-10-17  출발 안내 줄 · 사진 여러 장(고른 사진 칸, 넘기는 띠) (D-063·064)
      v20.4 2026-10-17  미션 ※ 주의 줄 (D-061)
      v20.3 2026-10-17  사진 버튼 주석 — 갤러리 하나 (D-060)
      v20.2 2026-10-17  조별 카드: 지점을 한 줄씩 이름 전체로, 카드 최소 폭 260px (D-059)
      v20.1 2026-10-16  제목·지점명 고딕, 본문 글씨 키움, 저장됨 표시 (D-058)
-     v20   2026-09-30  탐험일지 글의 조 표시 (D-057)
 
     버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
           — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -263,13 +263,21 @@ textarea.input { resize: vertical; min-height: 96px; }
 .filepick-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .filepick-row .filepick { flex: 1 1 140px; }
 
-.photo-preview { margin-top: 10px; }
-.photo-preview img {
-  width: 100%;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  margin-bottom: 8px;
+/* 고른 사진 (D-064) — 네 칸 썸네일, 사진마다 ✕. 수정 화면의 지금 사진은 "빼기" 를 고르면 흐려진다. */
+.photo-picks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 10px 0 8px; }
+.photo-pick { position: relative; margin: 0; }
+.photo-pick img {
+  display: block; width: 100%; aspect-ratio: 1; object-fit: cover;
+  border-radius: var(--radius-sm); border: 1px solid var(--line); background: #eee;
 }
+.photo-pick__x {
+  position: absolute; top: 3px; right: 3px; width: 30px; height: 30px; padding: 0;
+  border: 0; border-radius: 50%; background: rgba(44, 35, 32, .72); color: #fff; font-size: 14px; cursor: pointer;
+}
+.photo-pick--old { cursor: pointer; }
+.photo-pick__out { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 4px; font-size: 13px; }
+.photo-pick--old:has(input:checked) img { opacity: .35; }
+.filepick.is-full { opacity: .5; cursor: default; }
 
 .hint { margin: 6px 0 0; font-size: 13px; color: var(--ink-2); }
 .hint--center { text-align: center; }
@@ -447,6 +455,15 @@ textarea.input { resize: vertical; min-height: 96px; }
 .jcard--editing { grid-column: 1 / -1; }
 .jcard__photo { display: block; }
 .jcard__photo img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #eee; }
+/* 여러 장 (D-064) — 옆으로 넘기는 띠. 다음 장이 조금 보여 넘길 수 있다는 걸 알린다. 장수 표시는 띠 밖. */
+.jcard__gallery { position: relative; }
+.jcard__photos { display: flex; gap: 4px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.jcard__photos::-webkit-scrollbar { display: none; }
+.jcard__photos .jcard__photo { flex: 0 0 88%; scroll-snap-align: start; }
+.jcard__count {
+  position: absolute; right: 8px; bottom: 8px; padding: 2px 9px; border-radius: 999px;
+  background: rgba(44, 35, 32, .72); color: #fff; font-size: 13px; pointer-events: none;
+}
 .jcard__body { padding: 14px; }
 .jcard__meta { margin: 0 0 6px; font-size: 13px; color: var(--ink-2); }
 .jcard__meta strong { color: var(--ink); font-weight: 500; }
@@ -643,6 +660,15 @@ textarea.input { resize: vertical; min-height: 96px; }
   color: var(--ink); text-decoration: none; font-size: 15px;
 }
 .course-summary__count { font-weight: 700; color: var(--brick); }
+/* 출발 안내 (D-063) — 1번 지점 앞. 첫 지점에 도착하면 내려간다. */
+.course-start {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 0 12px; padding: 12px 14px;
+  border: 1px solid var(--line); border-left: 4px solid var(--brick); border-radius: var(--radius-sm);
+  background: var(--paper-2); font-size: 15px;
+}
+.course-start__text { flex: 1; min-width: 0; }
+.course-start__text strong { color: var(--brick); }
 .cp--next { border-left-color: var(--brick); box-shadow: 0 0 0 2px rgba(152, 69, 52, .18), var(--shadow); }
 details.cp > summary { list-style: none; cursor: pointer; }
 details.cp > summary::-webkit-details-marker { display: none; }
@@ -844,6 +870,7 @@ body { padding-top: var(--demobar-h, 76px); }
     JOURNAL_OPEN: true,
     PROGRESS_OPEN: true,
     SHOW_FEE: true,
+    PHOTO_MAX_COUNT: 4,
     NOTICE_TICKER: '09:30까지 PL교회 본당 앞으로 모여 주세요'
   };
 
@@ -920,7 +947,7 @@ body { padding-top: var(--demobar-h, 76px); }
                      role: '조장', group: '1조', feeStatus: '완납', insurance: '가입완료' },
       team: { session: '10/31(토)', group: '1조', name: '1조 배재', color: '#984534',
               leaderName: '김캠티', meetingPoint: 'PL교회 본당 앞',
-              course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'] },
+              course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'], courseNote: '시청역 3번 출구' },
       isLeader: true, isAdmin: false,
       members: [
         { id: 'P0002', name: '김캠티', role: '조장', feeStatus: '완납', insurance: '가입완료' },
@@ -934,7 +961,7 @@ body { padding-top: var(--demobar-h, 76px); }
                      role: '일반', group: '1조', feeStatus: '미납', insurance: '미가입' },
       team: { session: '10/31(토)', group: '1조', name: '1조 배재', color: '#984534',
               leaderName: '김캠티', meetingPoint: 'PL교회 본당 앞',
-              course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'] },
+              course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'], courseNote: '시청역 3번 출구' },
       isLeader: false, isAdmin: false,
       members: []
     },
@@ -1078,7 +1105,8 @@ body { padding-top: var(--demobar-h, 76px); }
       createdAt: '2026-10-31T15:10:00+09:00', updatedAt: '' },
     { id: 'J0005', session: '10/31(토)', group: '4조', authorId: 'P0021', authorName: '서하준',
       checkpoint: 'CP4', text: '넷이 다 같이 완주! 심슨기념관 앞에서.',
-      photoUrl: PH('#b8863b', '4조 완주'), status: '승인', rejectReason: '',
+      photos: [PH('#b8863b', '4조 완주'), PH('#3f7d5a', '심슨기념관 계단'), PH('#6b5d57', '마지막 도장')],
+      status: '승인', rejectReason: '',
       createdAt: '2026-10-31T15:22:00+09:00', updatedAt: '' },
     { id: 'J0006', session: '10/31(토)', group: '2조', authorId: 'P0012', authorName: '정하늘',
       checkpoint: 'CP2', text: '러시아 공사관 탑. 생각보다 작았다.',
@@ -1089,6 +1117,28 @@ body { padding-top: var(--demobar-h, 76px); }
       photoUrl: '', status: '대기', rejectReason: '',
       createdAt: '2026-10-31T15:24:00+09:00', updatedAt: '' }
   ];
+
+  // 사진은 여러 장이다 (D-064). 서버와 같은 모양: photos [{id, url, award}] · photoUrl = 첫 장 · award = 한 장이라도 ★
+  var photoSeq = 0;
+  function photoOf(url) { return { id: 'D' + (++photoSeq), url: url, award: false }; }
+  function syncPhotos(j) {
+    j.photoUrl = j.photos.length ? j.photos[0].url : '';
+    j.award = j.photos.some(function (p) { return p.award; });
+    return j;
+  }
+  journals.forEach(function (j) {
+    j.photos = (j.photos || (j.photoUrl ? [j.photoUrl] : [])).map(photoOf);
+    syncPhotos(j);
+  });
+  function uploaded(list, single) {
+    var arr = Array.isArray(list) ? list : [];
+    if (!arr.length && single) arr = [single];
+    return arr.map(function (p) { return photoOf('data:' + p.mimeType + ';base64,' + p.dataBase64); });
+  }
+  function tooMany(n) {
+    return n > CONFIG.PHOTO_MAX_COUNT
+      ? { __error: { code: 'BAD_REQUEST', message: '사진은 ' + CONFIG.PHOTO_MAX_COUNT + '장까지 올릴 수 있습니다.' } } : null;
+  }
 
   function decorate(j) {
     var m = me();
@@ -1185,17 +1235,18 @@ body { padding-top: var(--demobar-h, 76px); }
 
       case 'journal.create': {
         var m3 = me();
-        if (!body.text && !body.photo) {
+        var newPhotos = uploaded(body.photos, body.photo);
+        if (!body.text && !newPhotos.length) {
           return { __error: { code: 'BAD_REQUEST', message: '소감이나 사진 중 하나는 있어야 합니다.' } };
         }
-        var created = {
+        if (tooMany(newPhotos.length)) return tooMany(newPhotos.length);
+        var created = syncPhotos({
           id: 'J' + (++seq), session: m3.participant.session, group: m3.participant.group,
           authorId: m3.participant.id, authorName: m3.participant.name,
-          checkpoint: body.checkpoint || '', text: body.text || '',
-          photoUrl: body.photo ? ('data:' + body.photo.mimeType + ';base64,' + body.photo.dataBase64) : '',
+          checkpoint: body.checkpoint || '', text: body.text || '', photos: newPhotos,
           status: CONFIG.JOURNAL_REQUIRE_APPROVAL ? '대기' : '승인', rejectReason: '',
           createdAt: '2026-10-31T15:30:00+09:00', updatedAt: ''
-        };
+        });
         journals = [created].concat(journals);
         return decorate(created);
       }
@@ -1206,13 +1257,18 @@ body { padding-top: var(--demobar-h, 76px); }
         if (!decorate(target).canEdit) {
           return { __error: { code: 'FORBIDDEN', message: '본인 또는 조장, 관리자만 수정할 수 있습니다.' } };
         }
-        if (body.text !== undefined) target.text = body.text;
-        if (body.checkpoint !== undefined) target.checkpoint = body.checkpoint;
-        if (body.removePhoto) target.photoUrl = '';
-        if (body.photo) target.photoUrl = 'data:' + body.photo.mimeType + ';base64,' + body.photo.dataBase64;
-        if (!target.text && !target.photoUrl) {
+        var drop = body.removePhotoIds || [];
+        var kept = (body.photo || body.removePhoto) ? [] : target.photos.filter(function (p) { return drop.indexOf(p.id) < 0; });
+        var added = uploaded(body.addPhotos, body.photo);
+        var nextText = body.text !== undefined ? body.text : target.text;
+        if (!nextText && !(kept.length + added.length)) {
           return { __error: { code: 'BAD_REQUEST', message: '소감이나 사진 중 하나는 남겨야 합니다.' } };
         }
+        if (tooMany(kept.length + added.length)) return tooMany(kept.length + added.length);
+        target.text = nextText;
+        if (body.checkpoint !== undefined) target.checkpoint = body.checkpoint;
+        target.photos = kept.concat(added);
+        syncPhotos(target);
         if (CONFIG.JOURNAL_REQUIRE_APPROVAL && target.status === '승인') target.status = '대기';
         return decorate(target);
       }
@@ -1323,10 +1379,13 @@ body { padding-top: var(--demobar-h, 76px); }
       case 'admin.journal.award': {
         var ja = journals.filter(function (x) { return x.id === body.id; })[0];
         if (!ja) return { __error: { code: 'NOT_FOUND', message: '찾을 수 없습니다.' } };
-        if (body.award && (ja.status !== '승인' || !ja.photoUrl)) {
+        if (body.award && (ja.status !== '승인' || !ja.photos.length)) {
           return { __error: { code: 'BAD_REQUEST', message: '승인된 사진 글만 수상작으로 지정할 수 있습니다.' } };
         }
-        ja.award = !!body.award;
+        // ★ 는 사진마다 (D-064). photoId 가 없으면 지정은 첫 장, 해제는 전부.
+        var pid = body.photoId || (body.award ? ja.photos[0].id : '');
+        ja.photos.forEach(function (p) { if (!pid || p.id === pid) p.award = !!body.award; });
+        syncPhotos(ja);
         return Object.assign({}, ja, { isMine: false, canEdit: true });
       }
 
@@ -1390,14 +1449,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * api.js · v19 · 2026-09-30
+ * api.js · v22 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v22   2026-10-17  사진 여러 장(photos·addPhotos)도 업로드 시간 예산으로 (D-064)
  *  v19   2026-09-30  캠프 모드 동안 로그인·내 정보·회비를 명단 사본에서 (D-055)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  —     2026-09-19  진행 기록을 묶어서 보낸다
  *  —     2026-09-19  진행을 미러에서 읽는다
- *  —     2026-09-18  표본이 0건인 액션에 '기준 초과' 가 찍히던 거짓 경보 수정
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -1728,7 +1787,8 @@ window.APP_CONFIG = {
     // 예산 이하다. 첫 시도가 예산을 다 쓰면 재시도할 시간이 없어 재시도하지 않는다.
     //
     // 사진이 실린 요청은 전송 자체가 오래 걸리는 것이 정상이라 예산이 따로다.
-    var hasPhoto = !!(body.photo && body.photo.dataBase64);
+    var hasPhoto = !!(body.photo && body.photo.dataBase64) ||
+      !!(body.photos && body.photos.length) || !!(body.addPhotos && body.addPhotos.length);
     var budget = hasPhoto ? CFG.UPLOAD_TIMEOUT : CFG.REQUEST_TIMEOUT;
     var left = function () {
       return budget > 0 ? Math.max(0, budget - (now() - started)) : 0;
@@ -2069,14 +2129,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v20.5 · 2026-10-17
+ * ui.js · v22 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v22   2026-10-17  일지 사진 여러 장 — 옆으로 넘기는 띠 · "📷 N장" (D-064)
  *  v20.5 2026-10-17  지도 주소 검색어 다듬기 — 괄호 메모·"대한민국" 을 뺀다 (D-061)
  *  v20.4 2026-10-17  미션 여러 줄 · ※ 주의 줄 강조 · 지도는 좌표 → 주소 → 이름 순 (D-061)
  *  v20.2 2026-10-17  조별 카드: 조를 숫자 순서로(10조는 9조 다음) · 지점을 한 줄씩 이름 전체로 (D-059)
  *  v20.1 2026-10-16  알림 5초(오류 6초) · 전화번호 링크 (D-058)
- *  v15   2026-09-26  파일 버전 표시 시작
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -2149,6 +2209,33 @@ window.APP_CONFIG = {
     }
     var q = cleanAddress((cp && cp.address) || '') || name;
     return 'https://map.kakao.com/link/search/' + encodeURIComponent(q);
+  }
+
+  /**
+   * 일지의 사진 [{id, url, award}] (D-064). v22 이전 서버는 `photos` 없이 `photoUrl` 한 장만 준다.
+   */
+  function journalPhotos(item) {
+    if (item.photos && item.photos.length) return item.photos;
+    return item.photoUrl ? [{ id: '', url: item.photoUrl, award: !!item.award }] : [];
+  }
+
+  /**
+   * 일지 카드의 사진. 한 장이면 예전 모양 그대로, 여러 장이면 **옆으로 넘기는 띠**와 "📷 N장".
+   * 장수 표시는 띠 밖에 둔다 — 띠 안에 두면 넘길 때 같이 밀려 사라진다.
+   */
+  function journalPhotosHtml(item, alt) {
+    var list = journalPhotos(item);
+    if (!list.length) return '';
+    var one = function (ph, i) {
+      return '<a class="jcard__photo" href="' + esc(ph.url) + '" target="_blank" rel="noopener">' +
+        '<img loading="lazy" src="' + esc(ph.url) + '" alt="' +
+        esc(alt + (list.length > 1 ? ' ' + (i + 1) + '/' + list.length : '')) + '"></a>';
+    };
+    if (list.length === 1) return one(list[0], 0);
+    return '<div class="jcard__gallery">' +
+      '<div class="jcard__photos">' + list.map(one).join('') + '</div>' +
+      '<span class="jcard__count">📷 ' + list.length + '장 · 옆으로 넘겨 보세요</span>' +
+    '</div>';
   }
 
   /**
@@ -2596,6 +2683,7 @@ window.APP_CONFIG = {
 
   global.UI = {
     $: $, $$: $$, esc: esc, nl2br: nl2br, telLinks: telLinks, missionHtml: missionHtml, mapUrl: mapUrl,
+    journalPhotos: journalPhotos, journalPhotosHtml: journalPhotosHtml,
     toast: toast, confirmDialog: confirmDialog, setBusy: setBusy,
     resizePhoto: resizePhoto, hhmm: hhmm, localIso: localIso, prettyDateTime: prettyDateTime,
     localDate: localDate, hmToMin: hmToMin, minutesSince: minutesSince, agoText: agoText,
@@ -2608,14 +2696,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v20.4 · 2026-10-17
+ * app.js · v22 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v22   2026-10-17  출발 안내(시청역 몇 번 출구) · 일지 사진 여러 장 (D-063·064)
  *  v20.4 2026-10-17  미션을 시트에 적은 줄 그대로 · 지도는 좌표 → 주소 → 이름 순 (D-061)
  *  v20.3 2026-10-17  일지 사진: "촬영" 버튼 삭제 — 갤러리 하나만 (D-060)
  *  v20.2 2026-10-17  일지 사진: "갤러리에서 선택" 은 사진 고르는 화면이 바로 뜨게 — 형식을 나열 (D-059)
  *  v20.1 2026-10-16  일지 임시저장 · 코스 "운영본부에 저장됨" · 공지 번호 누르면 전화 (D-058)
- *  v20   2026-09-30  탐험일지 기본은 우리 조, 탭으로 전체 · 내 일지 탭 삭제 · 글마다 작성자와 조 (D-057)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -2651,7 +2739,7 @@ window.APP_CONFIG = {
     progress: [],
     journal: { items: [], total: 0, nextCursor: null, scope: '' },   // '' = 기본 탭 (journalScopes 의 첫째)
     fee: null,
-    pendingPhoto: null,  // 작성 폼에 붙인 사진
+    editPhotos: [],      // 일지 수정 화면에서 새로 고른 사진 (D-064)
     editing: null,       // 수정 중인 일지 id
     station: null,       // 거점 스태프 — station.board 응답 (D-051)
     stationAll: false    // 거점 스태프가 '전체 진행 보기' 를 연 상태
@@ -2986,6 +3074,8 @@ window.APP_CONFIG = {
             (me.isLeader ? ' <span class="badge">조장</span>' : '') + '</dd></div>' +
           (team && team.leaderName ? '<div><dt>조장</dt><dd>' + esc(team.leaderName) + '</dd></div>' : '') +
           (team && team.meetingPoint ? '<div><dt>집결</dt><dd>' + esc(team.meetingPoint) + '</dd></div>' : '') +
+          // 출발 안내 — 코스 비고(예: "시청역 3번 출구", D-063). 지하철에서 내리기 전에 보는 곳이 여기다.
+          (team && team.courseNote ? '<div><dt>출발</dt><dd>' + esc(team.courseNote) + '</dd></div>' : '') +
         '</dl>' +
         (team
           ? '<p class="card__foot">' + (team.course ? esc(L('course', '배정 코스')) + ' · ' + esc(team.course) + '<br>' : '') +
@@ -3201,6 +3291,18 @@ window.APP_CONFIG = {
         '</a>'
       : '';
 
+    // 출발 안내 (D-063) — 1번 지점 앞에 둔다. 첫 지점에 도착하면 더는 필요 없어 내린다.
+    var note = state.me.team && state.me.team.courseNote;
+    var started = state.progress.some(function (p) { return p.status === '도착' || p.status === '완료'; });
+    var first = state.progress[0];
+    var start = note && !started
+      ? '<div class="course-start">' +
+          '<span class="course-start__text">🚇 출발 · <strong>' + esc(note) + '</strong>' +
+            (first ? ' → 1. ' + esc((byCode[first.checkpoint] || { name: first.checkpoint }).name) : '') + '</span>' +
+          '<a class="btn btn--ghost btn--sm" href="' + esc(UI.mapUrl({ name: note })) + '" target="_blank" rel="noopener">지도</a>' +
+        '</div>'
+      : '';
+
     setView(
       '<section class="section-head"><h2>답사 코스</h2>' +
         '<p class="hint">우리 조 순서대로 표시됩니다.' +
@@ -3208,6 +3310,7 @@ window.APP_CONFIG = {
           ? (state.boot.config.PROGRESS_OPEN ? ' 도착하면 "도착했어요", 끝나면 "완료했어요" 를 눌러 주세요.' : ' 진행 기록은 마감되었습니다.')
           : ' 상태는 조장이 기록합니다.') + '</p></section>' +
       summary +
+      start +
       (cards || '<p class="empty">코스 정보가 없습니다.</p>')
     );
 
@@ -3531,6 +3634,55 @@ window.APP_CONFIG = {
    */
   var GALLERY_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
 
+  /**
+   * 일지 한 편의 사진 수 (D-064). 서버가 Config `PHOTO_MAX_COUNT` 를 내려준다.
+   * 값이 없으면 v22 이전 서버(또는 그때 만든 사본)다 — 한 장만, 예전 필드(`photo`)로 보낸다.
+   * 새 필드(`photos`)를 모르는 서버에 보내면 사진이 말없이 빠진다.
+   */
+  function multiPhoto() { return !!Number(state.boot.config.PHOTO_MAX_COUNT); }
+  function maxPhotos() { return Number(state.boot.config.PHOTO_MAX_COUNT) || 1; }
+
+  /** 올릴 모양 — 미리보기용 data URL 은 보내지 않는다. */
+  function uploadOf(ph) { return { name: ph.name, mimeType: ph.mimeType, dataBase64: ph.dataBase64 }; }
+
+  /**
+   * 사진 고르기 (D-064). 고를 때마다 **이어 붙인다** — 한 번에 한 장만 고르게 하는 피커도 있다.
+   * 줄이기(UI.resizePhoto)는 **한 장씩 차례로** 한다. 싼 폰에서 큰 사진 여러 장을 한꺼번에 풀면 메모리가 모자란다.
+   *
+   * @param {HTMLInputElement} input
+   * @param {{list: Array, room: function(): number, paint: function(), busy: function(string)}} o
+   */
+  function bindPhotoPicker(input, o) {
+    var queue = Promise.resolve();
+    input.addEventListener('change', function () {
+      var files = [].slice.call(input.files || []);
+      input.value = '';   // 같은 사진을 다시 골라도 change 가 뜨게
+      if (!files.length) return;
+      var room = o.room();
+      if (files.length > room) {
+        toast('사진은 ' + maxPhotos() + '장까지 넣을 수 있어요.' + (room > 0 ? ' 앞의 ' + room + '장만 넣었습니다.' : ''), 'error');
+        files = files.slice(0, Math.max(room, 0));
+      }
+      files.forEach(function (file, i) {
+        queue = queue.then(function () {
+          o.busy('사진 준비 중… ' + (i + 1) + '/' + files.length);
+          return UI.resizePhoto(file).then(function (photo) {
+            if (o.room() > 0) { o.list.push(photo); o.paint(); }   // 앞의 묶음이 아직 도는 중에 또 골랐을 때
+          }, function (err) { toast(err.message, 'error'); });
+        });
+      });
+      queue = queue.then(function () { o.busy(''); });
+    });
+  }
+
+  /** 고른 사진 썸네일 — 사진마다 ✕ (data-remove = 순번). */
+  function picksHtml(list, what) {
+    return list.map(function (ph, i) {
+      return '<figure class="photo-pick"><img src="' + esc(ph.previewUrl) + '" alt="' + what + ' ' + (i + 1) + '">' +
+        '<button type="button" class="photo-pick__x" data-remove="' + i + '" aria-label="' + what + ' ' + (i + 1) + ' 빼기">✕</button></figure>';
+    }).join('');
+  }
+
   function journalFormHtml() {
     var cps = state.boot.checkpoints || [];
     return '<form id="journalForm" class="card card--form">' +
@@ -3552,15 +3704,14 @@ window.APP_CONFIG = {
         // capture 는 힌트일 뿐이라 삼성 인터넷에서 폰 카메라 앱이 마지막에 쓴 렌즈(셀카)로 열렸다.
         // 웹에서 후면을 강제할 수 없다. 폰 카메라로 먼저 찍고 여기서 고르는 쪽이 장년층에도 익숙하다.
         // capture 를 다시 붙이지 않는다 — 붙이면 그 입력은 카메라만 열고 갤러리를 없앤다 (D-027).
+        // 여러 장은 `multiple` — 한 번에 못 고르는 피커면 여러 번 눌러 이어 붙인다 (D-064).
         '<div class="filepick-row">' +
-          '<label class="filepick"><input type="file" name="photoPick" accept="' + GALLERY_ACCEPT + '" hidden>' +
-            '<span>🖼 사진 고르기 (갤러리)</span></label>' +
+          '<label class="filepick" id="photoPickBtn"><input type="file" name="photoPick" accept="' + GALLERY_ACCEPT + '"' +
+            (maxPhotos() > 1 ? ' multiple' : '') + ' hidden>' +
+            '<span>🖼 사진 고르기 (갤러리)' + (maxPhotos() > 1 ? ' · 최대 ' + maxPhotos() + '장' : '') + '</span></label>' +
         '</div>' +
         '<p class="hint" id="photoHint">카메라로 먼저 찍은 뒤 여기서 골라 주세요.</p>' +
-        '<div id="photoPreview" class="photo-preview" hidden>' +
-          '<img alt="선택한 사진 미리보기">' +
-          '<button type="button" class="btn btn--ghost btn--sm" id="photoClear">사진 빼기</button>' +
-        '</div>' +
+        '<div id="photoPicks" class="photo-picks" hidden></div>' +
       '</div>' +
       '<button class="btn btn--primary btn--block" type="submit">올리기</button>' +
       (state.boot.config.JOURNAL_REQUIRE_APPROVAL
@@ -3570,9 +3721,11 @@ window.APP_CONFIG = {
 
   function bindJournalForm() {
     var form = $('#journalForm');
-    // 파일 입력은 지금 하나(갤러리)다. 목록으로 다루는 것은 예전 두 입력(D-027) 시절 그대로 — 결과는 사진 한 장이다.
-    var inputs = [].slice.call(form.querySelectorAll('input[type="file"]'));
-    var preview = $('#photoPreview');
+    var input = form.querySelector('input[name="photoPick"]');
+    var picks = $('#photoPicks');
+    var hint = $('#photoHint');
+    var baseHint = hint.textContent;
+    var picked = [];     // 고른 사진 — 줄인 것 (D-064)
 
     // 쓰던 글을 되살린다 — 사진 고르러·메신저 보러 나갔다 오면 브라우저가 화면을 새로 그린다 (D-058)
     var draft = loadDraft();
@@ -3585,57 +3738,48 @@ window.APP_CONFIG = {
     form.text.addEventListener('input', keepDraft);
     form.checkpoint.addEventListener('change', keepDraft);
 
-    inputs.forEach(function (input) {
-      input.addEventListener('change', function () {
-        var file = input.files && input.files[0];
-        if (!file) return;
-        UI.resizePhoto(file)
-          .then(function (photo) {
-            state.pendingPhoto = photo;
-            preview.querySelector('img').src = photo.previewUrl;
-            preview.hidden = false;
-          })
-          .catch(function (err) {
-            input.value = '';
-            toast(err.message, 'error');
-          });
-      });
+    function paintPicks() {
+      picks.hidden = !picked.length;
+      picks.innerHTML = picksHtml(picked, '고른 사진');
+      // 다 차면 버튼을 잠근다 — ✕ 로 빼면 다시 열린다
+      var full = picked.length >= maxPhotos();
+      input.disabled = full;
+      $('#photoPickBtn').classList.toggle('is-full', full);
+    }
+    bindPhotoPicker(input, {
+      list: picked,
+      room: function () { return maxPhotos() - picked.length; },
+      paint: paintPicks,
+      busy: function (t) { hint.textContent = t || baseHint; }
     });
-
-    $('#photoClear').addEventListener('click', function () {
-      state.pendingPhoto = null;
-      // 둘 다 비운다. 하나만 비우면 같은 사진을 다시 골랐을 때 change 가 안 뜬다.
-      inputs.forEach(function (input) { input.value = ''; });
-      preview.hidden = true;
+    picks.addEventListener('click', function (e) {
+      var x = e.target.closest('[data-remove]');
+      if (!x) return;
+      picked.splice(Number(x.getAttribute('data-remove')), 1);
+      paintPicks();
     });
 
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       var text = form.text.value.trim();
-      if (!text && !state.pendingPhoto) {
+      if (!text && !picked.length) {
         toast('소감이나 사진 중 하나는 있어야 합니다.', 'error');
         return;
       }
       var btn = form.querySelector('button[type="submit"]');
-      UI.setBusy(btn, true, '올리는 중…');
+      UI.setBusy(btn, true, picked.length ? '올리는 중… (사진 ' + picked.length + '장)' : '올리는 중…');
 
-      API.journalCreate({
-        checkpoint: form.checkpoint.value,
-        text: text,
-        photo: state.pendingPhoto
-          ? {
-              name: state.pendingPhoto.name,
-              mimeType: state.pendingPhoto.mimeType,
-              dataBase64: state.pendingPhoto.dataBase64
-            }
-          : null
-      })
+      var body = { checkpoint: form.checkpoint.value, text: text };
+      if (multiPhoto()) body.photos = picked.map(uploadOf);
+      else body.photo = picked.length ? uploadOf(picked[0]) : null;
+
+      API.journalCreate(body)
         .then(function () {
           form.reset();
           clearDraft();
           $('#draftHint').hidden = true;
-          state.pendingPhoto = null;
-          preview.hidden = true;
+          picked.length = 0;
+          paintPicks();
           UI.setBusy(btn, false);
           toast(state.boot.config.JOURNAL_REQUIRE_APPROVAL ? '올렸습니다. 운영진 확인 후 공개됩니다.' : '올렸습니다.');
           loadJournal(0);
@@ -3706,10 +3850,7 @@ window.APP_CONFIG = {
     (state.boot.checkpoints || []).forEach(function (c) { if (c.code === item.checkpoint) cpName = c.name; });
 
     return '<article class="jcard" data-id="' + esc(item.id) + '">' +
-      (item.photoUrl
-        ? '<a class="jcard__photo" href="' + esc(item.photoUrl) + '" target="_blank" rel="noopener">' +
-          '<img loading="lazy" src="' + esc(item.photoUrl) + '" alt="' + esc(item.authorName) + '님의 탐험일지 사진"></a>'
-        : '') +
+      UI.journalPhotosHtml(item, item.authorName + '님의 탐험일지 사진') +
       '<div class="jcard__body">' +
         '<p class="jcard__meta">' +
           // 작성자와 조를 함께 — "전체" 탭에서는 어느 조 글인지가 중요하다 (D-057)
@@ -3736,6 +3877,8 @@ window.APP_CONFIG = {
 
   function journalEditHtml(item) {
     var cps = state.boot.checkpoints || [];
+    var photos = UI.journalPhotos(item);
+    var max = maxPhotos();
     return '<article class="jcard jcard--editing" data-id="' + esc(item.id) + '">' +
       '<div class="jcard__body">' +
         '<h3 class="card__title">기록 수정</h3>' +
@@ -3749,11 +3892,17 @@ window.APP_CONFIG = {
           '</select></label>' +
         '<label class="field"><span class="field__label">소감</span>' +
           '<textarea class="input" rows="4" maxlength="1000" data-field="text">' + esc(item.text) + '</textarea></label>' +
-        (item.photoUrl
-          ? '<label class="check"><input type="checkbox" data-field="removePhoto"> 사진 삭제</label>'
+        // 지금 사진 — 사진마다 "빼기" (D-064)
+        (photos.length
+          ? '<div class="photo-picks">' + photos.map(function (ph, i) {
+              return '<label class="photo-pick photo-pick--old"><img src="' + esc(ph.url) + '" alt="지금 사진 ' + (i + 1) + '">' +
+                '<span class="photo-pick__out"><input type="checkbox" data-remove-photo="' + esc(ph.id) + '"> 빼기</span></label>';
+            }).join('') + '</div>'
           : '') +
-        '<label class="filepick filepick--sm"><input type="file" accept="' + GALLERY_ACCEPT + '" data-field="photo" hidden>' +
-          '<span>사진 교체</span></label>' +
+        '<label class="filepick filepick--sm"><input type="file" accept="' + GALLERY_ACCEPT + '"' +
+          (max > 1 ? ' multiple' : '') + ' data-field="photo" hidden>' +
+          '<span>' + (max > 1 ? '사진 추가 · 최대 ' + max + '장' : (photos.length ? '사진 교체' : '사진 추가')) + '</span></label>' +
+        '<div class="photo-picks" data-role="newPicks" hidden></div>' +
         '<p class="hint" data-role="photoName"></p>' +
         (state.boot.config.JOURNAL_REQUIRE_APPROVAL && item.status === '승인'
           ? '<p class="hint">수정하면 다시 운영진 확인을 거칩니다.</p>' : '') +
@@ -3785,7 +3934,7 @@ window.APP_CONFIG = {
     }
     if (act === 'cancel') {
       state.editing = null;
-      state.pendingPhoto = null;
+      state.editPhotos = [];
       paintJournalList({ galleryScope: state.boot.config.GALLERY_SCOPE });
       return;
     }
@@ -3808,21 +3957,23 @@ window.APP_CONFIG = {
         text: card.querySelector('[data-field="text"]').value.trim(),
         checkpoint: card.querySelector('[data-field="checkpoint"]').value
       };
-      var removeBox = card.querySelector('[data-field="removePhoto"]');
-      if (removeBox && removeBox.checked) payload.removePhoto = true;
-      if (state.pendingPhoto) {
-        payload.photo = {
-          name: state.pendingPhoto.name,
-          mimeType: state.pendingPhoto.mimeType,
-          dataBase64: state.pendingPhoto.dataBase64
-        };
+      var removeIds = [].slice.call(card.querySelectorAll('[data-remove-photo]:checked'))
+        .map(function (el) { return el.getAttribute('data-remove-photo'); });
+      var adds = state.editPhotos.map(uploadOf);
+      if (multiPhoto()) {
+        if (removeIds.length) payload.removePhotoIds = removeIds;
+        if (adds.length) payload.addPhotos = adds;
+      } else if (adds.length) {
+        payload.photo = adds[0];         // v22 이전 서버: 새 사진은 교체
+      } else if (removeIds.length) {
+        payload.removePhoto = true;      // v22 이전 서버: 빼기는 전부 삭제
       }
 
-      UI.setBusy(btn, true, '저장 중…');
+      UI.setBusy(btn, true, adds.length ? '저장 중… (사진 ' + adds.length + '장)' : '저장 중…');
       API.journalUpdate(payload)
         .then(function (updated) {
           state.editing = null;
-          state.pendingPhoto = null;
+          state.editPhotos = [];
           state.journal.items = state.journal.items.map(function (i) { return i.id === id ? updated : i; });
           paintJournalList({ galleryScope: state.boot.config.GALLERY_SCOPE });
           toast('수정했습니다.');
@@ -3838,16 +3989,27 @@ window.APP_CONFIG = {
     var card = document.querySelector('.jcard--editing[data-id="' + CSS.escape(id) + '"]');
     if (!card) return;
     var input = card.querySelector('[data-field="photo"]');
+    var picks = card.querySelector('[data-role="newPicks"]');
     var label = card.querySelector('[data-role="photoName"]');
-    input.addEventListener('change', function () {
-      var file = input.files && input.files[0];
-      if (!file) return;
-      UI.resizePhoto(file)
-        .then(function (photo) {
-          state.pendingPhoto = photo;
-          label.textContent = '새 사진 선택됨 · ' + Math.round(photo.approxBytes / 1024) + 'KB';
-        })
-        .catch(function (err) { toast(err.message, 'error'); });
+    var list = state.editPhotos = [];
+    // 남는 자리 = 한도 − (빼지 않은 지금 사진) − 새로 고른 사진. v22 이전 서버는 한 장을 교체한다.
+    var kept = function () { return card.querySelectorAll('[data-remove-photo]:not(:checked)').length; };
+    function paint() {
+      picks.hidden = !list.length;
+      picks.innerHTML = picksHtml(list, '새 사진');
+      label.textContent = list.length ? '새 사진 ' + list.length + '장 — 저장하면 올라갑니다.' : '';
+    }
+    bindPhotoPicker(input, {
+      list: list,
+      room: function () { return (multiPhoto() ? maxPhotos() - kept() : 1) - list.length; },
+      paint: paint,
+      busy: function (t) { if (t) label.textContent = t; else paint(); }
+    });
+    picks.addEventListener('click', function (e) {
+      var x = e.target.closest('[data-remove]');
+      if (!x) return;
+      list.splice(Number(x.getAttribute('data-remove')), 1);
+      paint();
     });
   }
 
@@ -3933,14 +4095,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v20.2 · 2026-10-17
+ * admin.js · v22 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v22   2026-10-17  일지 사진 여러 장 — 검수에 전부, 시상 ★ 는 사진마다 (D-064)
  *  v20.2 2026-10-17  진행 현황: 조를 숫자 순서로 — 카드와 표가 같은 순서 (D-059)
  *  v19   2026-09-30  점수 칸·시상 퀴즈 부문 삭제 — 정정은 상태만 (D-056)
  *  v16   2026-09-26  진행 칸 정정, 🏆 시상, 일지 일괄 승인 (D-052)
  *  v15.1 2026-09-26  진행표를 조별 카드로 + 40분 무소식 ⚠ (D-050)
- *  v15   2026-09-26  파일 버전 표시 시작
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -4230,11 +4392,9 @@ window.APP_CONFIG = {
     }
     acts.push('<button type="button" class="btn btn--ghost btn--sm btn--danger-text" data-act="delete">삭제</button>');
 
+    // 🔴 사진은 **전부** 보인다 (D-064) — 승인은 글 전체에 걸린다. 둘째 장을 못 보고 승인하면 안 된다.
     return '<article class="jcard" data-id="' + esc(item.id) + '" data-status="' + esc(item.status) + '">' +
-      (item.photoUrl
-        ? '<a class="jcard__photo" href="' + esc(item.photoUrl) + '" target="_blank" rel="noopener">' +
-          '<img loading="lazy" src="' + esc(item.photoUrl) + '" alt="일지 사진"></a>'
-        : '') +
+      UI.journalPhotosHtml(item, '일지 사진') +
       '<div class="jcard__body">' +
         '<p class="jcard__meta"><strong>' + esc(item.authorName) + '</strong> · ' +
           esc(item.session) + ' ' + esc(item.group) + ' · ' +
@@ -4623,10 +4783,16 @@ window.APP_CONFIG = {
     var teams = data.board.teams.filter(function (t) { return matchesSession(t.session); });
     var showSession = state.session === '전체';
     var time = timeRanking(teams);
-    var photos = data.journals.filter(function (j) {
-      return j.status === '승인' && j.photoUrl && matchesSession(j.session);
-    }).sort(function (a, b) { return (b.award ? 1 : 0) - (a.award ? 1 : 0); });
-    var starred = photos.filter(function (j) { return j.award; });
+    // 사진 한 장 = 한 칸 (D-064). ★ 는 사진마다 붙는다 — 한 글에서 제일 나은 한 장을 고른다.
+    var photos = [];
+    data.journals.forEach(function (j) {
+      if (j.status !== '승인' || !matchesSession(j.session)) return;
+      var list = UI.journalPhotos(j);
+      list.forEach(function (ph, i) { photos.push({ j: j, ph: ph, n: i + 1, of: list.length }); });
+    });
+    photos = photos.filter(function (x) { return x.ph.award; })
+      .concat(photos.filter(function (x) { return !x.ph.award; }));
+    var starred = photos.filter(function (x) { return x.ph.award; });
     var top = state.present ? 3 : Infinity;
     var label = function (t) { return (showSession ? esc(t.session) + ' ' : '') + esc(t.name); };
 
@@ -4643,12 +4809,13 @@ window.APP_CONFIG = {
 
     var shownPhotos = state.present ? starred : photos;
     var photoHtml = shownPhotos.length
-      ? '<div class="award-grid">' + shownPhotos.map(function (j) {
-          return '<figure class="award-photo' + (j.award ? ' is-award' : '') + '" data-id="' + esc(j.id) + '">' +
-            '<img loading="lazy" src="' + esc(j.photoUrl) + '" alt="' + esc(j.authorName) + ' 사진">' +
-            '<figcaption>' + (showSession ? esc(j.session) + ' ' : '') + esc(j.group) + ' · ' + esc(j.authorName) +
-              (state.present ? '' : ' <button type="button" class="btn btn--sm ' + (j.award ? 'btn--primary' : 'btn--ghost') +
-                '" data-award="' + (j.award ? '0' : '1') + '">' + (j.award ? '★ 수상' : '☆ 지정') + '</button>') +
+      ? '<div class="award-grid">' + shownPhotos.map(function (x) {
+          var j = x.j, on = x.ph.award, part = x.of > 1 ? ' (' + x.n + '/' + x.of + ')' : '';
+          return '<figure class="award-photo' + (on ? ' is-award' : '') + '" data-id="' + esc(j.id) + '" data-photo="' + esc(x.ph.id) + '">' +
+            '<img loading="lazy" src="' + esc(x.ph.url) + '" alt="' + esc(j.authorName) + ' 사진' + part + '">' +
+            '<figcaption>' + (showSession ? esc(j.session) + ' ' : '') + esc(j.group) + ' · ' + esc(j.authorName) + part +
+              (state.present ? '' : ' <button type="button" class="btn btn--sm ' + (on ? 'btn--primary' : 'btn--ghost') +
+                '" data-award="' + (on ? '0' : '1') + '">' + (on ? '★ 수상' : '☆ 지정') + '</button>') +
             '</figcaption></figure>';
         }).join('') + '</div>'
       : '<p class="empty">' + (state.present ? '★ 수상작을 아직 고르지 않았습니다.' : '승인된 사진이 없습니다.') + '</p>';
@@ -4681,13 +4848,17 @@ window.APP_CONFIG = {
     if (e.target.closest('[data-reload]')) { invalidate('awards'); renderAwards(); return; }
     var btn = e.target.closest('[data-award]');
     if (!btn) return;
-    var id = btn.closest('[data-id]').getAttribute('data-id');
+    var fig = btn.closest('[data-id]');
+    var id = fig.getAttribute('data-id');
+    var photoId = fig.getAttribute('data-photo');
     var on = btn.getAttribute('data-award') === '1';
+    var body = { id: id, award: on };
+    if (photoId) body.photoId = photoId;     // 빈 값 = v22 이전 서버의 한 장짜리 응답
     UI.setBusy(btn, true, '…');
-    API.call('admin.journal.award', { id: id, award: on })
+    API.call('admin.journal.award', body)
       .then(function (j) {
         state.cache.awards.journals = state.cache.awards.journals.map(function (x) {
-          return x.id === j.id ? Object.assign({}, x, { award: j.award }) : x;
+          return x.id === j.id ? Object.assign({}, x, { award: j.award, photos: j.photos }) : x;
         });
         invalidate('review');
         paintAwards(state.cache.awards);

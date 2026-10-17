@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v20.4 · 2026-10-17
+ * app.js · v22 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v22   2026-10-17  출발 안내(시청역 몇 번 출구) · 일지 사진 여러 장 (D-063·064)
  *  v20.4 2026-10-17  미션을 시트에 적은 줄 그대로 · 지도는 좌표 → 주소 → 이름 순 (D-061)
  *  v20.3 2026-10-17  일지 사진: "촬영" 버튼 삭제 — 갤러리 하나만 (D-060)
  *  v20.2 2026-10-17  일지 사진: "갤러리에서 선택" 은 사진 고르는 화면이 바로 뜨게 — 형식을 나열 (D-059)
  *  v20.1 2026-10-16  일지 임시저장 · 코스 "운영본부에 저장됨" · 공지 번호 누르면 전화 (D-058)
- *  v20   2026-09-30  탐험일지 기본은 우리 조, 탭으로 전체 · 내 일지 탭 삭제 · 글마다 작성자와 조 (D-057)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -43,7 +43,7 @@
     progress: [],
     journal: { items: [], total: 0, nextCursor: null, scope: '' },   // '' = 기본 탭 (journalScopes 의 첫째)
     fee: null,
-    pendingPhoto: null,  // 작성 폼에 붙인 사진
+    editPhotos: [],      // 일지 수정 화면에서 새로 고른 사진 (D-064)
     editing: null,       // 수정 중인 일지 id
     station: null,       // 거점 스태프 — station.board 응답 (D-051)
     stationAll: false    // 거점 스태프가 '전체 진행 보기' 를 연 상태
@@ -378,6 +378,8 @@
             (me.isLeader ? ' <span class="badge">조장</span>' : '') + '</dd></div>' +
           (team && team.leaderName ? '<div><dt>조장</dt><dd>' + esc(team.leaderName) + '</dd></div>' : '') +
           (team && team.meetingPoint ? '<div><dt>집결</dt><dd>' + esc(team.meetingPoint) + '</dd></div>' : '') +
+          // 출발 안내 — 코스 비고(예: "시청역 3번 출구", D-063). 지하철에서 내리기 전에 보는 곳이 여기다.
+          (team && team.courseNote ? '<div><dt>출발</dt><dd>' + esc(team.courseNote) + '</dd></div>' : '') +
         '</dl>' +
         (team
           ? '<p class="card__foot">' + (team.course ? esc(L('course', '배정 코스')) + ' · ' + esc(team.course) + '<br>' : '') +
@@ -593,6 +595,18 @@
         '</a>'
       : '';
 
+    // 출발 안내 (D-063) — 1번 지점 앞에 둔다. 첫 지점에 도착하면 더는 필요 없어 내린다.
+    var note = state.me.team && state.me.team.courseNote;
+    var started = state.progress.some(function (p) { return p.status === '도착' || p.status === '완료'; });
+    var first = state.progress[0];
+    var start = note && !started
+      ? '<div class="course-start">' +
+          '<span class="course-start__text">🚇 출발 · <strong>' + esc(note) + '</strong>' +
+            (first ? ' → 1. ' + esc((byCode[first.checkpoint] || { name: first.checkpoint }).name) : '') + '</span>' +
+          '<a class="btn btn--ghost btn--sm" href="' + esc(UI.mapUrl({ name: note })) + '" target="_blank" rel="noopener">지도</a>' +
+        '</div>'
+      : '';
+
     setView(
       '<section class="section-head"><h2>답사 코스</h2>' +
         '<p class="hint">우리 조 순서대로 표시됩니다.' +
@@ -600,6 +614,7 @@
           ? (state.boot.config.PROGRESS_OPEN ? ' 도착하면 "도착했어요", 끝나면 "완료했어요" 를 눌러 주세요.' : ' 진행 기록은 마감되었습니다.')
           : ' 상태는 조장이 기록합니다.') + '</p></section>' +
       summary +
+      start +
       (cards || '<p class="empty">코스 정보가 없습니다.</p>')
     );
 
@@ -923,6 +938,55 @@
    */
   var GALLERY_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
 
+  /**
+   * 일지 한 편의 사진 수 (D-064). 서버가 Config `PHOTO_MAX_COUNT` 를 내려준다.
+   * 값이 없으면 v22 이전 서버(또는 그때 만든 사본)다 — 한 장만, 예전 필드(`photo`)로 보낸다.
+   * 새 필드(`photos`)를 모르는 서버에 보내면 사진이 말없이 빠진다.
+   */
+  function multiPhoto() { return !!Number(state.boot.config.PHOTO_MAX_COUNT); }
+  function maxPhotos() { return Number(state.boot.config.PHOTO_MAX_COUNT) || 1; }
+
+  /** 올릴 모양 — 미리보기용 data URL 은 보내지 않는다. */
+  function uploadOf(ph) { return { name: ph.name, mimeType: ph.mimeType, dataBase64: ph.dataBase64 }; }
+
+  /**
+   * 사진 고르기 (D-064). 고를 때마다 **이어 붙인다** — 한 번에 한 장만 고르게 하는 피커도 있다.
+   * 줄이기(UI.resizePhoto)는 **한 장씩 차례로** 한다. 싼 폰에서 큰 사진 여러 장을 한꺼번에 풀면 메모리가 모자란다.
+   *
+   * @param {HTMLInputElement} input
+   * @param {{list: Array, room: function(): number, paint: function(), busy: function(string)}} o
+   */
+  function bindPhotoPicker(input, o) {
+    var queue = Promise.resolve();
+    input.addEventListener('change', function () {
+      var files = [].slice.call(input.files || []);
+      input.value = '';   // 같은 사진을 다시 골라도 change 가 뜨게
+      if (!files.length) return;
+      var room = o.room();
+      if (files.length > room) {
+        toast('사진은 ' + maxPhotos() + '장까지 넣을 수 있어요.' + (room > 0 ? ' 앞의 ' + room + '장만 넣었습니다.' : ''), 'error');
+        files = files.slice(0, Math.max(room, 0));
+      }
+      files.forEach(function (file, i) {
+        queue = queue.then(function () {
+          o.busy('사진 준비 중… ' + (i + 1) + '/' + files.length);
+          return UI.resizePhoto(file).then(function (photo) {
+            if (o.room() > 0) { o.list.push(photo); o.paint(); }   // 앞의 묶음이 아직 도는 중에 또 골랐을 때
+          }, function (err) { toast(err.message, 'error'); });
+        });
+      });
+      queue = queue.then(function () { o.busy(''); });
+    });
+  }
+
+  /** 고른 사진 썸네일 — 사진마다 ✕ (data-remove = 순번). */
+  function picksHtml(list, what) {
+    return list.map(function (ph, i) {
+      return '<figure class="photo-pick"><img src="' + esc(ph.previewUrl) + '" alt="' + what + ' ' + (i + 1) + '">' +
+        '<button type="button" class="photo-pick__x" data-remove="' + i + '" aria-label="' + what + ' ' + (i + 1) + ' 빼기">✕</button></figure>';
+    }).join('');
+  }
+
   function journalFormHtml() {
     var cps = state.boot.checkpoints || [];
     return '<form id="journalForm" class="card card--form">' +
@@ -944,15 +1008,14 @@
         // capture 는 힌트일 뿐이라 삼성 인터넷에서 폰 카메라 앱이 마지막에 쓴 렌즈(셀카)로 열렸다.
         // 웹에서 후면을 강제할 수 없다. 폰 카메라로 먼저 찍고 여기서 고르는 쪽이 장년층에도 익숙하다.
         // capture 를 다시 붙이지 않는다 — 붙이면 그 입력은 카메라만 열고 갤러리를 없앤다 (D-027).
+        // 여러 장은 `multiple` — 한 번에 못 고르는 피커면 여러 번 눌러 이어 붙인다 (D-064).
         '<div class="filepick-row">' +
-          '<label class="filepick"><input type="file" name="photoPick" accept="' + GALLERY_ACCEPT + '" hidden>' +
-            '<span>🖼 사진 고르기 (갤러리)</span></label>' +
+          '<label class="filepick" id="photoPickBtn"><input type="file" name="photoPick" accept="' + GALLERY_ACCEPT + '"' +
+            (maxPhotos() > 1 ? ' multiple' : '') + ' hidden>' +
+            '<span>🖼 사진 고르기 (갤러리)' + (maxPhotos() > 1 ? ' · 최대 ' + maxPhotos() + '장' : '') + '</span></label>' +
         '</div>' +
         '<p class="hint" id="photoHint">카메라로 먼저 찍은 뒤 여기서 골라 주세요.</p>' +
-        '<div id="photoPreview" class="photo-preview" hidden>' +
-          '<img alt="선택한 사진 미리보기">' +
-          '<button type="button" class="btn btn--ghost btn--sm" id="photoClear">사진 빼기</button>' +
-        '</div>' +
+        '<div id="photoPicks" class="photo-picks" hidden></div>' +
       '</div>' +
       '<button class="btn btn--primary btn--block" type="submit">올리기</button>' +
       (state.boot.config.JOURNAL_REQUIRE_APPROVAL
@@ -962,9 +1025,11 @@
 
   function bindJournalForm() {
     var form = $('#journalForm');
-    // 파일 입력은 지금 하나(갤러리)다. 목록으로 다루는 것은 예전 두 입력(D-027) 시절 그대로 — 결과는 사진 한 장이다.
-    var inputs = [].slice.call(form.querySelectorAll('input[type="file"]'));
-    var preview = $('#photoPreview');
+    var input = form.querySelector('input[name="photoPick"]');
+    var picks = $('#photoPicks');
+    var hint = $('#photoHint');
+    var baseHint = hint.textContent;
+    var picked = [];     // 고른 사진 — 줄인 것 (D-064)
 
     // 쓰던 글을 되살린다 — 사진 고르러·메신저 보러 나갔다 오면 브라우저가 화면을 새로 그린다 (D-058)
     var draft = loadDraft();
@@ -977,57 +1042,48 @@
     form.text.addEventListener('input', keepDraft);
     form.checkpoint.addEventListener('change', keepDraft);
 
-    inputs.forEach(function (input) {
-      input.addEventListener('change', function () {
-        var file = input.files && input.files[0];
-        if (!file) return;
-        UI.resizePhoto(file)
-          .then(function (photo) {
-            state.pendingPhoto = photo;
-            preview.querySelector('img').src = photo.previewUrl;
-            preview.hidden = false;
-          })
-          .catch(function (err) {
-            input.value = '';
-            toast(err.message, 'error');
-          });
-      });
+    function paintPicks() {
+      picks.hidden = !picked.length;
+      picks.innerHTML = picksHtml(picked, '고른 사진');
+      // 다 차면 버튼을 잠근다 — ✕ 로 빼면 다시 열린다
+      var full = picked.length >= maxPhotos();
+      input.disabled = full;
+      $('#photoPickBtn').classList.toggle('is-full', full);
+    }
+    bindPhotoPicker(input, {
+      list: picked,
+      room: function () { return maxPhotos() - picked.length; },
+      paint: paintPicks,
+      busy: function (t) { hint.textContent = t || baseHint; }
     });
-
-    $('#photoClear').addEventListener('click', function () {
-      state.pendingPhoto = null;
-      // 둘 다 비운다. 하나만 비우면 같은 사진을 다시 골랐을 때 change 가 안 뜬다.
-      inputs.forEach(function (input) { input.value = ''; });
-      preview.hidden = true;
+    picks.addEventListener('click', function (e) {
+      var x = e.target.closest('[data-remove]');
+      if (!x) return;
+      picked.splice(Number(x.getAttribute('data-remove')), 1);
+      paintPicks();
     });
 
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       var text = form.text.value.trim();
-      if (!text && !state.pendingPhoto) {
+      if (!text && !picked.length) {
         toast('소감이나 사진 중 하나는 있어야 합니다.', 'error');
         return;
       }
       var btn = form.querySelector('button[type="submit"]');
-      UI.setBusy(btn, true, '올리는 중…');
+      UI.setBusy(btn, true, picked.length ? '올리는 중… (사진 ' + picked.length + '장)' : '올리는 중…');
 
-      API.journalCreate({
-        checkpoint: form.checkpoint.value,
-        text: text,
-        photo: state.pendingPhoto
-          ? {
-              name: state.pendingPhoto.name,
-              mimeType: state.pendingPhoto.mimeType,
-              dataBase64: state.pendingPhoto.dataBase64
-            }
-          : null
-      })
+      var body = { checkpoint: form.checkpoint.value, text: text };
+      if (multiPhoto()) body.photos = picked.map(uploadOf);
+      else body.photo = picked.length ? uploadOf(picked[0]) : null;
+
+      API.journalCreate(body)
         .then(function () {
           form.reset();
           clearDraft();
           $('#draftHint').hidden = true;
-          state.pendingPhoto = null;
-          preview.hidden = true;
+          picked.length = 0;
+          paintPicks();
           UI.setBusy(btn, false);
           toast(state.boot.config.JOURNAL_REQUIRE_APPROVAL ? '올렸습니다. 운영진 확인 후 공개됩니다.' : '올렸습니다.');
           loadJournal(0);
@@ -1098,10 +1154,7 @@
     (state.boot.checkpoints || []).forEach(function (c) { if (c.code === item.checkpoint) cpName = c.name; });
 
     return '<article class="jcard" data-id="' + esc(item.id) + '">' +
-      (item.photoUrl
-        ? '<a class="jcard__photo" href="' + esc(item.photoUrl) + '" target="_blank" rel="noopener">' +
-          '<img loading="lazy" src="' + esc(item.photoUrl) + '" alt="' + esc(item.authorName) + '님의 탐험일지 사진"></a>'
-        : '') +
+      UI.journalPhotosHtml(item, item.authorName + '님의 탐험일지 사진') +
       '<div class="jcard__body">' +
         '<p class="jcard__meta">' +
           // 작성자와 조를 함께 — "전체" 탭에서는 어느 조 글인지가 중요하다 (D-057)
@@ -1128,6 +1181,8 @@
 
   function journalEditHtml(item) {
     var cps = state.boot.checkpoints || [];
+    var photos = UI.journalPhotos(item);
+    var max = maxPhotos();
     return '<article class="jcard jcard--editing" data-id="' + esc(item.id) + '">' +
       '<div class="jcard__body">' +
         '<h3 class="card__title">기록 수정</h3>' +
@@ -1141,11 +1196,17 @@
           '</select></label>' +
         '<label class="field"><span class="field__label">소감</span>' +
           '<textarea class="input" rows="4" maxlength="1000" data-field="text">' + esc(item.text) + '</textarea></label>' +
-        (item.photoUrl
-          ? '<label class="check"><input type="checkbox" data-field="removePhoto"> 사진 삭제</label>'
+        // 지금 사진 — 사진마다 "빼기" (D-064)
+        (photos.length
+          ? '<div class="photo-picks">' + photos.map(function (ph, i) {
+              return '<label class="photo-pick photo-pick--old"><img src="' + esc(ph.url) + '" alt="지금 사진 ' + (i + 1) + '">' +
+                '<span class="photo-pick__out"><input type="checkbox" data-remove-photo="' + esc(ph.id) + '"> 빼기</span></label>';
+            }).join('') + '</div>'
           : '') +
-        '<label class="filepick filepick--sm"><input type="file" accept="' + GALLERY_ACCEPT + '" data-field="photo" hidden>' +
-          '<span>사진 교체</span></label>' +
+        '<label class="filepick filepick--sm"><input type="file" accept="' + GALLERY_ACCEPT + '"' +
+          (max > 1 ? ' multiple' : '') + ' data-field="photo" hidden>' +
+          '<span>' + (max > 1 ? '사진 추가 · 최대 ' + max + '장' : (photos.length ? '사진 교체' : '사진 추가')) + '</span></label>' +
+        '<div class="photo-picks" data-role="newPicks" hidden></div>' +
         '<p class="hint" data-role="photoName"></p>' +
         (state.boot.config.JOURNAL_REQUIRE_APPROVAL && item.status === '승인'
           ? '<p class="hint">수정하면 다시 운영진 확인을 거칩니다.</p>' : '') +
@@ -1177,7 +1238,7 @@
     }
     if (act === 'cancel') {
       state.editing = null;
-      state.pendingPhoto = null;
+      state.editPhotos = [];
       paintJournalList({ galleryScope: state.boot.config.GALLERY_SCOPE });
       return;
     }
@@ -1200,21 +1261,23 @@
         text: card.querySelector('[data-field="text"]').value.trim(),
         checkpoint: card.querySelector('[data-field="checkpoint"]').value
       };
-      var removeBox = card.querySelector('[data-field="removePhoto"]');
-      if (removeBox && removeBox.checked) payload.removePhoto = true;
-      if (state.pendingPhoto) {
-        payload.photo = {
-          name: state.pendingPhoto.name,
-          mimeType: state.pendingPhoto.mimeType,
-          dataBase64: state.pendingPhoto.dataBase64
-        };
+      var removeIds = [].slice.call(card.querySelectorAll('[data-remove-photo]:checked'))
+        .map(function (el) { return el.getAttribute('data-remove-photo'); });
+      var adds = state.editPhotos.map(uploadOf);
+      if (multiPhoto()) {
+        if (removeIds.length) payload.removePhotoIds = removeIds;
+        if (adds.length) payload.addPhotos = adds;
+      } else if (adds.length) {
+        payload.photo = adds[0];         // v22 이전 서버: 새 사진은 교체
+      } else if (removeIds.length) {
+        payload.removePhoto = true;      // v22 이전 서버: 빼기는 전부 삭제
       }
 
-      UI.setBusy(btn, true, '저장 중…');
+      UI.setBusy(btn, true, adds.length ? '저장 중… (사진 ' + adds.length + '장)' : '저장 중…');
       API.journalUpdate(payload)
         .then(function (updated) {
           state.editing = null;
-          state.pendingPhoto = null;
+          state.editPhotos = [];
           state.journal.items = state.journal.items.map(function (i) { return i.id === id ? updated : i; });
           paintJournalList({ galleryScope: state.boot.config.GALLERY_SCOPE });
           toast('수정했습니다.');
@@ -1230,16 +1293,27 @@
     var card = document.querySelector('.jcard--editing[data-id="' + CSS.escape(id) + '"]');
     if (!card) return;
     var input = card.querySelector('[data-field="photo"]');
+    var picks = card.querySelector('[data-role="newPicks"]');
     var label = card.querySelector('[data-role="photoName"]');
-    input.addEventListener('change', function () {
-      var file = input.files && input.files[0];
-      if (!file) return;
-      UI.resizePhoto(file)
-        .then(function (photo) {
-          state.pendingPhoto = photo;
-          label.textContent = '새 사진 선택됨 · ' + Math.round(photo.approxBytes / 1024) + 'KB';
-        })
-        .catch(function (err) { toast(err.message, 'error'); });
+    var list = state.editPhotos = [];
+    // 남는 자리 = 한도 − (빼지 않은 지금 사진) − 새로 고른 사진. v22 이전 서버는 한 장을 교체한다.
+    var kept = function () { return card.querySelectorAll('[data-remove-photo]:not(:checked)').length; };
+    function paint() {
+      picks.hidden = !list.length;
+      picks.innerHTML = picksHtml(list, '새 사진');
+      label.textContent = list.length ? '새 사진 ' + list.length + '장 — 저장하면 올라갑니다.' : '';
+    }
+    bindPhotoPicker(input, {
+      list: list,
+      room: function () { return (multiPhoto() ? maxPhotos() - kept() : 1) - list.length; },
+      paint: paint,
+      busy: function (t) { if (t) label.textContent = t; else paint(); }
+    });
+    picks.addEventListener('click', function (e) {
+      var x = e.target.closest('[data-remove]');
+      if (!x) return;
+      list.splice(Number(x.getAttribute('data-remove')), 1);
+      paint();
     });
   }
 

@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v20.5 · 2026-10-17
+ * ui.js · v22 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v22   2026-10-17  일지 사진 여러 장 — 옆으로 넘기는 띠 · "📷 N장" (D-064)
  *  v20.5 2026-10-17  지도 주소 검색어 다듬기 — 괄호 메모·"대한민국" 을 뺀다 (D-061)
  *  v20.4 2026-10-17  미션 여러 줄 · ※ 주의 줄 강조 · 지도는 좌표 → 주소 → 이름 순 (D-061)
  *  v20.2 2026-10-17  조별 카드: 조를 숫자 순서로(10조는 9조 다음) · 지점을 한 줄씩 이름 전체로 (D-059)
  *  v20.1 2026-10-16  알림 5초(오류 6초) · 전화번호 링크 (D-058)
- *  v15   2026-09-26  파일 버전 표시 시작
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -80,6 +80,33 @@
     }
     var q = cleanAddress((cp && cp.address) || '') || name;
     return 'https://map.kakao.com/link/search/' + encodeURIComponent(q);
+  }
+
+  /**
+   * 일지의 사진 [{id, url, award}] (D-064). v22 이전 서버는 `photos` 없이 `photoUrl` 한 장만 준다.
+   */
+  function journalPhotos(item) {
+    if (item.photos && item.photos.length) return item.photos;
+    return item.photoUrl ? [{ id: '', url: item.photoUrl, award: !!item.award }] : [];
+  }
+
+  /**
+   * 일지 카드의 사진. 한 장이면 예전 모양 그대로, 여러 장이면 **옆으로 넘기는 띠**와 "📷 N장".
+   * 장수 표시는 띠 밖에 둔다 — 띠 안에 두면 넘길 때 같이 밀려 사라진다.
+   */
+  function journalPhotosHtml(item, alt) {
+    var list = journalPhotos(item);
+    if (!list.length) return '';
+    var one = function (ph, i) {
+      return '<a class="jcard__photo" href="' + esc(ph.url) + '" target="_blank" rel="noopener">' +
+        '<img loading="lazy" src="' + esc(ph.url) + '" alt="' +
+        esc(alt + (list.length > 1 ? ' ' + (i + 1) + '/' + list.length : '')) + '"></a>';
+    };
+    if (list.length === 1) return one(list[0], 0);
+    return '<div class="jcard__gallery">' +
+      '<div class="jcard__photos">' + list.map(one).join('') + '</div>' +
+      '<span class="jcard__count">📷 ' + list.length + '장 · 옆으로 넘겨 보세요</span>' +
+    '</div>';
   }
 
   /**
@@ -527,6 +554,7 @@
 
   global.UI = {
     $: $, $$: $$, esc: esc, nl2br: nl2br, telLinks: telLinks, missionHtml: missionHtml, mapUrl: mapUrl,
+    journalPhotos: journalPhotos, journalPhotosHtml: journalPhotosHtml,
     toast: toast, confirmDialog: confirmDialog, setBusy: setBusy,
     resizePhoto: resizePhoto, hhmm: hhmm, localIso: localIso, prettyDateTime: prettyDateTime,
     localDate: localDate, hmToMin: hmToMin, minutesSince: minutesSince, agoText: agoText,

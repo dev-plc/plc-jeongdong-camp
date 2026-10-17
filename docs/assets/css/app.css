@@ -1,13 +1,13 @@
 /*
    ────────────────────────────────────────────────────────────────
-    app.css · v20.4 · 2026-10-17
+    app.css · v22 · 2026-10-17
    ────────────────────────────────────────────────────────────────
     변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+     v22   2026-10-17  출발 안내 줄 · 사진 여러 장(고른 사진 칸, 넘기는 띠) (D-063·064)
      v20.4 2026-10-17  미션 ※ 주의 줄 (D-061)
      v20.3 2026-10-17  사진 버튼 주석 — 갤러리 하나 (D-060)
      v20.2 2026-10-17  조별 카드: 지점을 한 줄씩 이름 전체로, 카드 최소 폭 260px (D-059)
      v20.1 2026-10-16  제목·지점명 고딕, 본문 글씨 키움, 저장됨 표시 (D-058)
-     v20   2026-09-30  탐험일지 글의 조 표시 (D-057)
 
     버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
           — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -248,13 +248,21 @@ textarea.input { resize: vertical; min-height: 96px; }
 .filepick-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .filepick-row .filepick { flex: 1 1 140px; }
 
-.photo-preview { margin-top: 10px; }
-.photo-preview img {
-  width: 100%;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  margin-bottom: 8px;
+/* 고른 사진 (D-064) — 네 칸 썸네일, 사진마다 ✕. 수정 화면의 지금 사진은 "빼기" 를 고르면 흐려진다. */
+.photo-picks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 10px 0 8px; }
+.photo-pick { position: relative; margin: 0; }
+.photo-pick img {
+  display: block; width: 100%; aspect-ratio: 1; object-fit: cover;
+  border-radius: var(--radius-sm); border: 1px solid var(--line); background: #eee;
 }
+.photo-pick__x {
+  position: absolute; top: 3px; right: 3px; width: 30px; height: 30px; padding: 0;
+  border: 0; border-radius: 50%; background: rgba(44, 35, 32, .72); color: #fff; font-size: 14px; cursor: pointer;
+}
+.photo-pick--old { cursor: pointer; }
+.photo-pick__out { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 4px; font-size: 13px; }
+.photo-pick--old:has(input:checked) img { opacity: .35; }
+.filepick.is-full { opacity: .5; cursor: default; }
 
 .hint { margin: 6px 0 0; font-size: 13px; color: var(--ink-2); }
 .hint--center { text-align: center; }
@@ -432,6 +440,15 @@ textarea.input { resize: vertical; min-height: 96px; }
 .jcard--editing { grid-column: 1 / -1; }
 .jcard__photo { display: block; }
 .jcard__photo img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #eee; }
+/* 여러 장 (D-064) — 옆으로 넘기는 띠. 다음 장이 조금 보여 넘길 수 있다는 걸 알린다. 장수 표시는 띠 밖. */
+.jcard__gallery { position: relative; }
+.jcard__photos { display: flex; gap: 4px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.jcard__photos::-webkit-scrollbar { display: none; }
+.jcard__photos .jcard__photo { flex: 0 0 88%; scroll-snap-align: start; }
+.jcard__count {
+  position: absolute; right: 8px; bottom: 8px; padding: 2px 9px; border-radius: 999px;
+  background: rgba(44, 35, 32, .72); color: #fff; font-size: 13px; pointer-events: none;
+}
 .jcard__body { padding: 14px; }
 .jcard__meta { margin: 0 0 6px; font-size: 13px; color: var(--ink-2); }
 .jcard__meta strong { color: var(--ink); font-weight: 500; }
@@ -628,6 +645,15 @@ textarea.input { resize: vertical; min-height: 96px; }
   color: var(--ink); text-decoration: none; font-size: 15px;
 }
 .course-summary__count { font-weight: 700; color: var(--brick); }
+/* 출발 안내 (D-063) — 1번 지점 앞. 첫 지점에 도착하면 내려간다. */
+.course-start {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 0 12px; padding: 12px 14px;
+  border: 1px solid var(--line); border-left: 4px solid var(--brick); border-radius: var(--radius-sm);
+  background: var(--paper-2); font-size: 15px;
+}
+.course-start__text { flex: 1; min-width: 0; }
+.course-start__text strong { color: var(--brick); }
 .cp--next { border-left-color: var(--brick); box-shadow: 0 0 0 2px rgba(152, 69, 52, .18), var(--shadow); }
 details.cp > summary { list-style: none; cursor: pointer; }
 details.cp > summary::-webkit-details-marker { display: none; }
