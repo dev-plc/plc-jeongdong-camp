@@ -190,7 +190,9 @@ withBrowser(async (env) => {
   page = await openAdmin('2026-10-31T15:25:00+09:00', 1200);
   await admin(page);
   const cols = await page.evaluate(() => getComputedStyle(document.querySelector('.team-grid')).gridTemplateColumns.split(' ').length);
-  ok('넓은 화면은 여러 줄 (3열)', cols === 3, cols);
+  const cardW = await page.evaluate(() => document.querySelector('.team-card').getBoundingClientRect().width);
+  // 3열이면 카드가 210px 남짓이라 지점 이름이 잘렸다 — 260px 아래로 줄이지 않는다 (D-059)
+  ok('넓은 화면은 여러 열 · 카드 260px 이상', cols >= 2 && cardW >= 260, { cols, cardW });
   await page.context().close();
 
   section('콘솔 — 점수 입력·시상 퀴즈 없음 (D-056)');
