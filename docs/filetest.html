@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>사진 고르기 시험</title>
+<!--
+  사진 첨부 버튼 시험 페이지 (D-060 후속). 앱이 아니다 — 브라우저마다 "갤러리" 버튼이 무엇을 여는지
+  실기기로 재 보려고 둔다. 결과가 나오면 앱(app.js GALLERY_ACCEPT)에 반영하고 이 파일은 지운다.
+  사진은 어디에도 올라가지 않는다(고른 파일 이름·형식만 화면에 보인다).
+-->
+<style>
+  :root { --ink: #2c2320; --ink-2: #6b5d57; --line: #e2d9d1; --brick: #984534; --paper: #f6f2ed; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--paper); color: var(--ink);
+         font: 16px/1.55 -apple-system, BlinkMacSystemFont, 'Noto Sans KR', sans-serif; }
+  h1 { font-size: 20px; margin: 4px 0 6px; }
+  p { margin: 0 0 12px; color: var(--ink-2); font-size: 15px; }
+  .ua { font-size: 13px; word-break: break-all; background: #fff; border: 1px solid var(--line);
+        border-radius: 8px; padding: 8px 10px; margin-bottom: 14px; }
+  .t { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+  .t b { display: block; font-size: 17px; }
+  .t code { font-size: 13px; color: var(--ink-2); word-break: break-all; }
+  label.btn { display: block; margin-top: 8px; padding: 12px; border-radius: 9px; background: var(--brick);
+              color: #fff; text-align: center; font-weight: 700; }
+  .out { margin-top: 6px; font-size: 14px; min-height: 1.4em; }
+</style>
+</head>
+<body>
+  <h1>📷 사진 고르기 시험</h1>
+  <p>A부터 차례로 눌러 보고, <b>갤러리(사진 목록)가 바로 뜨는 칸</b>을 알려 주세요.
+     "카메라·캠코더·내 파일" 같은 고르는 창이 먼저 뜨면 그 칸은 실패입니다. 사진은 어디에도 올라가지 않습니다.</p>
+  <div class="ua" id="ua"></div>
+  <div id="list"></div>
+<script>
+  document.getElementById('ua').textContent = '브라우저: ' + navigator.userAgent;
+  var CASES = [
+    ['A', '지금 앱 (형식 나열)', 'accept="image/jpeg,image/png,image/webp,image/gif"', { accept: 'image/jpeg,image/png,image/webp,image/gif' }],
+    ['B', '모든 이미지', 'accept="image/*"', { accept: 'image/*' }],
+    ['C', '모든 이미지 + 여러 장', 'accept="image/*" multiple', { accept: 'image/*', multiple: true }],
+    ['D', '형식 나열 + 여러 장', 'accept="image/jpeg,…" multiple', { accept: 'image/jpeg,image/png,image/webp,image/gif', multiple: true }],
+    ['E', '확장자로', 'accept=".jpg,.jpeg,.png,.webp,.gif"', { accept: '.jpg,.jpeg,.png,.webp,.gif' }],
+    ['F', '제한 없음', '(accept 없음)', {}]
+  ];
+  var list = document.getElementById('list');
+  CASES.forEach(function (c) {
+    var box = document.createElement('div');
+    box.className = 't';
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.hidden = true;
+    if (c[3].accept) input.setAttribute('accept', c[3].accept);
+    if (c[3].multiple) input.multiple = true;
+    var label = document.createElement('label');
+    label.className = 'btn';
+    label.textContent = c[0] + '. 눌러서 사진 고르기';
+    label.appendChild(input);
+    var out = document.createElement('div');
+    out.className = 'out';
+    input.addEventListener('change', function () {
+      var f = input.files && input.files[0];
+      out.textContent = f ? '✓ 골랐습니다: ' + (f.type || '형식 모름') + ' · ' + Math.round(f.size / 1024) + 'KB' : '';
+    });
+    var title = document.createElement('b');
+    title.textContent = c[0] + '. ' + c[1];
+    var code = document.createElement('code');
+    code.textContent = c[2];
+    box.appendChild(title); box.appendChild(code); box.appendChild(label); box.appendChild(out);
+    list.appendChild(box);
+  });
+</script>
+</body>
+</html>
