@@ -2069,13 +2069,13 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v20.4 · 2026-10-17
+ * ui.js · v20.5 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20.5 2026-10-17  지도 주소 검색어 다듬기 — 괄호 메모·"대한민국" 을 뺀다 (D-061)
  *  v20.4 2026-10-17  미션 여러 줄 · ※ 주의 줄 강조 · 지도는 좌표 → 주소 → 이름 순 (D-061)
  *  v20.2 2026-10-17  조별 카드: 조를 숫자 순서로(10조는 9조 다음) · 지점을 한 줄씩 이름 전체로 (D-059)
  *  v20.1 2026-10-16  알림 5초(오류 6초) · 전화번호 링크 (D-058)
- *  v19   2026-09-30  조별 카드에서 점수 표시 삭제 (D-056)
  *  v15   2026-09-26  파일 버전 표시 시작
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
@@ -2147,8 +2147,21 @@ window.APP_CONFIG = {
     if (lat && lng && isFinite(lat) && isFinite(lng)) {
       return 'https://map.kakao.com/link/map/' + encodeURIComponent(name) + ',' + lat + ',' + lng;
     }
-    var q = (cp && cp.address) ? String(cp.address).trim() : name;
+    var q = cleanAddress((cp && cp.address) || '') || name;
     return 'https://map.kakao.com/link/search/' + encodeURIComponent(q);
+  }
+
+  /**
+   * 주소 칸을 검색어로 다듬는다 (D-061).
+   * 시트 주소에 "(답사 시 확인)" 같은 **괄호 메모**가 붙어 있었고, 구글 지도에서 복사하면 앞에
+   * "대한민국" 이 붙는다 — 둘 다 카카오 검색을 엉뚱한 곳으로 보낸다. 다듬어서 비면 이름으로 찾는다.
+   */
+  function cleanAddress(addr) {
+    return String(addr)
+      .replace(/[(（][^)）]*[)）]/g, ' ')
+      .replace(/^\s*대한민국\s*/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   // 걸으면서 보면 3초는 짧다 — 오류는 더 오래 둔다 (D-058)
