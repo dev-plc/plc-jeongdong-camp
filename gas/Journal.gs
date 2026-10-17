@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Journal.gs · v20 · 2026-09-30
+ * Journal.gs · v22 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v22   2026-10-17  사진 여러 장(최대 PHOTO_MAX_COUNT) · ★ 는 사진마다 (D-064)
  *  v20   2026-09-30  조원도 "우리 조" 일지를 본다 — 승인된 글과 본인 글만 (D-057)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *  v16   2026-09-26  일지 일괄 승인, ★ 사진 수상작 (D-052)
  *  v15   2026-09-26  파일 버전 표시 시작
- *  v12   2026-09-22  반려된 일지를 다시 낼 수 있게 + 운영콘솔 편의 네 가지
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_JOURNAL = 'v20';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_JOURNAL = 'v22';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Journal.gs — 탐험일지 (글 + 사진)
@@ -22,6 +22,9 @@ var VERSION_JOURNAL = 'v20';   // 헤더의 버전과 같아야 한다. health �
  * 공개 범위: Config.GALLERY_SCOPE = ALL | TEAM | SELF   (D-004)
  * 수정/삭제: 작성자 본인 / 소속 조장 / 전체 관리자        (D-009)
  * 삭제는 소프트 삭제(상태=삭제) + Drive 사진 휴지통 이동.
+ *
+ * 사진은 한 글에 여러 장이다 (D-064). 칸을 늘리지 않고 `사진ID`·`사진URL` 에 **쉼표로 이어** 적는다.
+ * 순서가 곧 보여 주는 순서다. 한 장짜리 옛 행은 그대로 읽힌다. `수상` 은 ★ 받은 사진ID 목록이다.
  */
 
 var JOURNAL_TEXT_MAX = 1000;
@@ -58,14 +61,72 @@ function getDriveFolder_() {
   }
 }
 
-/**
- * base64 사진을 Drive 에 저장하고 { id, url } 을 돌려준다.
- * 갤러리가 <img> 로 바로 읽어야 하므로 링크 공개로 전환한다.
- * (승인 전 일지는 목록 API 가 걸러내므로 URL 이 유출되지 않는 한 노출되지 않는다.)
- */
-function savePhoto_(photo, filenameHint) {
-  if (!photo || !photo.dataBase64) return null;
+/** 한 글에 올릴 수 있는 사진 수 (D-064). Config 에서 바꾼다. */
+function photoMaxCount_() {
+  return Math.max(1, confInt_('PHOTO_MAX_COUNT', 4));
+}
 
+function checkPhotoCount_(n) {
+  var max = photoMaxCount_();
+  if (n > max) throw new AppError('BAD_REQUEST', '사진은 ' + max + '장까지 올릴 수 있습니다.');
+}
+
+/** 요청에 실린 사진들. 새 앱은 `photos`(배열), 예전 앱은 `photo`(한 장) — 배포 사이에는 둘 다 온다. */
+function photosIn_(list, single) {
+  var arr = Array.isArray(list) ? list : [];
+  if (!arr.length && single) arr = [single];
+  return arr.filter(function (ph) { return ph && ph.dataBase64; });
+}
+
+/** 칸에 쉼표로 이어 적은 목록 → 배열. */
+function splitList_(v) {
+  return str_(v).split(',').map(function (x) { return x.trim(); }).filter(String);
+}
+
+/** 이 글의 사진 [{id, url}]. */
+function journalPhotos_(row) {
+  var ids = splitList_(row['사진ID']);
+  var urls = splitList_(row['사진URL']);
+  var out = [];
+  for (var i = 0; i < Math.max(ids.length, urls.length); i++) {
+    out.push({ id: ids[i] || '', url: urls[i] || (ids[i] ? photoUrl_(ids[i]) : '') });
+  }
+  return out;
+}
+
+/**
+ * ★ 받은 사진ID. 이 글의 사진이 아닌 값 — 예전 `★`(글 단위, D-052)나 손으로 적은 값 — 은
+ * 첫 사진으로 읽는다. 수상작이 조용히 사라지면 안 된다.
+ */
+function awardedIds_(row, photos) {
+  if (!str_(row['수상'])) return [];
+  var mine = photos.map(function (ph) { return ph.id; });
+  var ids = splitList_(row['수상']).filter(function (id) { return mine.indexOf(id) >= 0; });
+  return ids.length ? ids : mine.slice(0, 1).filter(String);
+}
+
+/**
+ * 여러 장을 Drive 에 저장하고 [{ id, url }] 을 돌려준다.
+ *
+ * 🔴 **모두 먼저 검사하고 나서** 만든다. 셋째 장이 크다고 앞의 두 장만 Drive 에 남으면
+ *    어느 글에도 안 붙은 사진이 생긴다. 만드는 중에 Drive 가 실패하면 만든 것을 휴지통에 넣고 다시 던진다.
+ */
+function savePhotos_(list, filenameHint) {
+  var checked = list.map(checkPhoto_);
+  var saved = [];
+  try {
+    checked.forEach(function (c, i) {
+      saved.push(createPhotoFile_(c, filenameHint + (checked.length > 1 ? '_' + (i + 1) : '')));
+    });
+  } catch (e) {
+    saved.forEach(function (f) { trashPhoto_(f.id); });
+    throw e;
+  }
+  return saved;
+}
+
+/** base64 사진 한 장을 풀어 크기·형식을 본다. 통과하면 { bytes, mime }. */
+function checkPhoto_(photo) {
   var maxBytes = confInt_('PHOTO_MAX_BYTES', 4000000);
   var bytes;
   try {
@@ -81,7 +142,17 @@ function savePhoto_(photo, filenameHint) {
   if (!/^image\/(jpeg|png|webp|heic|heif)$/i.test(mime)) {
     throw new AppError('BAD_REQUEST', '이미지 파일만 올릴 수 있습니다.');
   }
+  return { bytes: bytes, mime: mime };
+}
 
+/**
+ * 검사한 사진을 Drive 에 만들고 { id, url } 을 돌려준다.
+ * 갤러리가 <img> 로 바로 읽어야 하므로 링크 공개로 전환한다.
+ * (승인 전 일지는 목록 API 가 걸러내므로 URL 이 유출되지 않는 한 노출되지 않는다.)
+ */
+function createPhotoFile_(checked, filenameHint) {
+  var bytes = checked.bytes;
+  var mime = checked.mime;
   var ext = mime.split('/')[1].replace('jpeg', 'jpg');
   var name = filenameHint + '_' + Utilities.formatDate(new Date(), TZ, 'yyyyMMdd_HHmmss') + '.' + ext;
   var file = getDriveFolder_().createFile(Utilities.newBlob(bytes, mime, name));
@@ -174,6 +245,8 @@ function journalList_(ctx, body) {
 }
 
 function serializeJournal_(r, ctx) {
+  var photos = journalPhotos_(r);
+  var starred = awardedIds_(r, photos);
   return {
     id: str_(r['일지ID']),
     session: str_(r[COL.SESSION]),
@@ -182,12 +255,16 @@ function serializeJournal_(r, ctx) {
     authorName: str_(r['작성자명']),
     checkpoint: str_(r['지점코드']),
     text: str_(r['내용']),
-    photoUrl: str_(r['사진URL']),
+    // 첫 장. 예전 앱과 "사진 있는 글만" 이 이 값을 본다.
+    photoUrl: photos.length ? photos[0].url : '',
+    photos: photos.map(function (ph) {
+      return { id: ph.id, url: ph.url, award: starred.indexOf(ph.id) >= 0 };
+    }),
     status: str_(r['상태']),
     rejectReason: str_(r['반려사유']),
     createdAt: toIso_(r['작성일시']),
     updatedAt: toIso_(r['수정일시']),
-    award: !!str_(r['수상']),              // ★ 사진 수상작 (D-052)
+    award: starred.length > 0,             // ★ 사진 수상작 (D-052) — 한 장이라도 ★ 이면 (D-064)
     isMine: str_(r['참가자ID']) === ctx.pid,
     canEdit: canEditJournal_(ctx, r)
   };
@@ -205,11 +282,12 @@ function journalCreate_(ctx, body) {
   if (text.length > JOURNAL_TEXT_MAX) {
     throw new AppError('BAD_REQUEST', '소감은 ' + JOURNAL_TEXT_MAX + '자까지 쓸 수 있습니다.');
   }
-  var hasPhoto = !!(body.photo && body.photo.dataBase64);
-  if (!text && !hasPhoto) throw new AppError('BAD_REQUEST', '소감이나 사진 중 하나는 있어야 합니다.');
+  var incoming = photosIn_(body.photos, body.photo);
+  if (!text && !incoming.length) throw new AppError('BAD_REQUEST', '소감이나 사진 중 하나는 있어야 합니다.');
+  checkPhotoCount_(incoming.length);
 
   var checkpoint = normalizeCheckpoint_(body.checkpoint);
-  var saved = hasPhoto ? savePhoto_(body.photo, ctx.pid) : null;
+  var saved = savePhotos_(incoming, ctx.pid);
 
   return withLock_(function () {
     var id = nextId_(SHEETS.JOURNAL, '일지ID', 'J', 4);
@@ -222,8 +300,8 @@ function journalCreate_(ctx, body) {
       '작성자명': ctx.name,
       '지점코드': checkpoint,
       '내용': text,
-      '사진ID': saved ? saved.id : '',
-      '사진URL': saved ? saved.url : '',
+      '사진ID': saved.map(function (f) { return f.id; }).join(','),
+      '사진URL': saved.map(function (f) { return f.url; }).join(','),
       '상태': confBool_('JOURNAL_REQUIRE_APPROVAL', true) ? '대기' : '승인',
       '반려사유': '',
       '작성일시': now,
@@ -267,20 +345,31 @@ function journalUpdate_(ctx, body) {
     patch['지점코드'] = normalizeCheckpoint_(body.checkpoint);
   }
 
-  var oldPhotoId = str_(row['사진ID']);
-  if (body.photo && body.photo.dataBase64) {
-    var saved = savePhoto_(body.photo, ctx.pid);
-    patch['사진ID'] = saved.id;
-    patch['사진URL'] = saved.url;
-  } else if (body.removePhoto) {
-    patch['사진ID'] = '';
-    patch['사진URL'] = '';
-  }
+  // 사진: 새 앱은 `addPhotos` · `removePhotoIds`, 예전 앱은 `photo`(전부 교체) · `removePhoto`(전부 삭제).
+  var current = journalPhotos_(row);
+  var adding = photosIn_(body.addPhotos, body.photo);
+  var replaceAll = !!(body.photo && body.photo.dataBase64) || !!body.removePhoto;
+  var asked = Array.isArray(body.removePhotoIds) ? body.removePhotoIds.map(str_) : [];
+  var removed = current.filter(function (ph) { return replaceAll || asked.indexOf(ph.id) >= 0; });
+  var kept = current.filter(function (ph) { return removed.indexOf(ph) < 0; });
+  var photosChanged = adding.length > 0 || removed.length > 0;
 
+  // 🔴 검사를 **Drive 에 만들기 전에** 한다 — 거절할 요청이 사진을 남기지 않게.
   var finalText = patch['내용'] !== undefined ? patch['내용'] : str_(row['내용']);
-  var finalPhoto = patch['사진ID'] !== undefined ? patch['사진ID'] : oldPhotoId;
-  if (!finalText && !finalPhoto) {
+  if (!finalText && !(kept.length + adding.length)) {
     throw new AppError('BAD_REQUEST', '소감이나 사진 중 하나는 남겨야 합니다. 지우려면 삭제를 눌러 주세요.');
+  }
+  if (photosChanged) {
+    checkPhotoCount_(kept.length + adding.length);
+    var finalPhotos = kept.concat(savePhotos_(adding, ctx.pid));
+    patch['사진ID'] = finalPhotos.map(function (ph) { return ph.id; }).join(',');
+    patch['사진URL'] = finalPhotos.map(function (ph) { return ph.url; }).join(',');
+    // 뺀 사진의 ★ 도 뺀다
+    if (headerIndex_(SHEETS.JOURNAL)['수상']) {
+      patch['수상'] = awardedIds_(row, current).filter(function (id) {
+        return kept.some(function (ph) { return ph.id === id; });
+      }).join(',');
+    }
   }
 
   // 🔴 **이미 검수를 거친 글**은 고치면 다시 검수를 받는다 (D-046).
@@ -302,7 +391,7 @@ function journalUpdate_(ctx, body) {
 
   return withLock_(function () {
     updateRow_(SHEETS.JOURNAL, row.__row, patch);
-    if ((body.photo && body.photo.dataBase64) || body.removePhoto) trashPhoto_(oldPhotoId);
+    removed.forEach(function (ph) { trashPhoto_(ph.id); });
     logEvent_('journal.update', ctx.pid, str_(row['일지ID']), 'OK',
       { before: str_(row['상태']), after: patch['상태'] || str_(row['상태']) });
     return serializeJournal_(findJournalById_(row['일지ID']), ctx);
@@ -325,7 +414,7 @@ function journalDelete_(ctx, body) {
       '수정일시': nowStamp_(),
       '수정자ID': ctx.pid
     });
-    trashPhoto_(row['사진ID']);
+    journalPhotos_(row).forEach(function (ph) { trashPhoto_(ph.id); });
     logEvent_('journal.delete', ctx.pid, str_(row['일지ID']), 'OK', { before: str_(row['상태']) });
     return { id: str_(row['일지ID']), status: '삭제' };
   });
@@ -406,7 +495,10 @@ function journalReviewBatch_(ctx, body) {
   return { approved: approved, skipped: skipped };
 }
 
-/** ★ 수상작 지정/해제 (D-052). **승인된 사진 글만** — 미승인 사진이 시상 화면에 뜨면 안 된다. */
+/**
+ * ★ 수상작 지정/해제 (D-052). **승인된 사진 글만** — 미승인 사진이 시상 화면에 뜨면 안 된다.
+ * ★ 은 사진마다 붙는다(`photoId`, D-064). `photoId` 없이 오면(예전 콘솔) 지정은 첫 사진, 해제는 전부.
+ */
 function journalAward_(ctx, body) {
   if (!headerIndex_(SHEETS.JOURNAL)['수상']) {
     throw new AppError('SERVER_ERROR',
@@ -415,13 +507,24 @@ function journalAward_(ctx, body) {
   var row = findJournalById_(body.id);
   if (!row || str_(row['상태']) === '삭제') throw new AppError('NOT_FOUND', '해당 일지를 찾을 수 없습니다.');
   var on = body.award === true || body.award === 'true';
-  if (on && (str_(row['상태']) !== '승인' || !str_(row['사진URL']))) {
+  var photos = journalPhotos_(row);
+  var photoId = str_(body.photoId);
+  if (photoId && !photos.some(function (ph) { return ph.id === photoId; })) {
+    throw new AppError('BAD_REQUEST', '이 글의 사진이 아닙니다.');
+  }
+  if (on && (str_(row['상태']) !== '승인' || !photos.length)) {
     throw new AppError('BAD_REQUEST', '승인된 사진 글만 수상작으로 지정할 수 있습니다.');
   }
-  withLock_(function () {
-    updateRow_(SHEETS.JOURNAL, row.__row, { '수상': on ? '★' : '' });
+  var target = photoId || (on ? photos[0].id : '');
+  var starred = awardedIds_(row, photos);
+  // 사진 순서대로 적는다. 대상이 없으면(예전 콘솔의 해제) 전부 끈다.
+  var next = !target ? [] : photos.map(function (ph) { return ph.id; }).filter(function (id) {
+    return id === target ? on : starred.indexOf(id) >= 0;
   });
-  logEvent_('journal.award', 'ADMIN', str_(row['일지ID']), on ? '지정' : '해제', '');
+  withLock_(function () {
+    updateRow_(SHEETS.JOURNAL, row.__row, { '수상': next.join(',') });
+  });
+  logEvent_('journal.award', 'ADMIN', str_(row['일지ID']), on ? '지정' : '해제', target);
   return serializeJournal_(findJournalById_(row['일지ID']), ctx);
 }
 
@@ -436,4 +539,4 @@ function normalizeCheckpoint_(code) {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_JOURNAL = 'v20';
+var END_JOURNAL = 'v22';

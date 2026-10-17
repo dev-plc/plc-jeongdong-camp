@@ -81,9 +81,9 @@ withBrowser(async (env) => {
   // 회귀: 갤러리로 넣은 사진이 미리보기 → 올리기까지 간다 (1x1 PNG)
   await page.setInputFiles('#journalForm input[name="photoPick"]', { name: 'a.png', mimeType: 'image/png',
     buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
-  await page.waitForSelector('#photoPreview:not([hidden])');
+  await page.waitForSelector('#photoPicks:not([hidden]) .photo-pick');
   ok('갤러리 사진 → 미리보기', true);
-  await page.click('#photoClear');
+  await page.click('#photoPicks .photo-pick__x');
 
   // ------------------------------------------------------------ 로그아웃
   section('로그아웃 — 기록은 남는다고 알리고, 쓰던 글은 지운다');

@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
  * ────────────────────────────────────────────────────────────────
- * build-demo.js · v20.4 · 2026-10-17
+ * build-demo.js · v22 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v22   2026-10-17  출발 안내 · 일지 사진 여러 장과 사진마다 ★ — 가짜 서버도 같은 규칙 (D-063·064)
  *  v20.4 2026-10-17  지점 미션을 실제 문구로 · 주소 (D-061)
  *  v20.1 2026-10-16  긴급 연락 공지(가짜 번호) — 전화 링크를 보여 준다 (D-058)
  *  v20   2026-09-30  가짜 서버의 우리 조 일지 규칙을 서버와 맞춤 (D-057)
  *  v16   2026-09-26  스태프·교역자 페르소나, 조별 칸 한 벌 (D-051·052)
- *  v15   2026-09-26  파일 버전 표시 시작
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -165,6 +165,7 @@ body { padding-top: var(--demobar-h, 76px); }
     JOURNAL_OPEN: true,
     PROGRESS_OPEN: true,
     SHOW_FEE: true,
+    PHOTO_MAX_COUNT: 4,
     NOTICE_TICKER: '09:30까지 PL교회 본당 앞으로 모여 주세요'
   };
 
@@ -241,7 +242,7 @@ body { padding-top: var(--demobar-h, 76px); }
                      role: '조장', group: '1조', feeStatus: '완납', insurance: '가입완료' },
       team: { session: '10/31(토)', group: '1조', name: '1조 배재', color: '#984534',
               leaderName: '김캠티', meetingPoint: 'PL교회 본당 앞',
-              course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'] },
+              course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'], courseNote: '시청역 3번 출구' },
       isLeader: true, isAdmin: false,
       members: [
         { id: 'P0002', name: '김캠티', role: '조장', feeStatus: '완납', insurance: '가입완료' },
@@ -255,7 +256,7 @@ body { padding-top: var(--demobar-h, 76px); }
                      role: '일반', group: '1조', feeStatus: '미납', insurance: '미가입' },
       team: { session: '10/31(토)', group: '1조', name: '1조 배재', color: '#984534',
               leaderName: '김캠티', meetingPoint: 'PL교회 본당 앞',
-              course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'] },
+              course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'], courseNote: '시청역 3번 출구' },
       isLeader: false, isAdmin: false,
       members: []
     },
@@ -399,7 +400,8 @@ body { padding-top: var(--demobar-h, 76px); }
       createdAt: '2026-10-31T15:10:00+09:00', updatedAt: '' },
     { id: 'J0005', session: '10/31(토)', group: '4조', authorId: 'P0021', authorName: '서하준',
       checkpoint: 'CP4', text: '넷이 다 같이 완주! 심슨기념관 앞에서.',
-      photoUrl: PH('#b8863b', '4조 완주'), status: '승인', rejectReason: '',
+      photos: [PH('#b8863b', '4조 완주'), PH('#3f7d5a', '심슨기념관 계단'), PH('#6b5d57', '마지막 도장')],
+      status: '승인', rejectReason: '',
       createdAt: '2026-10-31T15:22:00+09:00', updatedAt: '' },
     { id: 'J0006', session: '10/31(토)', group: '2조', authorId: 'P0012', authorName: '정하늘',
       checkpoint: 'CP2', text: '러시아 공사관 탑. 생각보다 작았다.',
@@ -410,6 +412,28 @@ body { padding-top: var(--demobar-h, 76px); }
       photoUrl: '', status: '대기', rejectReason: '',
       createdAt: '2026-10-31T15:24:00+09:00', updatedAt: '' }
   ];
+
+  // 사진은 여러 장이다 (D-064). 서버와 같은 모양: photos [{id, url, award}] · photoUrl = 첫 장 · award = 한 장이라도 ★
+  var photoSeq = 0;
+  function photoOf(url) { return { id: 'D' + (++photoSeq), url: url, award: false }; }
+  function syncPhotos(j) {
+    j.photoUrl = j.photos.length ? j.photos[0].url : '';
+    j.award = j.photos.some(function (p) { return p.award; });
+    return j;
+  }
+  journals.forEach(function (j) {
+    j.photos = (j.photos || (j.photoUrl ? [j.photoUrl] : [])).map(photoOf);
+    syncPhotos(j);
+  });
+  function uploaded(list, single) {
+    var arr = Array.isArray(list) ? list : [];
+    if (!arr.length && single) arr = [single];
+    return arr.map(function (p) { return photoOf('data:' + p.mimeType + ';base64,' + p.dataBase64); });
+  }
+  function tooMany(n) {
+    return n > CONFIG.PHOTO_MAX_COUNT
+      ? { __error: { code: 'BAD_REQUEST', message: '사진은 ' + CONFIG.PHOTO_MAX_COUNT + '장까지 올릴 수 있습니다.' } } : null;
+  }
 
   function decorate(j) {
     var m = me();
@@ -506,17 +530,18 @@ body { padding-top: var(--demobar-h, 76px); }
 
       case 'journal.create': {
         var m3 = me();
-        if (!body.text && !body.photo) {
+        var newPhotos = uploaded(body.photos, body.photo);
+        if (!body.text && !newPhotos.length) {
           return { __error: { code: 'BAD_REQUEST', message: '소감이나 사진 중 하나는 있어야 합니다.' } };
         }
-        var created = {
+        if (tooMany(newPhotos.length)) return tooMany(newPhotos.length);
+        var created = syncPhotos({
           id: 'J' + (++seq), session: m3.participant.session, group: m3.participant.group,
           authorId: m3.participant.id, authorName: m3.participant.name,
-          checkpoint: body.checkpoint || '', text: body.text || '',
-          photoUrl: body.photo ? ('data:' + body.photo.mimeType + ';base64,' + body.photo.dataBase64) : '',
+          checkpoint: body.checkpoint || '', text: body.text || '', photos: newPhotos,
           status: CONFIG.JOURNAL_REQUIRE_APPROVAL ? '대기' : '승인', rejectReason: '',
           createdAt: '2026-10-31T15:30:00+09:00', updatedAt: ''
-        };
+        });
         journals = [created].concat(journals);
         return decorate(created);
       }
@@ -527,13 +552,18 @@ body { padding-top: var(--demobar-h, 76px); }
         if (!decorate(target).canEdit) {
           return { __error: { code: 'FORBIDDEN', message: '본인 또는 조장, 관리자만 수정할 수 있습니다.' } };
         }
-        if (body.text !== undefined) target.text = body.text;
-        if (body.checkpoint !== undefined) target.checkpoint = body.checkpoint;
-        if (body.removePhoto) target.photoUrl = '';
-        if (body.photo) target.photoUrl = 'data:' + body.photo.mimeType + ';base64,' + body.photo.dataBase64;
-        if (!target.text && !target.photoUrl) {
+        var drop = body.removePhotoIds || [];
+        var kept = (body.photo || body.removePhoto) ? [] : target.photos.filter(function (p) { return drop.indexOf(p.id) < 0; });
+        var added = uploaded(body.addPhotos, body.photo);
+        var nextText = body.text !== undefined ? body.text : target.text;
+        if (!nextText && !(kept.length + added.length)) {
           return { __error: { code: 'BAD_REQUEST', message: '소감이나 사진 중 하나는 남겨야 합니다.' } };
         }
+        if (tooMany(kept.length + added.length)) return tooMany(kept.length + added.length);
+        target.text = nextText;
+        if (body.checkpoint !== undefined) target.checkpoint = body.checkpoint;
+        target.photos = kept.concat(added);
+        syncPhotos(target);
         if (CONFIG.JOURNAL_REQUIRE_APPROVAL && target.status === '승인') target.status = '대기';
         return decorate(target);
       }
@@ -644,10 +674,13 @@ body { padding-top: var(--demobar-h, 76px); }
       case 'admin.journal.award': {
         var ja = journals.filter(function (x) { return x.id === body.id; })[0];
         if (!ja) return { __error: { code: 'NOT_FOUND', message: '찾을 수 없습니다.' } };
-        if (body.award && (ja.status !== '승인' || !ja.photoUrl)) {
+        if (body.award && (ja.status !== '승인' || !ja.photos.length)) {
           return { __error: { code: 'BAD_REQUEST', message: '승인된 사진 글만 수상작으로 지정할 수 있습니다.' } };
         }
-        ja.award = !!body.award;
+        // ★ 는 사진마다 (D-064). photoId 가 없으면 지정은 첫 장, 해제는 전부.
+        var pid = body.photoId || (body.award ? ja.photos[0].id : '');
+        ja.photos.forEach(function (p) { if (!pid || p.id === pid) p.award = !!body.award; });
+        syncPhotos(ja);
         return Object.assign({}, ja, { isMine: false, canEdit: true });
       }
 
