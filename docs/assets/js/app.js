@@ -1,12 +1,12 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v20.2 · 2026-10-17
+ * app.js · v20.3 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20.3 2026-10-17  일지 사진: "촬영" 버튼 삭제 — 갤러리 하나만 (D-060)
  *  v20.2 2026-10-17  일지 사진: "갤러리에서 선택" 은 사진 고르는 화면이 바로 뜨게 — 형식을 나열 (D-059)
  *  v20.1 2026-10-16  일지 임시저장 · 코스 "운영본부에 저장됨" · 공지 번호 누르면 전화 (D-058)
  *  v20   2026-09-30  탐험일지 기본은 우리 조, 탭으로 전체 · 내 일지 탭 삭제 · 글마다 작성자와 조 (D-057)
- *  v19.1 2026-09-30  코스 버튼을 누른 뒤 3초 잠금 — 연타로 두 단계가 넘어가지 않게
  *  v19   2026-09-30  미션 점수 입력·표시 삭제 — 조장·스태프는 도착·완료만 (D-056)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
@@ -918,7 +918,7 @@
    *
    * 🔴 `image/*` 로 두지 않는다. 안드로이드 일부 브라우저(카카오톡 안 브라우저 등)는 와일드카드를 보면
    *    "카메라 · 캠코더 · 파일" 고르는 창을 먼저 띄워, "갤러리에서 선택" 을 눌렀는데 카메라를 묻는다.
-   *    형식을 나열하면 사진 고르는 화면이 바로 열리는 경우가 많다. 촬영은 옆 버튼(capture)이 맡는다.
+   *    형식을 나열하면 사진 고르는 화면이 바로 열린다(운영자가 실기기로 확인, 10/17).
    * HEIC 는 넣지 않는다 — 안드로이드 크롬은 HEIC 를 그리지 못해 줄이기(UI.resizePhoto)가 실패하고,
    *    아이폰은 목록에 없으면 JPEG 로 바꿔서 넘겨준다.
    * 아이폰 사파리는 어떤 값이든 "사진 보관함 · 사진 찍기 · 파일 선택" 메뉴가 먼저 뜬다 — 웹에서 건너뛸 수 없다.
@@ -942,15 +942,15 @@
         'placeholder="현장에서 보고 느낀 것을 적어 주세요."></textarea></label>' +
       '<div class="field">' +
         '<span class="field__label">사진 <em>(선택)</em></span>' +
-        // 🔴 입력이 둘이다. 하나에 capture 를 붙이면 그 입력은 **카메라만** 열고
-        // 갤러리 선택지를 아예 없앤다. 예전에는 입력이 하나뿐이라 버튼 글씨가
-        // '사진 선택 / 촬영' 인데 선택이 안 됐다 (D-027).
+        // 🔴 **갤러리 하나만** 둔다 (D-060). "📷 촬영"(capture="environment")은 뺐다 —
+        // capture 는 힌트일 뿐이라 삼성 인터넷에서 폰 카메라 앱이 마지막에 쓴 렌즈(셀카)로 열렸다.
+        // 웹에서 후면을 강제할 수 없다. 폰 카메라로 먼저 찍고 여기서 고르는 쪽이 장년층에도 익숙하다.
+        // capture 를 다시 붙이지 않는다 — 붙이면 그 입력은 카메라만 열고 갤러리를 없앤다 (D-027).
         '<div class="filepick-row">' +
-          '<label class="filepick"><input type="file" name="photoShot" accept="image/*" ' +
-            'capture="environment" hidden><span>📷 촬영</span></label>' +
           '<label class="filepick"><input type="file" name="photoPick" accept="' + GALLERY_ACCEPT + '" hidden>' +
-            '<span>🖼 갤러리에서 선택</span></label>' +
+            '<span>🖼 사진 고르기 (갤러리)</span></label>' +
         '</div>' +
+        '<p class="hint" id="photoHint">카메라로 먼저 찍은 뒤 여기서 골라 주세요.</p>' +
         '<div id="photoPreview" class="photo-preview" hidden>' +
           '<img alt="선택한 사진 미리보기">' +
           '<button type="button" class="btn btn--ghost btn--sm" id="photoClear">사진 빼기</button>' +
@@ -964,7 +964,7 @@
 
   function bindJournalForm() {
     var form = $('#journalForm');
-    // 촬영·갤러리 두 입력을 똑같이 다룬다. 어느 쪽으로 넣었든 결과는 사진 한 장이다.
+    // 파일 입력은 지금 하나(갤러리)다. 목록으로 다루는 것은 예전 두 입력(D-027) 시절 그대로 — 결과는 사진 한 장이다.
     var inputs = [].slice.call(form.querySelectorAll('input[type="file"]'));
     var preview = $('#photoPreview');
 
