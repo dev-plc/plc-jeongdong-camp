@@ -165,6 +165,16 @@ withBrowser(async (env) => {
   ]);
   ok('🔴 좌표가 있으면 그 자리에 핀 (주소보다 먼저)', decodeURIComponent(pin[0]) === 'https://map.kakao.com/link/map/배재학당역사박물관,37.5,126.9', pin[0]);
   ok('좌표가 반만 있으면 핀을 쓰지 않는다', pin[1] === 'https://map.kakao.com/link/search/X', pin[1]);
+  const addr = await page.evaluate(() => [
+    UI.mapUrl({ name: '보구여관터', address: '서울 중구 정동 일대 (답사 시 확인)' }),
+    UI.mapUrl({ name: '보구여관터', address: '대한민국 서울특별시 중구 정동 1-3' }),
+    UI.mapUrl({ name: '보구여관터', address: '(답사 시 확인)' }),
+    UI.mapUrl({ name: '고종의 길', address: '서울 중구 정동 1-10（메모）', lat: 37.5, lng: 126.9 })
+  ].map(decodeURIComponent));
+  ok('🔴 주소의 괄호 메모는 검색어에서 뺀다', addr[0] === 'https://map.kakao.com/link/search/서울 중구 정동 일대', addr[0]);
+  ok('🔴 구글에서 복사한 "대한민국" 은 뺀다', addr[1] === 'https://map.kakao.com/link/search/서울특별시 중구 정동 1-3', addr[1]);
+  ok('메모뿐이면 이름으로 찾는다', addr[2] === 'https://map.kakao.com/link/search/보구여관터', addr[2]);
+  ok('좌표가 있으면 주소 메모와 상관없이 핀', addr[3] === 'https://map.kakao.com/link/map/고종의 길,37.5,126.9', addr[3]);
   ok('빈 미션은 그리지 않는다 · 글자는 이스케이프', pin[2] === '' && pin[3].includes('&lt;b&gt;') && !pin[3].includes('<b>'), pin.slice(2));
 
   // ------------------------------------------------------------ 글씨
