@@ -1,12 +1,12 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Setup.gs · v18 · 2026-09-29
+ * Setup.gs · v21 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v21   2026-10-17  명단 점검은 같은 회차 안에서만 로그인 충돌 · 회차 추가: 날짜 모양 이름 거절, 일정 시각을 시각 그대로 복사 (D-062)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *  v16   2026-09-26  담당 지점 드롭다운, 명단 점검(사역자·새 열) (D-051)
  *  v15   2026-09-26  파일 버전 표시 시작
- *  v13   2026-09-22  설정을 바꾸면 사본도 민다
  *  —     2026-09-19  이미 쌓인 ISO 글자도 날짜로 바꾼다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
@@ -14,7 +14,7 @@
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_SETUP = 'v18';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_SETUP = 'v21';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Setup.gs — 최초 1회 실행하는 시트 생성/점검 스크립트
@@ -420,21 +420,37 @@ function checkDuplicates() {
     });
     digits.forEach(function (d) {
       var key = parsed.base + '|' + d;
-      if (seen[key] && seen[key].row !== r.__row) {
-        var line = '행 ' + seen[key].row + ' 과 행 ' + r.__row + ': ' + parsed.base + ' / ****' + d;
-        // 회차가 서로 다르면 **그 회차 날에는** 오늘 회차 행으로 들어간다 (D-051).
-        // 막히는 건 그 밖의 날뿐이라 충돌이 아니라 안내다.
-        var other = seen[key].session;
-        if (other && session && other !== session) {
-          line += ' — 회차가 달라 캠프 당일에만 로그인됩니다. 교역자·스태프는 참여 일자를 비운 한 행으로 두세요';
-          if (dayOnly.indexOf(line) < 0) dayOnly.push(line);
-        } else if (dup.indexOf(line) < 0) {
-          dup.push(line);
-        }
-      } else {
-        seen[key] = { row: r.__row, session: session };
-      }
+      (seen[key] = seen[key] || []).push({
+        row: r.__row, base: parsed.base, d: d, s: effectiveSession_(r),
+        allDays: !session && isOpsRole_(r[COL.ROLE]) && !str_(r[COL.GROUP])   // 공란 = 전 회차 (D-051)
+      });
     });
+  });
+
+  // 🔴 로그인 충돌은 **같은 회차 안에서만** 본다 (D-062). 같은 사람이라도 참여 일자가 다르면
+  // 다른 사람이다 — 로그인은 쓸 수 있는 회차 중 가까운 회차 행으로 간다(Auth.gs narrowBySession_).
+  // 로그인할 수 없는 행(참여 일자 없음·비활성·목록에 없는 회차)은 충돌이 아니다 — 위에서 따로 알린다.
+  var activeLabels = {};
+  sessions_().forEach(function (x) { if (x.active) activeLabels[x.label] = true; });
+  Object.keys(seen).forEach(function (key) {
+    var list = seen[key].filter(function (x) { return x.s && activeLabels[x.s]; });
+    for (var i = 0; i < list.length; i++) {
+      for (var j = i + 1; j < list.length; j++) {
+        var a = list[i], b = list[j];
+        if (a.row === b.row) continue;
+        var line = '행 ' + a.row + ' 과 행 ' + b.row + ': ' + a.base + ' / ****' + a.d;
+        if (a.allDays || b.allDays) {
+          line += ' — 참여 일자를 비운 행(전 회차)과 겹칩니다. 교역자·스태프는 참여 일자를 비운 한 행으로 두세요';
+          if (dup.indexOf(line) < 0) dup.push(line);
+        } else if (a.s === b.s) {
+          line += ' (' + a.s + ')';
+          if (dup.indexOf(line) < 0) dup.push(line);
+        } else {
+          line += ' — ' + a.s + ' / ' + b.s + ': 회차가 달라 다른 사람으로 봅니다(가까운 회차 행으로 로그인)';
+          if (dayOnly.indexOf(line) < 0) dayOnly.push(line);
+        }
+      }
+    }
   });
 
   // 조별 점검: 조장 존재 여부, 배정 코스 일관성
@@ -491,7 +507,7 @@ function checkDuplicates() {
   loginNotes.forEach(function (n) { out.push('   · ' + n); });
   out.push('');
   block_(out, dup, '❌ 로그인 충돌 (해당 인원은 로그인 불가)', '✅ 로그인 충돌 없음');
-  if (dayOnly.length) block_(out, dayOnly, '⚠ 회차별로 두 행인 사람', '');
+  if (dayOnly.length) block_(out, dayOnly, 'ℹ 회차별로 두 행인 사람 — 회차가 달라 따로 로그인됩니다', '');
   block_(out, missing, '⚠ 필수값 누락', '✅ 필수값 누락 없음');
   block_(out, badSession, '⚠ 참여 일자 문제', '✅ 참여 일자 정상');
   block_(out, inactive, '⚠ 비활성 회차 인원 (로그인 불가)', '✅ 비활성 회차에 배정된 인원 없음');
@@ -628,6 +644,13 @@ function addSession() {
   if (label === null) return;
   label = str_(label);
   if (!label) { ui.alert('참여 일자를 입력해 주세요.'); return; }
+  // 🔴 날짜만 적으면 시트가 **날짜 값으로 바꿔** 명단·일정표의 글자와 맞지 않게 된다 (D-062).
+  //    10/17 사전답사에 `2026-10-17` 로 만들었다가 로그인·일정표가 어긋났다.
+  if (looksLikeDate_(label)) {
+    ui.alert('"' + label + '" 는 시트가 날짜로 바꿔 버려 명단과 맞지 않게 됩니다.\n' +
+      '"사전답사(10/17)" 처럼 글자를 붙여 주세요. 기존 회차는 "10/31(토)" 꼴입니다.');
+    return;
+  }
 
   // 라벨이 겹치면 두 회차의 조가 한 키로 뭉갠다 (D-011).
   var dup = current.filter(function (c) { return c.label === label; });
@@ -688,7 +711,9 @@ function addSession() {
 
   if (copyFrom) {
     writeTimeline_(label, copyFrom.map(function (r) {
-      return [str_(r['시작']), str_(r['종료']), str_(r['내용']), str_(r['장소']), str_(r['비고'])];
+      // 🔴 시각은 **값 그대로** 넘긴다 (D-062). 시각 칸은 Date 로 오는데, str_() 를 씌우면
+      //    "Sat Dec 30 1899 09:30:00 GMT+0827 …" 글자가 칸에 적혔다(10/17 사전답사).
+      return [r['시작'], r['종료'], str_(r['내용']), str_(r['장소']), str_(r['비고'])];
     }));
   }
 
@@ -840,6 +865,17 @@ function changeSchedule() {
   return changed;
 }
 
+/**
+ * 시트가 날짜로 바꿔 버리는 꼴인가 (D-062). `2026-10-17` · `2026.10.17` · `10/17` · `10-17` · `10월 17일`.
+ * `10/31(토)` · `사전답사(10/17)` 처럼 글자가 붙으면 날짜로 바뀌지 않는다.
+ */
+function looksLikeDate_(s) {
+  var t = str_(s);
+  return /^\d{4}\s*[-./]\s*\d{1,2}\s*[-./]\s*\d{1,2}\.?$/.test(t) ||
+    /^\d{1,2}\s*[-./]\s*\d{1,2}(\s*[-./]\s*\d{2,4})?\.?$/.test(t) ||
+    /^(\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일$/.test(t);
+}
+
 /** 기본값을 채워 보여 주는 입력창. 취소하면 null. */
 function promptFor_(ui, label, current) {
   var res = ui.prompt(label, '현재: ' + (current || '(비어 있음)') + '\n\n새 값을 입력하세요.',
@@ -926,4 +962,4 @@ function onOpen() {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_SETUP = 'v18';
+var END_SETUP = 'v21';

@@ -1,12 +1,12 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Auth.gs · v19 · 2026-09-30
+ * Auth.gs · v21 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v21   2026-10-17  로그인: 참여 일자가 다르면 다른 사람 — 쓸 수 있는 회차 중 가까운 회차 행으로 (D-062)
  *  v19   2026-09-30  명단 사본 — 로그인 키·날짜 고정 토큰 (D-055)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *  v16   2026-09-26  조 없는 교역자·스태프 모드, 공란 회차, 오늘 회차 행 (D-051)
- *  v15   2026-09-26  파일 버전 표시 시작
  *  —     2026-09-19  쓰기 8.5초의 범인은 락 대기였다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
@@ -14,7 +14,7 @@
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_AUTH = 'v19';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_AUTH = 'v21';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Auth.gs — 인증 / 토큰 / 권한
@@ -79,6 +79,46 @@ function matchesParticipant_(row, typedName, typedLast4) {
     candidates.push(name.digits);
   }
   return candidates.filter(String).indexOf(typedLast4) >= 0;
+}
+
+/**
+ * 이름·번호가 같은 여러 행에서 **이 로그인이 가리키는 한 행**을 고른다 (D-062).
+ *
+ *   ① 로그인할 수 없는 행(참여 일자 없음·비활성 회차·목록에 없는 회차)은 후보에서 뺀다.
+ *      다 빠지면 원래 목록을 돌려준다 — 그 뒤의 검사가 "비활성 회차" 같은 원래 안내를 낸다.
+ *   ② 앱이 회차를 알려 줬으면 그 회차 (지금 앱은 보내지 않는다, D-027).
+ *   ③ 날짜로 — 오늘이거나 가장 가까운 다음 회차. 다 지났으면 가장 최근 회차.
+ *      예전(D-051)에는 "오늘 회차" 하나만 봐서, 회차 사이의 날에는 AMBIGUOUS 로 막혔다.
+ *   그래도 여럿이면 **같은 회차 안의 중복**이다 — 그대로 돌려줘 AMBIGUOUS 가 된다.
+ */
+function narrowBySession_(matches, hintSession) {
+  if (matches.length <= 1) return matches;
+  var info = {};
+  sessions_().forEach(function (s) { info[s.label] = s; });
+  var usable = matches
+    .map(function (r) { return { row: r, s: effectiveSession_(r) }; })
+    .filter(function (x) { return x.s && info[x.s] && info[x.s].active; });
+  if (!usable.length) return matches;
+  if (usable.length === 1) return [usable[0].row];
+
+  if (hintSession) {
+    var hinted = usable.filter(function (x) { return x.s === hintSession; });
+    if (hinted.length === 1) return [hinted[0].row];
+  }
+
+  var today = todayStr_();
+  var dated = usable.filter(function (x) { return info[x.s].date; });
+  var upcoming = dated.filter(function (x) { return info[x.s].date >= today; })
+    .sort(function (a, b) { return info[a.s].date < info[b.s].date ? -1 : info[a.s].date > info[b.s].date ? 1 : 0; });
+  var pool = upcoming.length ? upcoming
+    : dated.sort(function (a, b) { return info[a.s].date < info[b.s].date ? 1 : info[a.s].date > info[b.s].date ? -1 : 0; });
+  if (pool.length) {
+    var best = info[pool[0].s].date;
+    var same = pool.filter(function (x) { return info[x.s].date === best; });
+    if (same.length === 1) return [same[0].row];
+    return same.map(function (x) { return x.row; });
+  }
+  return usable.map(function (x) { return x.row; });
 }
 
 /** 화면에 보여줄 이름 — 뒤에 붙은 구분용 4자리는 떼고 보여준다. */
@@ -213,21 +253,10 @@ function login_(body) {
     throw new AppError('NOT_FOUND', '명단에서 찾지 못했습니다. 이름과 연락처를 확인하시거나 운영진에게 문의해 주세요.');
   }
 
-  // 동명이인이면 고른 날짜로 한 번 더 좁혀 본다.
-  if (matches.length > 1 && hintSession) {
-    var narrowed = matches.filter(function (r) { return str_(r[COL.SESSION]) === hintSession; });
-    if (narrowed.length === 1) matches = narrowed;
-  }
-  // 🔴 그래도 여럿이면 **오늘 회차** 행으로 좁힌다 (D-051). 로그인 화면에서 날짜 선택을
-  // 뺀 뒤(D-027)로는 힌트가 오지 않아, 두 회차를 다 일하는 사람이 행 두 개면 막혔다.
-  if (matches.length > 1) {
-    var todayLabel = currentSessionLabel_();
-    var today = sessions_().filter(function (x) { return x.label === todayLabel; })[0];
-    if (today && today.date === todayStr_()) {
-      var onToday = matches.filter(function (r) { return str_(r[COL.SESSION]) === todayLabel; });
-      if (onToday.length === 1) matches = onToday;
-    }
-  }
+  // 🔴 같은 이름·번호가 여러 행이면 **참여 일자로 가른다** (D-062).
+  // 같은 사람이라도 회차가 다르면 다른 사람이다 — 사전답사 행과 본 캠프 행이 같이 있어도
+  // 가까운 회차 행으로 들어간다. 같은 회차 안에서 겹치는 것만 진짜 충돌(AMBIGUOUS)이다.
+  if (matches.length > 1) matches = narrowBySession_(matches, hintSession);
   if (matches.length > 1) {
     logEvent_('auth.login', name, '', 'AMBIGUOUS', matches.length + '건');
     throw new AppError('AMBIGUOUS', '같은 이름·번호가 여러 건 등록되어 있습니다. 운영진에게 문의해 주세요.');
@@ -508,4 +537,4 @@ function defaultRoute_() {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_AUTH = 'v19';
+var END_AUTH = 'v21';

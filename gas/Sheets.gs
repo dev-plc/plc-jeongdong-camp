@@ -1,12 +1,12 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Sheets.gs · v18 · 2026-09-29
+ * Sheets.gs · v21 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v21   2026-10-17  일정 시각이 글자로 들어가 있어도 HH:mm 을 뽑아 낸다 (D-062)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *  v16   2026-09-26  교역자·담당 지점·점수출처·수상 열, 지금 회차 (D-051·052)
  *  v15   2026-09-26  파일 버전 표시 시작
- *  v14   2026-09-22  공지를 운영콘솔에서 쓴다
  *  —     2026-09-19  진행 기록이 왜 8.5초인지 구간별로 잰다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
@@ -14,7 +14,7 @@
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_SHEETS = 'v18';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_SHEETS = 'v21';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Sheets.gs — 스프레드시트 접근 레이어
@@ -735,7 +735,13 @@ function toHm_(value) {
   if (Object.prototype.toString.call(value) === '[object Date]') {
     return Utilities.formatDate(value, TZ, 'HH:mm');
   }
-  return String(value).trim();
+  var s = String(value).trim();
+  if (/^\d{1,2}:\d{2}$/.test(s)) return s;
+  // 🔴 시각 칸에 Date 를 글자로 바꾼 값("Sat Dec 30 1899 09:30:00 GMT+0827 …")이 들어간 적이 있다 (D-062).
+  //    `회차 추가` 의 일정표 복사가 그렇게 적었다. 앱은 그 글자를 시각으로 읽지 못해 "일정이 끝났다" 고 했다.
+  //    글자 안의 첫 HH:mm 을 뽑는다 — 이미 깨진 칸도 앱에서는 바로 고쳐 보인다.
+  var m = /(\d{1,2}):(\d{2})(?::\d{2})?/.exec(s);
+  return m ? (m[1].length === 1 ? '0' + m[1] : m[1]) + ':' + m[2] : s;
 }
 
 function str_(v) {
@@ -813,4 +819,4 @@ function logEvent_(action, actor, target, result, detail) {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_SHEETS = 'v18';
+var END_SHEETS = 'v21';
