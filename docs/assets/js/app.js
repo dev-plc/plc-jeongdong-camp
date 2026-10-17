@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v20.3 · 2026-10-17
+ * app.js · v20.4 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20.4 2026-10-17  미션을 시트에 적은 줄 그대로 · 지도는 좌표 → 주소 → 이름 순 (D-061)
  *  v20.3 2026-10-17  일지 사진: "촬영" 버튼 삭제 — 갤러리 하나만 (D-060)
  *  v20.2 2026-10-17  일지 사진: "갤러리에서 선택" 은 사진 고르는 화면이 바로 뜨게 — 형식을 나열 (D-059)
  *  v20.1 2026-10-16  일지 임시저장 · 코스 "운영본부에 저장됨" · 공지 번호 누르면 전화 (D-058)
  *  v20   2026-09-30  탐험일지 기본은 우리 조, 탭으로 전체 · 내 일지 탭 삭제 · 글마다 작성자와 조 (D-057)
- *  v19   2026-09-30  미션 점수 입력·표시 삭제 — 조장·스태프는 도착·완료만 (D-056)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -538,9 +538,7 @@
 
     var cards = state.progress.map(function (p) {
       var cp = byCode[p.checkpoint] || { name: p.checkpoint };
-      var mapUrl = cp.lat && cp.lng
-        ? 'https://map.kakao.com/link/map/' + encodeURIComponent(cp.name) + ',' + cp.lat + ',' + cp.lng
-        : 'https://map.kakao.com/link/search/' + encodeURIComponent(cp.name);
+      var mapUrl = UI.mapUrl(cp);     // 좌표 → 주소 → 이름 (D-061)
       var isNext = next && next.checkpoint === p.checkpoint;
       var times = (p.arrivedAt ? '도착 ' + esc(UI.hhmm(p.arrivedAt)) : '') +
         (p.completedAt ? ' · 완료 ' + esc(UI.hhmm(p.completedAt)) : '');
@@ -557,7 +555,7 @@
 
       var body =
         (cp.description ? '<p class="cp__desc">' + nl2br(esc(cp.description)) + '</p>' : '') +
-        (cp.mission ? '<p class="cp__mission"><strong>미션</strong> ' + esc(cp.mission) + '</p>' : '') +
+        UI.missionHtml(cp.mission) +
         (times && p.status !== '완료' ? '<p class="cp__times">' + times + '</p>' : '') +
         '<div class="cp__links">' +
           '<a class="btn btn--ghost btn--sm" href="' + esc(mapUrl) + '" target="_blank" rel="noopener">지도</a>' +
@@ -759,7 +757,7 @@
       '<section class="section-head"><h2>📍 ' + esc(cp.name) + '</h2>' +
         '<p class="hint">' + esc(b.session) + ' · 이 지점에 오는 순서대로입니다. 조가 오면 "도착 확인", ' +
         '미션이 끝나면 "완료".</p></section>' +
-      (cp.mission ? '<p class="cp__mission"><strong>미션</strong> ' + esc(cp.mission) + '</p>' : '') +
+      UI.missionHtml(cp.mission) +
       '<div class="station-bar">' +
         '<span class="course-summary__count">도착 ' + here + '/' + n + ' · 완료 ' + done + '/' + n + '</span>' +
         (cp.quizUrl ? '<a class="btn btn--ghost btn--sm" href="' + esc(cp.quizUrl) + '" target="_blank" rel="noopener">퀴즈</a>' : '') +
