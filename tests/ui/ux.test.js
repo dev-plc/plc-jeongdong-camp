@@ -64,16 +64,26 @@ withBrowser(async (env) => {
   ok('🔴 올리면 저장본을 지운다', (await DRAFT(page)).length === 0, await DRAFT(page));
   ok('올린 뒤 안내도 숨는다', await page.locator('#draftHint').isHidden());
 
-  // ------------------------------------------------------------ 사진 입력 (D-059)
-  section('사진 — 촬영은 카메라, 갤러리는 사진 고르는 화면');
+  // ------------------------------------------------------------ 사진 입력 (D-059 · D-060)
+  section('사진 — 촬영 버튼 없음, 갤러리 하나 (D-060)');
   const pick = await page.evaluate(() => {
-    const a = (sel) => { const el = document.querySelector(sel); return el ? { accept: el.getAttribute('accept'), capture: el.getAttribute('capture') } : null; };
-    return { shot: a('#journalForm input[name="photoShot"]'), gallery: a('#journalForm input[name="photoPick"]') };
+    const ins = [...document.querySelectorAll('#journalForm input[type="file"]')];
+    return { n: ins.length, captures: ins.filter(el => el.hasAttribute('capture')).length,
+             shot: !!document.querySelector('#journalForm input[name="photoShot"]'),
+             accept: ins[0] && ins[0].getAttribute('accept'), label: (document.querySelector('#journalForm .filepick') || {}).textContent,
+             hint: (document.querySelector('#photoHint') || {}).textContent || '' };
   });
-  ok('촬영 버튼은 카메라를 바로 연다 (capture)', pick.shot && pick.shot.capture === 'environment' && pick.shot.accept === 'image/*', pick.shot);
-  ok('🔴 갤러리 버튼에는 capture 가 없다', pick.gallery && pick.gallery.capture === null, pick.gallery);
-  ok('🔴 갤러리 버튼은 형식을 나열한다 (와일드카드 아님 · JPEG 포함 · HEIC 제외)',
-    pick.gallery && !/\*/.test(pick.gallery.accept) && /image\/jpeg/.test(pick.gallery.accept) && !/heic/i.test(pick.gallery.accept), pick.gallery);
+  ok('🔴 촬영 입력이 없다 · capture 붙은 입력 0개', !pick.shot && pick.captures === 0, pick);
+  ok('🔴 파일 입력은 하나 — 갤러리', pick.n === 1 && /갤러리/.test(pick.label), pick);
+  ok('갤러리는 형식을 나열한다 (와일드카드 아님 · JPEG 포함 · HEIC 제외)',
+    !/\*/.test(pick.accept) && /image\/jpeg/.test(pick.accept) && !/heic/i.test(pick.accept), pick.accept);
+  ok('안내: 카메라로 먼저 찍은 뒤 고르기', pick.hint.includes('카메라로 먼저 찍은 뒤'), pick.hint);
+  // 회귀: 갤러리로 넣은 사진이 미리보기 → 올리기까지 간다 (1x1 PNG)
+  await page.setInputFiles('#journalForm input[name="photoPick"]', { name: 'a.png', mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
+  await page.waitForSelector('#photoPreview:not([hidden])');
+  ok('갤러리 사진 → 미리보기', true);
+  await page.click('#photoClear');
 
   // ------------------------------------------------------------ 로그아웃
   section('로그아웃 — 기록은 남는다고 알리고, 쓰던 글은 지운다');
@@ -85,6 +95,22 @@ withBrowser(async (env) => {
   await page.click('.modal [data-act="ok"]');
   await page.waitForSelector('#loginForm');
   ok('🔴 로그아웃하면 쓰던 글도 지운다 (다음 사람이 못 본다)', (await DRAFT(page)).length === 0, await DRAFT(page));
+  await page.context().close();
+
+  // ------------------------------------------------------------ 일지 수정 화면의 사진 입력 (D-060)
+  section('일지 수정 — 사진 교체도 갤러리, capture 없음');
+  page = await env.open({ persona: 'leader' });
+  await login(page);
+  await page.click('#tabbar [data-view="journal"]');
+  await page.waitForSelector('#journalList .jcard [data-act="edit"]');
+  await page.click('#journalList .jcard [data-act="edit"]');
+  await page.waitForSelector('#journalList [data-field="photo"]', { state: 'attached' });
+  const editPick = await page.evaluate(() => {
+    const el = document.querySelector('#journalList [data-field="photo"]');
+    return { accept: el.getAttribute('accept'), capture: el.hasAttribute('capture'),
+             anyCapture: document.querySelectorAll('input[capture]').length };
+  });
+  ok('🔴 수정 화면 사진 입력: capture 없음 · 형식 나열', !editPick.capture && editPick.anyCapture === 0 && /image\/jpeg/.test(editPick.accept) && !/\*/.test(editPick.accept), editPick);
   await page.context().close();
 
   // ------------------------------------------------------------ 코스 — 저장됨
