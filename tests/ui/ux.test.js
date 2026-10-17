@@ -145,6 +145,28 @@ withBrowser(async (env) => {
   ok('🔴 응답이 오면 "운영본부에 저장됨"', sv.CP4 === '✓ 운영본부에 저장됨', sv);
   ok('🔴 토스트가 사라져도 남는다', (await page.clock.runFor(8000), (await saved()).CP4) === '✓ 운영본부에 저장됨');
 
+  // ------------------------------------------------------------ 미션 · 지도 (D-061)
+  section('미션은 시트에 적은 줄 그대로 · 지도는 좌표 → 주소 → 이름');
+  const ms = await page.evaluate(() => {
+    const m = document.querySelector('#cp-CP1 .cp__mission');
+    return { html: m.innerHTML, text: m.textContent, notes: [...m.querySelectorAll('.cp__mission-note')].map(e => e.textContent) };
+  });
+  ok('🔴 줄바꿈이 그대로 (배재학당 4줄)', (ms.html.match(/<br>/g) || []).length === 3, ms.html);
+  ok('제목 줄 · 본문', ms.text.includes('[글자 찾기 미션] "흩어진 글자 완성하기"') && ms.text.includes('크고자 하거든 남을 섬기라'), ms.text);
+  ok('🔴 ※ 주의 줄은 따로 강조', ms.notes.length === 1 && ms.notes[0].startsWith('※ 주의'), ms.notes);
+  const maps = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.cp')].map(c =>
+    [c.getAttribute('data-code'), decodeURIComponent((c.querySelector('.cp__links a') || {}).href || '')])));
+  ok('🔴 좌표가 없으면 주소로 찾는다 (이화여고 → 정동길 26)', maps.CP4 === 'https://map.kakao.com/link/search/서울 중구 정동길 26', maps.CP4);
+  ok('주소도 없으면 이름으로 (보구여관 터)', maps.CP3 === 'https://map.kakao.com/link/search/보구여관 터', maps.CP3);
+  const pin = await page.evaluate(() => [
+    UI.mapUrl({ name: '배재학당역사박물관', lat: 37.5, lng: 126.9, address: '서울 중구 서소문로11길 19' }),
+    UI.mapUrl({ name: 'X', lat: null, lng: 126.9, address: '' }),
+    UI.missionHtml(''), UI.missionHtml('<b>한 줄</b>')
+  ]);
+  ok('🔴 좌표가 있으면 그 자리에 핀 (주소보다 먼저)', decodeURIComponent(pin[0]) === 'https://map.kakao.com/link/map/배재학당역사박물관,37.5,126.9', pin[0]);
+  ok('좌표가 반만 있으면 핀을 쓰지 않는다', pin[1] === 'https://map.kakao.com/link/search/X', pin[1]);
+  ok('빈 미션은 그리지 않는다 · 글자는 이스케이프', pin[2] === '' && pin[3].includes('&lt;b&gt;') && !pin[3].includes('<b>'), pin.slice(2));
+
   // ------------------------------------------------------------ 글씨
   section('제목·지점명은 고딕, 본문은 크게');
   const font = await page.evaluate(() => {
@@ -204,6 +226,16 @@ withBrowser(async (env) => {
     }
     await page.context().close();
   }
+
+  section('거점 스태프 — 미션도 같은 모양');
+  page = await env.open({ persona: 'staff' });
+  await login(page);
+  await page.click('#tabbar [data-view="course"]');
+  await page.waitForSelector('.st-row');
+  const stM = await page.evaluate(() => { const m = document.querySelector('.cp__mission'); return m ? { br: (m.innerHTML.match(/<br>/g) || []).length, notes: m.querySelectorAll('.cp__mission-note').length } : null; });
+  ok('스태프 내 지점: 미션 여러 줄 · ※ 강조', stM && stM.br === 3 && stM.notes === 1, stM);
+  ok('13px 미만 글자 없음 (내 지점)', (await smallText(page)).length === 0, await smallText(page));
+  await page.context().close();
 
   section('런타임 오류');
   ok('JS 오류 없음', env.errors.length === 0, env.errors);
