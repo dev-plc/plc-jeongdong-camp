@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v19 · 2026-09-30
+ * admin.js · v20.2 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20.2 2026-10-17  진행 현황: 조를 숫자 순서로 — 카드와 표가 같은 순서 (D-059)
  *  v19   2026-09-30  점수 칸·시상 퀴즈 부문 삭제 — 정정은 상태만 (D-056)
  *  v16   2026-09-26  진행 칸 정정, 🏆 시상, 일지 일괄 승인 (D-052)
  *  v15.1 2026-09-26  진행표를 조별 카드로 + 40분 무소식 ⚠ (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
- *  v14   2026-09-22  공지를 운영콘솔에서 쓴다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -554,9 +554,10 @@
   }
 
   function paintProgress(board) {
-        var teams = board.teams.filter(function (t) {
+        // 카드와 "표로 보기" 가 같은 순서여야 한다 — 10조는 9조 다음 (D-059)
+        var teams = UI.sortTeams(board.teams.filter(function (t) {
           return matchesAudience(t.audience) && matchesSession(t.session);
-        });
+        }));
         var grid = UI.teamGrid(teams, board.checkpoints, { showSession: state.session === '전체', editable: true });
 
         setView(

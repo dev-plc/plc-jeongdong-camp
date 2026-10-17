@@ -4,7 +4,7 @@
  * 시계는 10/31 15:25 KST.
  */
 const { ok, section, done } = require('../lib/check');
-const { withBrowser, login, text, bodies, noHScroll, smallText } = require('../lib/browser');
+const { withBrowser, login, adminLogin, text, bodies, noHScroll, smallText } = require('../lib/browser');
 
 const DRAFT = (pg) => pg.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('plc_jd_draft:')));
 
@@ -63,6 +63,17 @@ withBrowser(async (env) => {
   ok('올리면 보낸 글은 그대로', (await bodies(page, 'journal.create'))[0].text === '올릴 글');
   ok('🔴 올리면 저장본을 지운다', (await DRAFT(page)).length === 0, await DRAFT(page));
   ok('올린 뒤 안내도 숨는다', await page.locator('#draftHint').isHidden());
+
+  // ------------------------------------------------------------ 사진 입력 (D-059)
+  section('사진 — 촬영은 카메라, 갤러리는 사진 고르는 화면');
+  const pick = await page.evaluate(() => {
+    const a = (sel) => { const el = document.querySelector(sel); return el ? { accept: el.getAttribute('accept'), capture: el.getAttribute('capture') } : null; };
+    return { shot: a('#journalForm input[name="photoShot"]'), gallery: a('#journalForm input[name="photoPick"]') };
+  });
+  ok('촬영 버튼은 카메라를 바로 연다 (capture)', pick.shot && pick.shot.capture === 'environment' && pick.shot.accept === 'image/*', pick.shot);
+  ok('🔴 갤러리 버튼에는 capture 가 없다', pick.gallery && pick.gallery.capture === null, pick.gallery);
+  ok('🔴 갤러리 버튼은 형식을 나열한다 (와일드카드 아님 · JPEG 포함 · HEIC 제외)',
+    pick.gallery && !/\*/.test(pick.gallery.accept) && /image\/jpeg/.test(pick.gallery.accept) && !/heic/i.test(pick.gallery.accept), pick.gallery);
 
   // ------------------------------------------------------------ 로그아웃
   section('로그아웃 — 기록은 남는다고 알리고, 쓰던 글은 지운다');
@@ -126,6 +137,47 @@ withBrowser(async (env) => {
   ok('390px 가로 넘침 없음 (코스)', await noHScroll(page));
   ok('13px 미만 글자 없음 (코스)', (await smallText(page)).length === 0, await smallText(page));
   await page.context().close();
+
+  // ------------------------------------------------------------ 운영 콘솔 조별 카드 (D-059)
+  section('운영 콘솔 — 10조는 9조 다음 · 지점 이름 전체');
+  for (const width of [1200, 390]) {
+    page = await env.open({ mode: 'admin', width });
+    await adminLogin(page);
+    await page.click('#tabbar [data-view="progress"]');
+    await page.waitForSelector('.team-card .step__name');
+    const names = await page.evaluate(() => [...document.querySelectorAll('.team-card .step__name')].map(el => ({
+      text: el.textContent, cut: el.scrollWidth > el.clientWidth + 1 || getComputedStyle(el).textOverflow === 'ellipsis'
+    })));
+    ok('🔴 지점 이름이 잘리지 않는다 @' + width, names.length > 0 && names.every(n => !n.cut), names.filter(n => n.cut));
+    ok('긴 이름도 전체로 @' + width, names.some(n => n.text === '러시아 공사관과 킹스로드'));
+    const row = await page.evaluate(() => {
+      const li = document.querySelector('.team-card[data-team="10/31(토) 1조"] .step');
+      return { no: li.querySelector('.step__no').textContent, name: li.querySelector('.step__name').textContent, state: li.querySelector('.step__state').textContent };
+    });
+    ok('한 줄에 번호 · 이름 · 상태와 시각 @' + width, row.no === '1' && row.name === '보구여관 터' && row.state === '완료 14:24', row);
+    ok('카드 칸은 여전히 눌러 고친다 @' + width, (await page.locator('.team-card .step__btn').count()) === 20);
+    ok('가로 넘침 없음 @' + width, await noHScroll(page));
+    ok('13px 미만 글자 없음 @' + width, (await smallText(page)).length === 0, await smallText(page));
+    if (width === 1200) {
+      const order = await page.evaluate(() => {
+        const t = (session, group) => ({ session, group, name: group, leaderName: '', memberCount: 1, route: [], cells: {} });
+        const teams = [t('사전답사(10/17)', '10조'), t('사전답사(10/17)', '1조'), t('사전답사(10/17)', '2조'),
+          t('사전답사(10/17)', '9조'), t('11/07(토)', '1조'), t('사전답사(10/17)', '운영')];
+        const html = UI.teamGrid(teams, [], {}).html;
+        const box = document.createElement('div'); box.innerHTML = html;
+        return [...box.querySelectorAll('.team-card')].map(el => el.getAttribute('data-team'));
+      });
+      ok('🔴 카드 순서: 1 · 2 · 9 · 10조, 번호 없는 조는 뒤 · 회차 순서는 그대로', JSON.stringify(order) === JSON.stringify(
+        ['사전답사(10/17) 1조', '사전답사(10/17) 2조', '사전답사(10/17) 9조', '사전답사(10/17) 10조', '사전답사(10/17) 운영', '11/07(토) 1조']), order);
+      const same = await page.evaluate(() => {
+        const cards = [...document.querySelectorAll('.team-card strong')].map(el => el.textContent);
+        const rows = [...document.querySelectorAll('.board-table tbody tr')].map(tr => tr.children[2].textContent);
+        return { cards, rows };
+      });
+      ok('표로 보기도 카드와 같은 순서', JSON.stringify(same.cards) === JSON.stringify(same.rows), same);
+    }
+    await page.context().close();
+  }
 
   section('런타임 오류');
   ok('JS 오류 없음', env.errors.length === 0, env.errors);

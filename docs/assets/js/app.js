@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v20.1 · 2026-10-16
+ * app.js · v20.2 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20.2 2026-10-17  일지 사진: "갤러리에서 선택" 은 사진 고르는 화면이 바로 뜨게 — 형식을 나열 (D-059)
  *  v20.1 2026-10-16  일지 임시저장 · 코스 "운영본부에 저장됨" · 공지 번호 누르면 전화 (D-058)
  *  v20   2026-09-30  탐험일지 기본은 우리 조, 탭으로 전체 · 내 일지 탭 삭제 · 글마다 작성자와 조 (D-057)
  *  v19.1 2026-09-30  코스 버튼을 누른 뒤 3초 잠금 — 연타로 두 단계가 넘어가지 않게
  *  v19   2026-09-30  미션 점수 입력·표시 삭제 — 조장·스태프는 도착·완료만 (D-056)
- *  v16   2026-09-26  내 지점·진행 화면, 역할 카드, 조장 점수 칸 (D-051·052)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -913,6 +913,18 @@
     loadJournal(0);
   }
 
+  /**
+   * 갤러리 입력이 받는 형식 (D-059).
+   *
+   * 🔴 `image/*` 로 두지 않는다. 안드로이드 일부 브라우저(카카오톡 안 브라우저 등)는 와일드카드를 보면
+   *    "카메라 · 캠코더 · 파일" 고르는 창을 먼저 띄워, "갤러리에서 선택" 을 눌렀는데 카메라를 묻는다.
+   *    형식을 나열하면 사진 고르는 화면이 바로 열리는 경우가 많다. 촬영은 옆 버튼(capture)이 맡는다.
+   * HEIC 는 넣지 않는다 — 안드로이드 크롬은 HEIC 를 그리지 못해 줄이기(UI.resizePhoto)가 실패하고,
+   *    아이폰은 목록에 없으면 JPEG 로 바꿔서 넘겨준다.
+   * 아이폰 사파리는 어떤 값이든 "사진 보관함 · 사진 찍기 · 파일 선택" 메뉴가 먼저 뜬다 — 웹에서 건너뛸 수 없다.
+   */
+  var GALLERY_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif';
+
   function journalFormHtml() {
     var cps = state.boot.checkpoints || [];
     return '<form id="journalForm" class="card card--form">' +
@@ -936,7 +948,7 @@
         '<div class="filepick-row">' +
           '<label class="filepick"><input type="file" name="photoShot" accept="image/*" ' +
             'capture="environment" hidden><span>📷 촬영</span></label>' +
-          '<label class="filepick"><input type="file" name="photoPick" accept="image/*" hidden>' +
+          '<label class="filepick"><input type="file" name="photoPick" accept="' + GALLERY_ACCEPT + '" hidden>' +
             '<span>🖼 갤러리에서 선택</span></label>' +
         '</div>' +
         '<div id="photoPreview" class="photo-preview" hidden>' +
@@ -1134,7 +1146,7 @@
         (item.photoUrl
           ? '<label class="check"><input type="checkbox" data-field="removePhoto"> 사진 삭제</label>'
           : '') +
-        '<label class="filepick filepick--sm"><input type="file" accept="image/*" data-field="photo" hidden>' +
+        '<label class="filepick filepick--sm"><input type="file" accept="' + GALLERY_ACCEPT + '" data-field="photo" hidden>' +
           '<span>사진 교체</span></label>' +
         '<p class="hint" data-role="photoName"></p>' +
         (state.boot.config.JOURNAL_REQUIRE_APPROVAL && item.status === '승인'

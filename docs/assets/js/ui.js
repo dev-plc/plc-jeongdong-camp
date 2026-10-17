@@ -1,12 +1,12 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v20.1 · 2026-10-16
+ * ui.js · v20.2 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v20.2 2026-10-17  조별 카드: 조를 숫자 순서로(10조는 9조 다음) · 지점을 한 줄씩 이름 전체로 (D-059)
  *  v20.1 2026-10-16  알림 5초(오류 6초) · 전화번호 링크 (D-058)
  *  v19   2026-09-30  조별 카드에서 점수 표시 삭제 (D-056)
  *  v16   2026-09-26  조별 카드 공용화, 점수 표시·정정 칸 (D-051·052)
- *  v15.1 2026-09-26  상대 시각 도우미 (N분 전 · 오늘 날짜 · HH:MM→분) (D-050)
  *  v15   2026-09-26  파일 버전 표시 시작
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
@@ -408,15 +408,18 @@
       [cell.arrivedAt, cell.completedAt].forEach(function (x) { if (x && x > last) last = x; });
       var cls = status === '완료' ? 'done' : status === '도착' ? 'here' : 'wait';
       var time = hhmm(cell.completedAt || cell.arrivedAt);
+      // 🔴 지점은 **한 줄에 하나씩, 이름 전체**로 (D-059). 네 칸을 가로로 늘어놓으면
+      // 3열 카드에서 칸이 80px 남짓이라 "러…·보…" 로 잘려 어느 지점인지 알 수 없었다.
       var inner =
-        '<span class="step__top">' + (i + 1) + (time ? ' · ' + esc(time) : '') + '</span>' +
-        '<span class="step__name">' + esc(nameOf[code] || code) + '</span>';
+        '<span class="step__no">' + (i + 1) + '</span>' +
+        '<span class="step__name">' + esc(nameOf[code] || code) + '</span>' +
+        '<span class="step__state">' + esc(status) + (time ? ' ' + esc(time) : '') + '</span>';
       var title = (nameOf[code] || code) + ' · ' + status;
       return '<li class="step step--' + cls + '" title="' + esc(title) + '">' +
         (o.editable
-          ? '<button type="button" class="step__btn" data-edit-session="' + esc(t.session) +
+          ? '<button type="button" class="step__btn step__row" data-edit-session="' + esc(t.session) +
               '" data-edit-group="' + esc(t.group) + '" data-edit-code="' + esc(code) + '">' + inner + '</button>'
-          : inner) +
+          : '<span class="step__row">' + inner + '</span>') +
         '</li>';
     }).join('');
 
@@ -445,10 +448,30 @@
   }
 
   /** 카드 묶음 + 맨 위 경고 줄. 반환: { html, stale } */
+  /**
+   * 조를 **숫자 순서로** (D-059). 서버는 "회차|조" 글자로 정렬해 "10조" 가 "1조" 앞에 왔다.
+   * 회차 순서는 받은 그대로 두고, 같은 회차 안에서 조 번호로 줄 세운다. 번호가 없는 조는 뒤로.
+   */
+  function groupNo(g) {
+    var m = /\d+/.exec(String(g === null || g === undefined ? '' : g));
+    return m ? parseInt(m[0], 10) : Infinity;
+  }
+  function sortTeams(teams) {
+    var rank = {}, n = 0;
+    teams.forEach(function (t) { if (!rank.hasOwnProperty(t.session)) rank[t.session] = n++; });
+    return teams.slice().sort(function (a, b) {
+      var d = rank[a.session] - rank[b.session];
+      if (d) return d;
+      var ga = groupNo(a.group), gb = groupNo(b.group);
+      if (ga !== gb) return ga < gb ? -1 : 1;
+      return String(a.group) < String(b.group) ? -1 : String(a.group) > String(b.group) ? 1 : 0;
+    });
+  }
+
   function teamGrid(teams, checkpoints, opts) {
     var stale = 0;
     var nowMs = (opts && opts.nowMs) || Date.now();
-    var cards = teams.map(function (t) {
+    var cards = sortTeams(teams).map(function (t) {
       var html = teamCard(t, checkpoints, Object.assign({}, opts, { nowMs: nowMs }));
       if (html.indexOf(' is-stale') > 0) stale++;
       return html;
@@ -466,6 +489,6 @@
     resizePhoto: resizePhoto, hhmm: hhmm, localIso: localIso, prettyDateTime: prettyDateTime,
     localDate: localDate, hmToMin: hmToMin, minutesSince: minutesSince, agoText: agoText,
     perfPanel: perfPanel, perfEnabled: perfEnabled,
-    STALE_MIN: STALE_MIN, teamCard: teamCard, teamGrid: teamGrid
+    STALE_MIN: STALE_MIN, teamCard: teamCard, teamGrid: teamGrid, sortTeams: sortTeams
   };
 })(window);
