@@ -67,7 +67,7 @@ const opsTok = tokenOf('최교역', '0001');
 const meOps = post({ action: 'me', token: opsTok });
 ok('me 도 같은 회차·모드', meOps.ok && meOps.data.participant.session === S1 && meOps.data.mode === 'ops', meOps);
 
-section('🔴 두 회차 행을 가진 사람 — 오늘 회차 행으로');
+section('🔴 두 회차 행을 가진 사람 — 오늘·가까운 회차 행으로 (D-051 · D-062)');
 let two = login('두행이', '0005');
 ok('10/31 에는 10/31 행으로 로그인', two.ok && two.data.me.participant.session === S1, two.error || two.data.me.participant.session);
 setToday('2026-11-07');
@@ -75,7 +75,8 @@ two = login('두행이', '0005');
 ok('11/07 에는 11/07 행으로', two.ok && two.data.me.participant.session === S2, two.error || two.data.me.participant.session);
 setToday('2026-11-03');
 two = login('두행이', '0005');
-ok('어느 회차도 아닌 날에는 여전히 막는다(AMBIGUOUS)', !two.ok && two.error.code === 'AMBIGUOUS', two);
+// D-062: 예전에는 회차 사이의 날에 AMBIGUOUS 로 막혔다. 이제 회차가 다르면 다른 사람 — 가까운 다음 회차로.
+ok('회차 사이(11/03)에는 다음 회차 11/07 행으로', two.ok && two.data.me.participant.session === S2, two.error || two.data.me.participant.session);
 setToday('2026-10-31');
 
 section('활성 회차가 없으면');
