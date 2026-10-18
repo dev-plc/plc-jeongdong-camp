@@ -54,7 +54,8 @@ fetch(API_BASE, {
 { "action": "bootstrap" }
 // data
 {
-  "config": { "CAMP_NAME": "...", "GALLERY_SCOPE": "ALL", "SHOW_FEE": true, ... },
+  "config": { "CAMP_NAME": "...", "GALLERY_SCOPE": "ALL", "SHOW_FEE": true,
+              "PHOTO_MAX_COUNT": 4, ... },   // PHOTO_MAX_COUNT: v22 (D-064). 없으면 앱은 v22 이전 서버로 보고 한 장·예전 필드
   "labels": { "audience": "캠프 대상", "session": "참여 일자", "group": "조 배정",
               "feeStatus": "입금 여부", "insurance": "여행자 보험 가입", "course": "배정 코스", ... },
   "sessions": [ { "label": "10/31(토)", "date": "2026-10-31" },
@@ -122,7 +123,8 @@ fetch(API_BASE, {
                    "feeStatus": "완납", "insurance": "가입완료" },
   "team": { "session": "10/31(토)", "group": "1조", "name": "1조 배재", "color": "#984534",
             "leaderName": "김캠티", "meetingPoint": "PL교회 본당 앞",
-            "course": "C코스(보구여관 시작)", "route": ["CP3","CP4","CP1","CP2"] },
+            "course": "C코스(보구여관 시작)", "route": ["CP3","CP4","CP1","CP2"],
+            "courseNote": "시청역 3번 출구" },   // v22, D-063 — Courses `비고`. 경로가 기본 순서로 되돌아가면 빈 값
   "isLeader": true,
   "mode": "leader",          // station | leader | member | ops (v16, D-051)
   "station": null,           // mode=station 이면 { "code": "CP1", "name": "배재학당역사박물관" }
@@ -204,22 +206,28 @@ fetch(API_BASE, {
   조원은 갤러리와 같은 규칙(승인된 글 + 본인 글). 조가 없으면(교역자·스태프) `FORBIDDEN`.
 - `scope: "mine"` — 본인 일지 전부(상태 무관, `삭제` 제외). **앱은 v20 부터 쓰지 않습니다**(탭 삭제) — 캐시된 옛 앱 호환으로만 남깁니다.
 - 응답 항목에는 `canEdit` 불리언이 포함됩니다(작성자 본인 또는 조장이면 `true`).
+- 사진 (v22, D-064): `photos: [ { id, url, award } ]` — 순서대로. `photoUrl` 은 첫 장(예전 앱 호환), `award` 는 한 장이라도 ★ 이면 `true`.
 
 #### `journal.create`
 ```jsonc
 { "action": "journal.create", "token": "...", "checkpoint": "CP2",
   "text": "러시아공사관 앞에서...",
-  "photo": { "name": "a.jpg", "mimeType": "image/jpeg", "dataBase64": "..." } }
+  "photos": [ { "name": "a.jpg", "mimeType": "image/jpeg", "dataBase64": "..." }, ... ] }
 ```
-`photo` 는 선택. 텍스트나 사진 중 하나는 있어야 합니다. `Config.JOURNAL_OPEN=FALSE` 면 `CLOSED`.
+`photos` 는 선택이고 `Config.PHOTO_MAX_COUNT`(기본 4)장까지입니다(v22, D-064). 넘으면 `BAD_REQUEST`.
+예전 앱의 `photo`(한 장)도 받습니다. 텍스트나 사진 중 하나는 있어야 합니다. `Config.JOURNAL_OPEN=FALSE` 면 `CLOSED`.
+🔴 **모든 사진을 먼저 검사**(크기·형식)하고 나서 Drive 에 만듭니다. 한 장이라도 걸리면 아무것도 만들지 않습니다.
+만드는 중에 Drive 가 실패하면 이미 만든 파일을 휴지통에 넣습니다.
 
 #### `journal.update` — 작성자 본인 / 소속 조장 / 관리자 (D-009)
 ```jsonc
 { "action": "journal.update", "token": "...", "id": "J0012",
   "text": "수정한 소감", "checkpoint": "CP2",
-  "photo": { ... },      // 새 사진으로 교체
-  "removePhoto": true }  // 사진만 삭제
+  "addPhotos": [ { ... } ],          // 사진 더하기 (v22) — 뒤에 붙는다
+  "removePhotoIds": ["1AbC…"] }      // 사진 빼기 (v22) — 이 글의 사진이 아닌 ID 는 무시
 ```
+고친 뒤 장수가 `PHOTO_MAX_COUNT` 를 넘으면 `BAD_REQUEST`. 뺀 사진은 Drive 휴지통으로 가고 ★ 에서도 빠집니다.
+예전 앱의 `photo`(전부 교체)·`removePhoto: true`(전부 삭제)도 받습니다.
 **승인 또는 반려** 상태였다면 `대기` 로 되돌아가고 옛 `반려사유` 는 지워집니다
 (관리자 수정과 `JOURNAL_REQUIRE_APPROVAL=FALSE` 는 제외). 반려된 글을 고쳐 다시 내는
 길입니다 — 예전에는 `승인` 일 때만 되돌려서 반려본은 다시 낼 수 없었습니다 (D-046).
@@ -228,7 +236,7 @@ fetch(API_BASE, {
 ```jsonc
 { "action": "journal.delete", "token": "...", "id": "J0012" }
 ```
-소프트 삭제(`상태=삭제`) + Drive 사진 휴지통 이동.
+소프트 삭제(`상태=삭제`) + Drive 사진 휴지통 이동(여러 장이면 모두, v22).
 
 #### `fee.status`
 ```jsonc
@@ -253,7 +261,7 @@ fetch(API_BASE, {
 | `admin.journal.list` | **삭제를 뺀 전체 목록**, 최신순 (D-046). 상태 거르기는 앱이 받아 둔 데이터로 합니다 |
 | `admin.journal.review` | `{ id, decision: "승인"\|"반려", reason }` |
 | `admin.journal.reviewBatch` | `{ ids: [...], decision: "승인" }` (v16) — **대기 글만** 한 번의 락으로 승인, 나머지는 건너뜀. → `{ approved, skipped }`. 일괄 반려는 없습니다 |
-| `admin.journal.award` | `{ id, award: true\|false }` (v16) — ★ 사진 수상작. **승인된 사진 글만** 지정 가능. 목록 항목에 `award` |
+| `admin.journal.award` | `{ id, photoId, award: true\|false }` (v16, v22) — ★ 사진 수상작. **사진마다**(`photoId`, D-064). `photoId` 없이 오면 지정은 첫 사진, 해제는 전부. **승인된 사진 글만** 지정 가능. 목록 항목의 `photos[].award` · `award` |
 | `admin.journal.update` / `admin.journal.delete` | 참가자용과 동일하나 전 범위 |
 | `admin.notice.list` | 공지 **전부** — 예약·종료된 것까지, `targets`(고를 수 있는 대상) 동봉 (D-048) |
 | `admin.notice.save` | `{ id?, target, title, body, pinned, endsAt? }` — `id` 가 없으면 만들고 있으면 고칩니다. `게시일시` 는 만들 때만 찍고 이후 건드리지 않습니다 |

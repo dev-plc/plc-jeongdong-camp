@@ -60,13 +60,15 @@ async function withBrowser(body) {
   const errors = [];
 
   /**
-   * @param {object} o  at: 고정 시각(ISO) · width · persona(leader|member|staff|pastor) · mode(participant|admin)
+   * @param {object} o  at: 고정 시각(ISO) · width · persona(leader|member|staff|pastor) · mode(participant|admin) ·
+   *                    init: 페이지 스크립트보다 먼저 돌 함수 (가짜 서버 응답을 바꿔 끼울 때)
    */
   async function open(o) {
     o = o || {};
     const ctx = await browser.newContext({ viewport: { width: o.width || 390, height: 844 }, timezoneId: 'Asia/Seoul' });
     const page = await ctx.newPage();
     page.on('pageerror', e => errors.push('pageerror: ' + e.message));
+    if (o.init) await page.addInitScript(o.init);
     await page.clock.install({ time: new Date(o.at || '2026-10-31T15:25:00+09:00') });
     await page.route('https://fonts.**', r => r.abort());
     await page.addInitScript(([p, m]) => {

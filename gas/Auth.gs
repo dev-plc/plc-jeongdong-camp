@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Auth.gs · v21 · 2026-10-17
+ * Auth.gs · v22 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v22   2026-10-17  조 정보에 출발 안내(courseNote) — Courses `비고` (D-063)
  *  v21   2026-10-17  로그인: 참여 일자가 다르면 다른 사람 — 쓸 수 있는 회차 중 가까운 회차 행으로 (D-062)
  *  v19   2026-09-30  명단 사본 — 로그인 키·날짜 고정 토큰 (D-055)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *  v16   2026-09-26  조 없는 교역자·스태프 모드, 공란 회차, 오늘 회차 행 (D-051)
- *  —     2026-09-19  쓰기 8.5초의 범인은 락 대기였다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_AUTH = 'v21';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_AUTH = 'v22';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Auth.gs — 인증 / 토큰 / 권한
@@ -435,6 +435,9 @@ function buildMe_(p) {
   var mode = userMode_(p);
   var leader = mode === 'leader';
   var members = teamMembers_(session, group);
+  var hasTeam = group && mode !== 'station';
+  var courseName = hasTeam ? courseNameOf_(members, p) : '';
+  var course = hasTeam ? courseFor_(courseName) : null;
 
   var out = {
     participant: {
@@ -449,15 +452,18 @@ function buildMe_(p) {
     },
     mode: mode,
     station: mode === 'station' ? stationOf_(p) : null,
-    team: group && mode !== 'station' ? {
+    team: hasTeam ? {
       session: session,
       group: group,
       name: team ? (str_(team['조이름']) || group) : group,
       color: (team && str_(team['색상'])) || '#984534',
       meetingPoint: team ? str_(team['집결장소']) : '',
       leaderName: leaderNameOf_(members),
-      course: courseNameOf_(members, p),
-      route: routeFor_(courseNameOf_(members, p))
+      course: courseName,
+      route: course.route,
+      // 출발 안내 — Courses `비고` (예: "시청역 3번 출구", D-063). 참가자 화면에 그대로 보인다.
+      // 경로가 기본 순서로 되돌아가면 출구와 첫 지점이 안 맞으니 비운다.
+      courseNote: course.row ? str_(course.row['비고']) : ''
     } : null,
     isLeader: leader,
     members: []
@@ -503,9 +509,18 @@ function courseNameOf_(members, fallbackRow) {
  * 못 찾으면 Checkpoints 의 기본순번 순서로 되돌린다.
  */
 function routeFor_(courseName) {
+  return courseFor_(courseName).route;
+}
+
+/**
+ * 배정 코스명 → { row: Courses 행, route: 지점코드 배열 }.
+ * 못 찾았거나 방문 순서가 전체 지점을 덮지 못하면 row 는 null, route 는 기본 순서다.
+ */
+function courseFor_(courseName) {
   var fallback = defaultRoute_();
+  var none = { row: null, route: fallback };
   var name = str_(courseName);
-  if (!name) return fallback;
+  if (!name) return none;
 
   var rows = readTable_(SHEETS.COURSES);
   var hit = null;
@@ -514,13 +529,13 @@ function routeFor_(courseName) {
     if (str_(row['코스명']) === name) { hit = row; break; }
     if (!hit && courseLetter_(row['코스명']) && courseLetter_(row['코스명']) === courseLetter_(name)) hit = row;
   }
-  if (!hit) return fallback;
+  if (!hit) return none;
 
   var seq = str_(hit['방문 순서']).split(/[,\s]+/).filter(String);
   var valid = seq.filter(function (code) { return fallback.indexOf(code) >= 0; });
   // 중복 없이 전체 지점을 덮을 때만 사용한다.
-  if (valid.length === fallback.length && new Set(valid).size === fallback.length) return valid;
-  return fallback;
+  if (valid.length === fallback.length && new Set(valid).size === fallback.length) return { row: hit, route: valid };
+  return none;
 }
 
 function courseLetter_(name) {
@@ -537,4 +552,4 @@ function defaultRoute_() {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_AUTH = 'v21';
+var END_AUTH = 'v22';

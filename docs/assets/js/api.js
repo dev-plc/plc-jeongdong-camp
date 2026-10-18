@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * api.js · v19 · 2026-09-30
+ * api.js · v22 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v22   2026-10-17  사진 여러 장(photos·addPhotos)도 업로드 시간 예산으로 (D-064)
  *  v19   2026-09-30  캠프 모드 동안 로그인·내 정보·회비를 명단 사본에서 (D-055)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  —     2026-09-19  진행 기록을 묶어서 보낸다
  *  —     2026-09-19  진행을 미러에서 읽는다
- *  —     2026-09-18  표본이 0건인 액션에 '기준 초과' 가 찍히던 거짓 경보 수정
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -338,7 +338,8 @@
     // 예산 이하다. 첫 시도가 예산을 다 쓰면 재시도할 시간이 없어 재시도하지 않는다.
     //
     // 사진이 실린 요청은 전송 자체가 오래 걸리는 것이 정상이라 예산이 따로다.
-    var hasPhoto = !!(body.photo && body.photo.dataBase64);
+    var hasPhoto = !!(body.photo && body.photo.dataBase64) ||
+      !!(body.photos && body.photos.length) || !!(body.addPhotos && body.addPhotos.length);
     var budget = hasPhoto ? CFG.UPLOAD_TIMEOUT : CFG.REQUEST_TIMEOUT;
     var left = function () {
       return budget > 0 ? Math.max(0, budget - (now() - started)) : 0;
