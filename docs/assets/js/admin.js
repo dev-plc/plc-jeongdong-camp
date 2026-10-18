@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v20.2 · 2026-10-17
+ * admin.js · v22 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v22   2026-10-17  일지 사진 여러 장 — 검수에 전부, 시상 ★ 는 사진마다 (D-064)
  *  v20.2 2026-10-17  진행 현황: 조를 숫자 순서로 — 카드와 표가 같은 순서 (D-059)
  *  v19   2026-09-30  점수 칸·시상 퀴즈 부문 삭제 — 정정은 상태만 (D-056)
  *  v16   2026-09-26  진행 칸 정정, 🏆 시상, 일지 일괄 승인 (D-052)
  *  v15.1 2026-09-26  진행표를 조별 카드로 + 40분 무소식 ⚠ (D-050)
- *  v15   2026-09-26  파일 버전 표시 시작
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -297,11 +297,9 @@
     }
     acts.push('<button type="button" class="btn btn--ghost btn--sm btn--danger-text" data-act="delete">삭제</button>');
 
+    // 🔴 사진은 **전부** 보인다 (D-064) — 승인은 글 전체에 걸린다. 둘째 장을 못 보고 승인하면 안 된다.
     return '<article class="jcard" data-id="' + esc(item.id) + '" data-status="' + esc(item.status) + '">' +
-      (item.photoUrl
-        ? '<a class="jcard__photo" href="' + esc(item.photoUrl) + '" target="_blank" rel="noopener">' +
-          '<img loading="lazy" src="' + esc(item.photoUrl) + '" alt="일지 사진"></a>'
-        : '') +
+      UI.journalPhotosHtml(item, '일지 사진') +
       '<div class="jcard__body">' +
         '<p class="jcard__meta"><strong>' + esc(item.authorName) + '</strong> · ' +
           esc(item.session) + ' ' + esc(item.group) + ' · ' +
@@ -690,10 +688,16 @@
     var teams = data.board.teams.filter(function (t) { return matchesSession(t.session); });
     var showSession = state.session === '전체';
     var time = timeRanking(teams);
-    var photos = data.journals.filter(function (j) {
-      return j.status === '승인' && j.photoUrl && matchesSession(j.session);
-    }).sort(function (a, b) { return (b.award ? 1 : 0) - (a.award ? 1 : 0); });
-    var starred = photos.filter(function (j) { return j.award; });
+    // 사진 한 장 = 한 칸 (D-064). ★ 는 사진마다 붙는다 — 한 글에서 제일 나은 한 장을 고른다.
+    var photos = [];
+    data.journals.forEach(function (j) {
+      if (j.status !== '승인' || !matchesSession(j.session)) return;
+      var list = UI.journalPhotos(j);
+      list.forEach(function (ph, i) { photos.push({ j: j, ph: ph, n: i + 1, of: list.length }); });
+    });
+    photos = photos.filter(function (x) { return x.ph.award; })
+      .concat(photos.filter(function (x) { return !x.ph.award; }));
+    var starred = photos.filter(function (x) { return x.ph.award; });
     var top = state.present ? 3 : Infinity;
     var label = function (t) { return (showSession ? esc(t.session) + ' ' : '') + esc(t.name); };
 
@@ -710,12 +714,13 @@
 
     var shownPhotos = state.present ? starred : photos;
     var photoHtml = shownPhotos.length
-      ? '<div class="award-grid">' + shownPhotos.map(function (j) {
-          return '<figure class="award-photo' + (j.award ? ' is-award' : '') + '" data-id="' + esc(j.id) + '">' +
-            '<img loading="lazy" src="' + esc(j.photoUrl) + '" alt="' + esc(j.authorName) + ' 사진">' +
-            '<figcaption>' + (showSession ? esc(j.session) + ' ' : '') + esc(j.group) + ' · ' + esc(j.authorName) +
-              (state.present ? '' : ' <button type="button" class="btn btn--sm ' + (j.award ? 'btn--primary' : 'btn--ghost') +
-                '" data-award="' + (j.award ? '0' : '1') + '">' + (j.award ? '★ 수상' : '☆ 지정') + '</button>') +
+      ? '<div class="award-grid">' + shownPhotos.map(function (x) {
+          var j = x.j, on = x.ph.award, part = x.of > 1 ? ' (' + x.n + '/' + x.of + ')' : '';
+          return '<figure class="award-photo' + (on ? ' is-award' : '') + '" data-id="' + esc(j.id) + '" data-photo="' + esc(x.ph.id) + '">' +
+            '<img loading="lazy" src="' + esc(x.ph.url) + '" alt="' + esc(j.authorName) + ' 사진' + part + '">' +
+            '<figcaption>' + (showSession ? esc(j.session) + ' ' : '') + esc(j.group) + ' · ' + esc(j.authorName) + part +
+              (state.present ? '' : ' <button type="button" class="btn btn--sm ' + (on ? 'btn--primary' : 'btn--ghost') +
+                '" data-award="' + (on ? '0' : '1') + '">' + (on ? '★ 수상' : '☆ 지정') + '</button>') +
             '</figcaption></figure>';
         }).join('') + '</div>'
       : '<p class="empty">' + (state.present ? '★ 수상작을 아직 고르지 않았습니다.' : '승인된 사진이 없습니다.') + '</p>';
@@ -748,13 +753,17 @@
     if (e.target.closest('[data-reload]')) { invalidate('awards'); renderAwards(); return; }
     var btn = e.target.closest('[data-award]');
     if (!btn) return;
-    var id = btn.closest('[data-id]').getAttribute('data-id');
+    var fig = btn.closest('[data-id]');
+    var id = fig.getAttribute('data-id');
+    var photoId = fig.getAttribute('data-photo');
     var on = btn.getAttribute('data-award') === '1';
+    var body = { id: id, award: on };
+    if (photoId) body.photoId = photoId;     // 빈 값 = v22 이전 서버의 한 장짜리 응답
     UI.setBusy(btn, true, '…');
-    API.call('admin.journal.award', { id: id, award: on })
+    API.call('admin.journal.award', body)
       .then(function (j) {
         state.cache.awards.journals = state.cache.awards.journals.map(function (x) {
-          return x.id === j.id ? Object.assign({}, x, { award: j.award }) : x;
+          return x.id === j.id ? Object.assign({}, x, { award: j.award, photos: j.photos }) : x;
         });
         invalidate('review');
         paintAwards(state.cache.awards);
