@@ -26,8 +26,8 @@ PLC 정동 가을캠프 "신앙탐험대" 현장 앱. 설계 결정은 `docs-dev
 
 고친 뒤 반드시: `node tools/check-versions.js` — 어긋나면 1 로 끝난다.
 
-**현재 배포**: GAS 배포 **21번** = 코드 **v21** (2026-10-17, health — Auth·Setup·Sheets·Mirror v21, Journal v20, Code·MasterSync v18, `problems` `[]`).
-**다음 배포 v22 — 코드 준비 완료, 운영자 배포 대기**: Auth·Code·Journal·Setup v22 + 앱 v22 — 코스 출발 안내(D-063)·일지 사진 여러 장과 사진마다 ★(D-064), 절차는 DEPLOY 1-6-7(배포 뒤 `미러 지금 갱신` 필수). 배포를 확인하면 위 줄을 22번으로 고친다.
+**현재 배포**: GAS 배포 **22번** = 코드 **v22** (2026-10-17, health — Auth·Code·Journal·Setup v22, Sheets·Mirror v21, MasterSync v18, `problems` `[]`).
+v22 = 코스 출발 안내(D-063) + 일지 사진 여러 장·사진마다 ★(D-064). 앱(`docs/`)도 v22. 배포 뒤 `미러 지금 갱신` 이 필요하다(DEPLOY 1-6-7).
 v21 = 참여 일자로 사람을 가르는 로그인 + 회차 추가 버그 셋 + 미러 지금 갱신이 진행 사본까지(D-062). 앱(`docs/`)은 v20.5(서버 무관).
 v20 = 탐험일지 기본 우리 조(D-057). v19 = 명단 사본(D-055, SQL 실행 완료) + 미션 점수 삭제(D-056). v18 = 파일 끝 표시(D-054).
 17번 = v16 (16번 때 `Setup.gs` 끝이 잘려 `onOpen` 이 빠져 다시 붙여 재배포).
