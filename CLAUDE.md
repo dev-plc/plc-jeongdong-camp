@@ -3,6 +3,11 @@
 PLC 정동 가을캠프 "신앙탐험대" 현장 앱. 설계 결정은 `docs-dev/spec/DECISIONS.md`(D-001~),
 배포 절차는 `docs-dev/ops/DEPLOY.md` 에 있다. 이 파일은 **매번 지켜야 하는 규칙**만 둔다.
 
+앱 주소: **`https://jdcamp.plch.kr/`** (`docs/CNAME`, D-065). 옛 주소 `dev-plc.github.io/plc-jeongdong-camp/` 는 GitHub 가 넘겨 준다.
+지금은 Cloudflare **프록시를 켠 채** 연결돼 있다(10/20 운영자 결정, classfinder·dgfinder 와 같은 구성).
+🔴 배포가 화면에 안 보이면 Cloudflare 캐시를 의심한다 — 비우는 권한은 웹촌에만 있다(Purge 요청). 프록시 끄기(DNS only)를 권장해 둔 상태다.
+🔴 프록시가 켜진 동안 GitHub Pages 의 **Enforce HTTPS 는 건드리지 않는다** — HTTPS 는 Cloudflare 가 맡는다.
+
 ## 🔴 파일 버전 헤더 (D-049)
 
 운영자가 요청한 규칙이다 — **파일을 고칠 때마다 헤더의 버전·수정일·변경 이력을 함께 고친다.**
