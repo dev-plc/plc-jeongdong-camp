@@ -211,7 +211,7 @@ Utilities.computeHmacSha256Signature(payloadB64, getTokenSecret_())   // HMAC-SH
 ### 어떻게 재나 — 주소 끝에 `?perf=1`
 
 ```
-https://dev-plc.github.io/plc-jeongdong-camp/?perf=1
+https://jdcamp.plch.kr/?perf=1
 ```
 
 화면 아래에 작은 패널이 뜹니다. 액션별 **건수 · 중앙값 · 최대값**과 위 기준선 대비
