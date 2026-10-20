@@ -3,6 +3,9 @@
 PLC 정동 가을캠프 "신앙탐험대" 현장 앱. 설계 결정은 `docs-dev/spec/DECISIONS.md`(D-001~),
 배포 절차는 `docs-dev/ops/DEPLOY.md` 에 있다. 이 파일은 **매번 지켜야 하는 규칙**만 둔다.
 
+앱 주소: **`https://jdcamp.plch.kr/`** (`docs/CNAME`, D-065). 옛 주소 `dev-plc.github.io/plc-jeongdong-camp/` 는 GitHub 가 넘겨 준다.
+🔴 jdcamp 레코드는 Cloudflare **프록시를 끈(DNS only)** 상태여야 한다 — 켜지면 퍼지 권한이 웹촌에만 있어 배포가 안 보인다.
+
 ## 🔴 파일 버전 헤더 (D-049)
 
 운영자가 요청한 규칙이다 — **파일을 고칠 때마다 헤더의 버전·수정일·변경 이력을 함께 고친다.**
