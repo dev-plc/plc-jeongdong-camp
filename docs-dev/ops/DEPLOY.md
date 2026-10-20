@@ -530,20 +530,34 @@ v16 때 잘린 붙여넣기를 `health` 가 잡도록 하는 변경만 들었습
 
 `plch.kr` 의 DNS 는 웹촌이 Cloudflare 에서 관리합니다. 운영진에게는 Cloudflare 계정이 없습니다.
 
-1. **DNS (웹촌에 요청)**: `jdcamp` CNAME → `dev-plc.github.io`.
-   🔴 **프록시는 끔(DNS only, 회색 구름).** 켜 두면 두 가지 문제가 생깁니다.
-   - Cloudflare 가 화면을 캐시하는데, 비우는 권한이 웹촌에만 있습니다. 캠프 날 고친 것이 바로 안 보입니다(classfinder 때 겪음, D-028).
-   - GitHub 가 HTTPS 인증서를 직접 내주지 못합니다.
+1. **DNS (웹촌)**: `jdcamp` CNAME → `dev-plc.github.io`. 10/20 등록됐습니다.
+   **지금은 Cloudflare 프록시(주황 구름)가 켜져 있습니다.** classfinder·dgfinder 도 같습니다.
 2. **확인**: 브라우저로 `https://dns.google/resolve?name=jdcamp.plch.kr&type=A` 를 엽니다.
-   - 정상이면 `dev-plc.github.io` 와 `185.199.108~111.153` 이 보입니다.
-   - 🔴 `104.…`·`172.67.…` 이면 프록시가 켜진 것입니다. 웹촌에 끔을 요청합니다.
-3. **저장소**: `docs/CNAME` 에 `jdcamp.plch.kr` 한 줄을 둡니다. 브랜치 배포라 **이 파일이 곧 Pages 의 도메인 설정**입니다.
+   - `104.21.41.116`·`172.67.146.230` 이면 프록시가 켜진 상태입니다(지금).
+   - `dev-plc.github.io` 와 `185.199.108~111.153` 이면 프록시를 끈 상태(DNS only)입니다.
+3. **저장소**: `docs/CNAME` 에 `jdcamp.plch.kr` 한 줄을 둡니다(10/20 머지, D-065). 브랜치 배포라 **이 파일이 곧 Pages 의 도메인 설정**입니다.
    Settings 에서 도메인을 지우면 이 파일을 지우는 커밋이 생기니 주의합니다.
-   🔴 DNS 확인(2번)이 끝난 뒤에 머지합니다.
-4. **GitHub → Settings → Pages**: "DNS check successful" 을 확인합니다. 인증서가 나오면(보통 몇 분, 길면 몇 시간) **Enforce HTTPS** 를 체크합니다.
-   그 사이에는 `https://jdcamp.plch.kr` 에 인증서 경고가 뜰 수 있으니, 사람이 안 쓰는 시간에 합니다.
+4. **GitHub → Settings → Pages**: 프록시 상태에 따라 아래 둘 중 하나를 따릅니다.
 5. (선택) **도메인 소유 인증**: GitHub 계정 설정 → Pages → Add a domain 에서 `plch.kr` 을 인증합니다. 웹촌에 TXT 레코드를 요청하면 됩니다.
    인증해 두면 다른 GitHub 계정이 같은 이름을 가로채지 못합니다.
+
+### 프록시를 켠 채 쓰는 동안 (지금)
+
+classfinder·dgfinder 와 같은 구성이고 동작합니다. HTTPS 는 Cloudflare 가 맡습니다.
+- 🔴 **Enforce HTTPS 는 건드리지 않습니다.** 켤 수 있게 보여도 그대로 둡니다. Cloudflare 설정에 따라 무한 넘김이 생길 수 있습니다.
+- Settings → Pages 의 **"DNS check" 실패·경고는 무시해도 됩니다.** 사이트는 `docs/CNAME` 의 이름으로 그대로 나옵니다.
+- **배포한 뒤에는 화면에서 바뀐 것을 꼭 확인합니다.**
+  - 자산(js·css)은 `?v=` 해시로 주소가 바뀌어 새로 받습니다.
+  - `index.html` 은 Cloudflare 기본 설정이면 캐시하지 않습니다.
+  - 그래도 안 바뀌면 웹촌에 **Purge(캐시 비우기)** 를 요청합니다. 운영진은 직접 못 합니다.
+- 프록시 끄기(DNS only)는 권장 사항으로 남아 있습니다. 끄면 위 Purge 걱정이 없어집니다.
+
+### 프록시를 끈 뒤 (DNS only 로 바뀌면)
+
+1. 위 2번 확인 주소에 `185.199.…` 가 보이는지 봅니다.
+2. Settings → Pages 에서 "DNS check successful" 을 확인합니다.
+   안 바뀌면 도메인 칸을 지웠다가 다시 넣습니다. 이때 `docs/CNAME` 이 지워지는 커밋이 생기면 되살립니다.
+3. 인증서가 나오면(보통 몇 분, 길면 몇 시간) **Enforce HTTPS** 를 체크합니다. 그 사이에는 인증서 경고가 뜰 수 있으니 사람이 안 쓰는 시간에 합니다.
 
 바꾼 뒤 달라지는 것:
 - **옛 주소는 계속 됩니다.** `dev-plc.github.io/plc-jeongdong-camp/…` 는 GitHub 가 경로째 새 주소로 넘깁니다(`admin.html` 포함). 나눠 준 링크·QR 은 그대로 써도 됩니다.
@@ -552,8 +566,8 @@ v16 때 잘린 붙여넣기를 `health` 가 잡도록 하는 변경만 들었습
 
 ### 캐시
 
-프록시를 끈 상태에서는 엣지 캐시가 없습니다. 자산 주소의 `?v=` 해시(`stamp-assets`, D-028)만으로 충분합니다.
-화면이 안 바뀌면 먼저 위 2번으로 프록시가 다시 켜졌는지 봅니다. 켜져 있으면 웹촌에 끔(또는 Purge)을 요청합니다.
+프록시가 켜진 지금은 Cloudflare 엣지 캐시가 있습니다. 자산은 `?v=` 해시(`stamp-assets`, D-028)로 피해 가지만,
+화면이 안 바뀌면 웹촌에 **Purge** 를 요청합니다. 프록시를 끄면 엣지 캐시가 없어져 해시만으로 충분합니다.
 
 ---
 
