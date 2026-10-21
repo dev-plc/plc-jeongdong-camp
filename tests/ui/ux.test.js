@@ -152,7 +152,7 @@ withBrowser(async (env) => {
     return { html: m.innerHTML, text: m.textContent, notes: [...m.querySelectorAll('.cp__mission-note')].map(e => e.textContent) };
   });
   ok('🔴 줄바꿈이 그대로 (배재학당 4줄)', (ms.html.match(/<br>/g) || []).length === 3, ms.html);
-  ok('제목 줄 · 본문', ms.text.includes('[글자 찾기 미션] "흩어진 글자 완성하기"') && ms.text.includes('크고자 하거든 남을 섬기라'), ms.text);
+  ok('제목 줄 · 본문', ms.text.includes('[예시 미션] "전시실 글자 모으기"') && ms.text.includes('데모용 예시입니다'), ms.text);
   ok('🔴 ※ 주의 줄은 따로 강조', ms.notes.length === 1 && ms.notes[0].startsWith('※ 주의'), ms.notes);
   const maps = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.cp')].map(c =>
     [c.getAttribute('data-code'), decodeURIComponent((c.querySelector('.cp__links a') || {}).href || '')])));
