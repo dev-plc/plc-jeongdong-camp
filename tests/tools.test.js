@@ -2,6 +2,7 @@
  * 도구 — 버전 헤더 검사가 실제로 무는지 · 생성물(demo.html · ?v= 해시)이 최신인지.
  *
  * check-versions 는 저장소 사본(임시 폴더)에서 일부러 어긋나게 만들어 돌린다 — 원본은 건드리지 않는다.
+ * 공개 저장소에 실제 연락처·명단 점검 결과가 들어가지 않았는지도 본다 (D-067).
  */
 const fs = require('fs');
 const os = require('os');
@@ -62,5 +63,29 @@ const leaks = scan.filter(rel => {
   return /sb_secret_(?!TEST_ONLY)[A-Za-z0-9]/.test(s) || /service_role["']?\s*[:=]\s*["']eyJ/.test(s);
 });
 ok('config.js · demo · tests 에 sb_secret_/service_role 키 없음', leaks.length === 0, leaks);
+
+section('🔴 공개 저장소 — 실제 연락처·명단 점검 결과가 없다 (D-067)');
+// 운영자가 붙여 준 명단 점검 결과(이름 + 별표 넷 + 뒷자리)가 테스트에 들어가 기록을 다시 쓴 적이 있다.
+// 이름은 기계로 가릴 수 없으니 번호 모양을 지킨다: 테스트·문서의 번호는 가짜 대역만 쓴다.
+const FAKE_PHONE = /^010-?(0000|1000|2000)-?\d{4}$|^010-?1234-?5678$/;
+function privacyLeaks(files, read) {
+  const out = [];
+  files.forEach(rel => {
+    const s = read(rel);
+    (s.match(/01[016789][-. ]?\d{3,4}[-. ]?\d{4}/g) || []).forEach(m => {
+      if (!FAKE_PHONE.test(m.replace(/[ .]/g, '-'))) out.push(rel + ': ' + m);
+    });
+    (s.match(/\*{4}\d{4}/g) || []).forEach(m => out.push(rel + ': ' + m));   // 명단 점검 결과 모양 (별표 넷 + 숫자 넷)
+  });
+  return out;
+}
+// -z: 한글 파일 이름을 따옴표·8진수로 바꾸지 않는다
+const tracked = spawnSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8' }).stdout.split('\0').filter(Boolean)
+  .filter(f => !/\.(pdf|png|jpe?g|gif|webp|ico|svg|woff2?)$/i.test(f));
+const found = privacyLeaks(tracked, rel => fs.readFileSync(path.join(ROOT, rel), 'utf8'));
+ok('추적하는 글자 파일 ' + tracked.length + '개에 가짜 대역 밖의 휴대폰 번호·명단 점검 결과 모양이 없다', tracked.length > 50 && found.length === 0, found.slice(0, 5));
+// 검사용 문자열은 이어 붙여 만든다 — 그대로 적으면 이 파일이 걸린다
+const probe = privacyLeaks(['x'], () => '연락처 010-' + '9999-0000 · 점검 결과 ' + '*'.repeat(4) + '0000 · 가짜 010-1000-1101 · 010-0000-0000');
+ok('검사가 문다 — 실번호 모양과 점검 결과 모양만 잡고 가짜 대역은 통과', probe.length === 2, probe);
 
 done();
