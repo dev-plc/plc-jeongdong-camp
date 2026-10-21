@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Auth.gs · v22 · 2026-10-17
+ * Auth.gs · v23 · 2026-10-21
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23   2026-10-21  캠프 모드에서 사본에 오른 사람은 GAS 로그인도 사본과 같은 토큰 (D-068)
  *  v22   2026-10-17  조 정보에 출발 안내(courseNote) — Courses `비고` (D-063)
  *  v21   2026-10-17  로그인: 참여 일자가 다르면 다른 사람 — 쓸 수 있는 회차 중 가까운 회차 행으로 (D-062)
  *  v19   2026-09-30  명단 사본 — 로그인 키·날짜 고정 토큰 (D-055)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
- *  v16   2026-09-26  조 없는 교역자·스태프 모드, 공란 회차, 오늘 회차 행 (D-051)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_AUTH = 'v22';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_AUTH = 'v23';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Auth.gs — 인증 / 토큰 / 권한
@@ -282,8 +282,11 @@ function login_(body) {
     throw new AppError('SERVER_ERROR', '참가자 ID가 비어 있습니다. 운영진에게 문의해 주세요. (fillParticipantIds 실행 필요)');
   }
 
-  var issued = issueToken_({ pid: str_(p['참가자ID']) });
-  logEvent_('auth.login', str_(p['참가자ID']), '', 'OK', '');
+  // 캠프 모드에서 사본에 오른 사람이면 사본과 **같은 토큰**을 준다 (D-068). 사본에서 못 찾아
+  // 여기로 온 로그인(30분 넘게 갱신 없음·키 겹침 등)도 그 뒤 내 정보는 사본에서 읽게 된다.
+  var pid = str_(p['참가자ID']);
+  var issued = inPeopleMirror_(p) ? campToken_(pid) : issueToken_({ pid: pid });
+  logEvent_('auth.login', pid, '', 'OK', '');
 
   var me = buildMe_(p);
   me.sessionCorrected = !!(hintSession && hintSession !== str_(p[COL.SESSION]));
@@ -552,4 +555,4 @@ function defaultRoute_() {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_AUTH = 'v22';
+var END_AUTH = 'v23';

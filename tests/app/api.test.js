@@ -91,4 +91,24 @@ const rpcCalls = (a) => a.calls.filter(c => /\/rpc\//.test(c.url));
   a = app(() => ({ body: Object.assign({}, ME, { isLeader: false, members: [] }) }));
   a.win.localStorage.setItem('plc_jd_token', 'mirror.token');
   ok('조원은 본인 것만', JSON.stringify(await a.API.feeStatus()) === JSON.stringify({ me: { status: '완납' }, members: [] }));
+
+  section('🔴 캠프 모드 전에 로그인한 옛 토큰 → GAS 가 건넨 사본 토큰으로 바꿔 든다 (D-068)');
+  const withCamp = (campToken) => loadApi(SUPA, (url, init) => {
+    if (/\/rest\/v1\/rpc\/camp_me$/.test(url)) return { body: JSON.parse(init.body).p_token === 'camp.token' ? ME : null };
+    const body = JSON.parse(init.body);
+    if (body.action === 'me') return { body: { ok: true, data: Object.assign({}, ME, { via: 'gas' }, campToken ? { campToken } : {}) } };
+    return { status: 404, body: '' };
+  });
+  a = withCamp('camp.token');
+  a.win.localStorage.setItem('plc_jd_token', 'old.ttl.token');
+  r = await a.API.me();
+  ok('GAS 내 정보의 campToken 을 저장한다', a.win.localStorage.getItem('plc_jd_token') === 'camp.token', a.win.localStorage.getItem('plc_jd_token'));
+  ok('돌려주는 내 정보에는 그 칸이 없다 (화면은 모른다)', r.via === 'gas' && !('campToken' in r), Object.keys(r));
+  a.calls.length = 0;
+  r = await a.API.me();
+  ok('🔴 다음 내 정보는 사본에서 (GAS 안 부름)', !r.via && gasCalls(a).length === 0, gasCalls(a));
+  a = withCamp(null);
+  a.win.localStorage.setItem('plc_jd_token', 'old.ttl.token');
+  await a.API.me();
+  ok('campToken 이 없으면 토큰을 그대로 둔다', a.win.localStorage.getItem('plc_jd_token') === 'old.ttl.token');
 })().then(done, e => { console.error(e); process.exit(1); });
