@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Mirror.gs · v21 · 2026-10-17
+ * Mirror.gs · v23 · 2026-10-21
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23   2026-10-21  사본에 오르는 사람 규칙·토큰을 한 곳에 — GAS 로그인·내 정보도 같은 토큰 · 0명 경고 (D-068)
  *  v21   2026-10-17  "미러 지금 갱신" 이 진행 사본도 시트에 맞춘다 (D-062)
  *  v19   2026-09-30  명단 사본 — 캠프 모드 동안 로그인·내 정보를 사본에서 (D-055)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *  v15   2026-09-26  파일 버전 표시 시작
- *  —     2026-09-19  진행 사본 정합
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_MIRROR = 'v21';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_MIRROR = 'v23';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Mirror.gs — 공개 데이터를 Supabase 로 단방향 복제한다 (D-032)
@@ -361,7 +361,11 @@ function installCampSync() {
   // 명단 사본은 **지금** 올린다 (D-055). 10분 뒤 첫 트리거를 기다리면 그동안 로그인이 느리다.
   var people = mirrorPeopleSync();
   var msg = '✅ 캠프 모드: 10분마다 동기화합니다.\n' +
-    (people.ok
+    (people.ok && people.rows === 0
+      // 0명은 실패가 아닌데 그냥 넘어가면 모른다 — 명단에 지금 회차 사람이 없을 때다 (D-068)
+      ? '   ⚠ 지금 회차(' + people.session + ')로 올린 사람이 0명입니다. 명단의 참여 일자를 확인하세요.\n' +
+        '      이대로면 로그인은 GAS 로 됩니다(느림).\n'
+      : people.ok
       ? '   명단 사본: ' + people.session + ' ' + people.rows + '명을 올렸습니다 (로그인·내 정보가 빨라집니다).\n'
       : '   ⚠ 명단 사본을 올리지 못했습니다' + (people.reason ? ' — ' + people.reason : '') +
         '. 로그인은 지금처럼 GAS 로 됩니다.\n') +
@@ -403,6 +407,28 @@ function kstMidnight_(ymd, plusDays) {
 }
 
 /**
+ * 이 사람이 명단 사본에 오르는가 (D-055 · D-068).
+ * `mirrorPeopleSync` 와 GAS 로그인·내 정보가 **같은 규칙**을 쓴다 — 어긋나면 GAS 가 사본에 없는
+ * 토큰을 주거나(그 뒤 내 정보가 하루 내내 느림), 사본에 없는 사람에게 사본 토큰을 준다.
+ *
+ * @param {Object} p        명단 행
+ * @param {string=} label   지금 회차 (이미 구했으면 넘긴다)
+ */
+function inPeopleMirror_(p, label) {
+  if (!p || !mirrorEnabled_() || !campMode_()) return false;
+  if (label === undefined) label = currentSessionLabel_();
+  return !!label && isActiveSession_(label) && str_(p[COL.SESSION]) === label && !!str_(p['참가자ID']);
+}
+
+/**
+ * 명단 사본의 토큰 — **서울 날짜로 고정** (D-055). 오늘 토큰은 모레 0시, 어제 토큰(plusDays=1)은 내일 0시에 끝난다.
+ * 같은 날이면 몇 번을 만들어도 같은 문자열이라, GAS 가 준 토큰으로도 `camp_me` 가 찾는다 (D-068).
+ */
+function campToken_(pid, plusDays) {
+  return tokenUntil_(pid, kstMidnight_(todayStr_(), plusDays === undefined ? 2 : plusDays));
+}
+
+/**
  * 지금 회차 인원을 명단 사본에 올린다.
  *
  * 🔴 올리는 사람: 명단의 `참여 일자` 칸이 **지금 회차와 같은** 사람만(운영자 결정).
@@ -432,9 +458,7 @@ function mirrorPeopleSync() {
   }
   out.session = label;
 
-  var people = readTable_(SHEETS.PARTICIPANTS).filter(function (p) {
-    return str_(p[COL.SESSION]) === label && str_(p['참가자ID']);
-  });
+  var people = readTable_(SHEETS.PARTICIPANTS).filter(function (p) { return inPeopleMirror_(p, label); });
 
   // 키 → 몇 명. 둘 이상이면 그 키는 사본에서 뺀다.
   var keysOf = {};
@@ -445,9 +469,6 @@ function mirrorPeopleSync() {
     keysOf[pid].forEach(function (k) { owners[k] = (owners[k] || 0) + 1; });
   });
 
-  var today = todayStr_();
-  var expToday = kstMidnight_(today, 2);
-  var expPrev = kstMidnight_(today, 1);
   var stamp = nowIso_();
 
   var rows = people.map(function (p) {
@@ -459,8 +480,8 @@ function mirrorPeopleSync() {
       session: label,
       me: me,
       keys: keysOf[pid].filter(function (k) { return owners[k] === 1; }),
-      token: tokenUntil_(pid, expToday).token,
-      token_prev: tokenUntil_(pid, expPrev).token,
+      token: campToken_(pid).token,
+      token_prev: campToken_(pid, 1).token,
       updated_at: stamp
     };
   });
@@ -493,4 +514,4 @@ function mirrorPeoplePurge_() {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_MIRROR = 'v21';
+var END_MIRROR = 'v23';

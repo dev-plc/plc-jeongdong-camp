@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Code.gs · v22 · 2026-10-17
+ * Code.gs · v23 · 2026-10-21
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23   2026-10-21  내 정보: 캠프 모드면 사본 토큰(campToken)을 건네 앱이 사본 경로로 옮긴다 (D-068)
  *  v22   2026-10-17  공개 설정에 PHOTO_MAX_COUNT — 앱이 사진 장수 한도를 안다 (D-064)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *  v16   2026-09-26  점수출처·스태프 우선, 지점·운영·정정 액션 (D-051·052)
  *  v15   2026-09-26  파일 버전 표시 · health 가 파일별 버전을 알려 준다
- *  v13   2026-09-22  공지를 운영콘솔에서 쓴다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_CODE = 'v22';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_CODE = 'v23';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Code.gs — 웹앱 진입점 및 라우팅
@@ -471,6 +471,12 @@ function meHandler_(body) {
   if (ctx.isAdmin) return { participant: null, team: null, isLeader: true, isAdmin: true, members: [] };
   var me = buildMe_(ctx.row);
   me.isAdmin = false;
+  // 캠프 모드 전에 로그인해 둔 사람은 옛 토큰이라 사본(`camp_me`)이 못 찾는다 — 사본 토큰을 건네
+  // 앱이 바꿔 들게 한다 (D-068). 사본의 me 모양(D-055)은 그대로다: 이 칸은 GAS 응답에만 붙는다.
+  if (inPeopleMirror_(ctx.row)) {
+    var camp = campToken_(ctx.pid).token;
+    if (body.token !== camp && body.token !== campToken_(ctx.pid, 1).token) me.campToken = camp;
+  }
   return me;
 }
 
@@ -1099,4 +1105,4 @@ function configSet_(ctx, body) {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_CODE = 'v22';
+var END_CODE = 'v23';

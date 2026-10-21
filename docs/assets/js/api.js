@@ -1,8 +1,9 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * api.js · v22 · 2026-10-17
+ * api.js · v23 · 2026-10-21
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23   2026-10-21  내 정보: GAS 가 건넨 사본 토큰(campToken)으로 바꿔 든다 — 다음부터 사본에서 (D-068)
  *  v22   2026-10-17  사진 여러 장(photos·addPhotos)도 업로드 시간 예산으로 (D-064)
  *  v19   2026-09-30  캠프 모드 동안 로그인·내 정보·회비를 명단 사본에서 (D-055)
  *  v15   2026-09-26  파일 버전 표시 시작
@@ -637,7 +638,14 @@
       try { sessionStorage.clear(); } catch (e) { /* 무시 */ }
     },
     me: function () {
-      return meFromMirror().then(function (me) { return me || call('me'); });
+      return meFromMirror().then(function (me) {
+        if (me) return me;
+        return call('me').then(function (data) {
+          // 캠프 모드 전에 로그인해 둔 옛 토큰이면 GAS 가 사본 토큰을 건넨다 — 바꿔 들면 다음부터 사본에서 (D-068)
+          if (data && data.campToken) { setToken(data.campToken); delete data.campToken; }
+          return data;
+        });
+      });
     },
 
     /**
