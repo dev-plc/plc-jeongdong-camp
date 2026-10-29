@@ -26,6 +26,7 @@ node tests/run.js -v        # 스위트 출력을 전부 본다
 | `server/progress.test.js` | 스태프 점수 우선, 지점·회차는 서버가 정함, 배치 전부-아니면-전무, 정정·일괄 승인·시상 (D-045·052) |
 | `server/people.test.js` | 명단 사본(D-055) — 누가 올라가나(공란 제외), 연락처 원문 없음, 키 = 로그인 규칙, 사본 `me` = GAS `me`, 끄면 지움 |
 | `app/api.test.js` | `api.js` 사본 경로와 폴백(404·500·null·시간 초과·WebCrypto 없음 → GAS) |
+| `app/progress.test.js` | 코스 사본 읽기 — 기록 0건인 조는 근거(동기화 신선·표 읽기)가 맞을 때만 "전부 대기", 아니면 GAS. 사본 결과 = 서버 `progress.list` (D-070) |
 | `db/people.test.js` | `docs-dev/ops/supabase-people.sql` 을 로컬 Postgres 에: anon 은 표를 못 읽음, 함수, 30분 조건, **끝-끝**(앱 → SQL → GAS) |
 | `server/core.test.js` | 초기 세팅, 로그인·토큰, 일지 흐름, 공지(v13 사고), 회비, 설정 오타, 사본 실패 |
 | `ui/demo-a.test.js` | 홈 지금·다음, 코스 다음 동작·접기, 조별 카드·40분 ⚠ (D-050) |
