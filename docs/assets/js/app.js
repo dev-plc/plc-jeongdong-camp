@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v22 · 2026-10-17
+ * app.js · v23.3 · 2026-10-29
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23.3 2026-10-29  내 지점·진행: API.stationBoard·opsBoard 로 — 새로고침은 칸만 사본에서 (D-071)
  *  v22   2026-10-17  출발 안내(시청역 몇 번 출구) · 일지 사진 여러 장 (D-063·064)
  *  v20.4 2026-10-17  미션을 시트에 적은 줄 그대로 · 지도는 좌표 → 주소 → 이름 순 (D-061)
  *  v20.3 2026-10-17  일지 사진: "촬영" 버튼 삭제 — 갤러리 하나만 (D-060)
  *  v20.2 2026-10-17  일지 사진: "갤러리에서 선택" 은 사진 고르는 화면이 바로 뜨게 — 형식을 나열 (D-059)
- *  v20.1 2026-10-16  일지 임시저장 · 코스 "운영본부에 저장됨" · 공지 번호 누르면 전화 (D-058)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -755,9 +755,17 @@
 
   function renderStation() {
     setView('<p class="loading">불러오는 중…</p>');
-    API.call('station.board')
+    API.stationBoard(stationCp())
       .then(function (b) { state.station = b; paintStation(); })
       .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+  }
+
+  /** 담당 지점의 이름·미션·퀴즈 — bootstrap 에서 (D-071). 목록에 없으면 null — 서버가 안내한다. */
+  function stationCp() {
+    var code = state.me && state.me.station && state.me.station.code;
+    var cps = (state.boot && state.boot.checkpoints) || [];
+    for (var i = 0; i < cps.length; i++) if (cps[i].code === code) return cps[i];
+    return null;
   }
 
   function paintStation() {
@@ -833,7 +841,7 @@
       if (!yes) return;
       UI.$$('button', row).forEach(function (b) { b.disabled = true; });
       UI.setBusy(btn, true, '저장 중…');
-      API.call('station.set', { items: [item] })
+      API.stationSet([item])
         .then(function (b) {
           state.station = b;
           paintStation();
@@ -851,7 +859,7 @@
 
   function renderBoard() {
     setView('<p class="loading">불러오는 중…</p>');
-    API.call('ops.board')
+    API.opsBoard()
       .then(paintBoard)
       .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
   }
