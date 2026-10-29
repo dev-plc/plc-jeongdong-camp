@@ -1,14 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * api.js · v23.2 · 2026-10-29
+ * api.js · v23.3 · 2026-10-29
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23.3 2026-10-29  내 지점·진행: 뼈대는 GAS 10분, 칸은 사본 · 기록 시각은 보낸 시각으로 (D-071)
  *  v23.2 2026-10-29  코스: 기록 0건인 조도 사본에서 "전부 대기" — 동기화 신선 + 표를 읽을 수 있을 때만 (D-070)
  *  v23   2026-10-21  내 정보: GAS 가 건넨 사본 토큰(campToken)으로 바꿔 든다 — 다음부터 사본에서 (D-068)
  *  v22   2026-10-17  사진 여러 장(photos·addPhotos)도 업로드 시간 예산으로 (D-064)
  *  v19   2026-09-30  캠프 모드 동안 로그인·내 정보·회비를 명단 사본에서 (D-055)
- *  v15   2026-09-26  파일 버전 표시 시작
- *  —     2026-09-19  진행 기록을 묶어서 보낸다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -438,8 +437,15 @@
   //    화면은 조의 코스 전체를 순서대로 보여 줘야 한다. 이 채워 넣기가
   //    서버 `progressList_` 와 같은 결과를 내야 한다 — 테스트가 둘을 맞대 본다.
 
-  /** 조장이 마지막으로 기록한 시각. 사본이 그보다 낡으면 푸시가 실패한 것이다. */
+  /**
+   * 조장이 마지막으로 기록한 시각. 사본이 그보다 낡으면 푸시가 실패한 것이다.
+   * 🔴 **보낸 시각**이다(D-071). 사본 행의 시각은 서버가 요청 도중에 찍으므로 응답을 받은 시각보다 늘 이르다 —
+   *    받은 시각을 쓰면 푸시가 성공해도 "낡았다" 가 되어 다음 정합(캠프 모드 10분)까지 코스가 GAS 였다.
+   */
   var lastProgressWrite = 0;
+
+  /** 기록을 보낸 시각 — 사본 행의 시각은 **초 단위**(서버 nowIso_)라 같은 초 안에서 앞서지 않게 초로 내린다. */
+  function sentAt() { return Math.floor(Date.now() / 1000) * 1000; }
 
   function progressFromMirror(team) {
     if (!mirrorEnabled()) return Promise.resolve(null);
@@ -508,20 +514,146 @@
    */
   function emptyTeamFromMirror(team) {
     if (lastProgressWrite) return Promise.resolve(null);
+    return emptyIsTrusted().then(function (yes) { return yes ? routeFromRows(team.route, {}) : null; });
+  }
+
+  /** 빈 결과를 믿어도 되나 — 위 ①·② (D-070). 조 하나든 회차 전체든 같은 근거다. */
+  function emptyIsTrusted() {
     return Promise.all([
       mirrorGet('/rest/v1/app_cache?key=eq.progress_meta&select=value', 'progress.meta:supabase'),
       mirrorGet('/rest/v1/progress_cache?select=checkpoint&limit=1', 'progress.probe:supabase')
     ]).then(function (got) {
       var meta = got[0] && got[0][0] && got[0][0].value;
       var probe = got[1];
-      if (!meta || !probe) return null;
+      if (!meta || !probe) return false;
 
       var maxAge = CFG.MIRROR_PROGRESS_MAX_AGE || CFG.MIRROR_MAX_AGE;
       var age = Date.now() - new Date(meta.syncedAt).getTime();
-      if (!(age >= 0) || age > maxAge) return null;
-      if (!probe.length && Number(meta.rows) !== 0) return null;
+      if (!(age >= 0) || age > maxAge) return false;
+      return probe.length > 0 || Number(meta.rows) === 0;
+    });
+  }
 
-      return routeFromRows(team.route, {});
+  // ---------------------------------------------------------------- 내 지점 · 진행 (D-071)
+  //
+  // 거점 스태프의 "내 지점" 과 교역자·스태프의 "진행" 은 칸(도착·완료) 말고도 **명단에서 나오는 뼈대**가 필요하다 —
+  // 어느 조가 어떤 코스로 도는지, 조 이름·조장·인원. 사본에는 칸만 있고, 사람 이름은 공개 표에 올리지 않는다(D-055).
+  // 그래서 뼈대는 GAS `ops.board` 로 한 번 받아 10분 쓰고, 그 사이 새로고침은 **칸만 사본에서** 덮는다.
+  // "내 지점" 은 그 뼈대에서 서버 `stationBoard_` 와 같은 규칙으로 만든다 — 테스트가 둘을 맞대 본다.
+  // 사본이 꺼져 있으면(데모 포함) 예전 그대로 `station.board`·`ops.board` 다.
+
+  var OPS_SKELETON_TTL = 10 * 60 * 1000;
+  var opsSkeleton = null;      // { token, at, board } — ops.board 응답 그대로
+  /** 스태프가 기록한 조 → 보낸 시각. 그 조의 사본 행이 이보다 낡으면 푸시가 실패한 것이다(위 lastProgressWrite 와 같은 생각). */
+  var lastWriteByTeam = {};
+
+  function opsFromGas() {
+    return call('ops.board').then(function (b) {
+      opsSkeleton = { token: getToken(), at: Date.now(), board: b };
+      return b;
+    });
+  }
+
+  function opsSkeletonFresh() {
+    if (!opsSkeleton || opsSkeleton.token !== getToken()) return false;
+    var age = Date.now() - opsSkeleton.at;
+    return age >= 0 && age < (CFG.OPS_SKELETON_TTL || OPS_SKELETON_TTL);
+  }
+
+  /**
+   * 회차 전체의 칸 — { 조: { 지점코드: 칸 } }. 못 믿으면 null(호출부가 GAS 로).
+   * 가드는 조장 경로와 같다: ① 가장 새로운 행이 신선하다 ② 내가 기록한 조는 그 기록보다 새롭다 ③ 빈 결과는 근거가 있어야.
+   */
+  function sessionCellsFromMirror(session) {
+    var path = '/rest/v1/progress_cache?session=eq.' + encodeURIComponent(session) +
+      '&select=team,checkpoint,status,arrived_at,completed_at,score,updated_at';
+    return mirrorGet(path, 'progress.session:supabase').then(function (rows) {
+      if (!rows) return null;
+      var wrote = Object.keys(lastWriteByTeam);
+      if (!rows.length) {
+        if (wrote.length) return null;
+        return emptyIsTrusted().then(function (yes) { return yes ? {} : null; });
+      }
+
+      var byTeam = {}, newestOf = {}, newest = 0;
+      rows.forEach(function (r) {
+        var t = new Date(r.updated_at).getTime();
+        if (t > newest) newest = t;
+        if (!(newestOf[r.team] >= t)) newestOf[r.team] = t;
+        // 서버 progressBoardData_ 의 칸과 같은 모양. scoreSource 는 사본에 없는 칸이다.
+        (byTeam[r.team] = byTeam[r.team] || {})[r.checkpoint] = {
+          status: r.status || '대기',
+          arrivedAt: r.arrived_at || '',
+          completedAt: r.completed_at || '',
+          score: (r.score !== null && r.score !== undefined) ? Number(r.score) : null,
+          scoreSource: ''
+        };
+      });
+
+      var maxAge = CFG.MIRROR_PROGRESS_MAX_AGE || CFG.MIRROR_MAX_AGE;
+      var age = Date.now() - newest;
+      if (!(age >= 0) || age > maxAge) return null;
+      for (var i = 0; i < wrote.length; i++) {
+        if (!(newestOf[wrote[i]] >= lastWriteByTeam[wrote[i]])) return null;
+      }
+      return byTeam;
+    });
+  }
+
+  /** 뼈대에 칸을 덮는다. 사본에 없는 조·지점은 '대기' — 사본이 그 회차의 전부다. */
+  function withCells(board, byTeam) {
+    return Object.assign({}, board, {
+      teams: board.teams.map(function (t) { return Object.assign({}, t, { cells: byTeam[t.group] || {} }); })
+    });
+  }
+
+  /** 서버 `naturalGroupCmp_` 와 같다 — 숫자면 숫자로, 아니면 글자로. */
+  function naturalGroupCmp(a, b) {
+    var na = parseInt(a, 10), nb = parseInt(b, 10);
+    if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+    return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+  }
+
+  /** 서버 `stationBoard_` 와 같은 결과 — 회차의 조 가운데 이 지점을 지나는 조를, 이 지점에 오는 순서대로. */
+  function stationFromOps(b, cp) {
+    var nameOf = {};
+    b.checkpoints.forEach(function (c) { nameOf[c.code] = c.name; });
+    var teams = b.teams
+      .filter(function (t) { return t.session === b.session && t.route.indexOf(cp.code) >= 0; })
+      .map(function (t) {
+        var i = t.route.indexOf(cp.code);
+        var cell = t.cells[cp.code] || {};
+        var prevCode = i > 0 ? t.route[i - 1] : '';
+        return {
+          group: t.group,
+          name: t.name,
+          leaderName: t.leaderName,
+          memberCount: t.memberCount,
+          visitOrder: i + 1,
+          prevName: prevCode ? (nameOf[prevCode] || prevCode) : '',
+          prevStatus: prevCode ? ((t.cells[prevCode] || {}).status || '대기') : '',
+          status: cell.status || '대기',
+          arrivedAt: cell.arrivedAt || '',
+          completedAt: cell.completedAt || '',
+          score: cell.score === undefined ? null : cell.score,
+          scoreSource: cell.scoreSource || ''
+        };
+      })
+      .sort(function (x, y) { return (x.visitOrder - y.visitOrder) || naturalGroupCmp(x.group, y.group); });
+    return {
+      session: b.session,
+      checkpoint: { code: cp.code, name: cp.name, mission: cp.mission, quizUrl: cp.quizUrl },
+      teams: teams
+    };
+  }
+
+  /** 진행(교역자·스태프). 뼈대가 10분 안이면 칸만 사본에서, 아니면·사본이 안 되면 GAS. */
+  function opsBoard() {
+    if (!mirrorEnabled()) return call('ops.board');
+    if (!opsSkeletonFresh()) return opsFromGas();
+    var sk = opsSkeleton.board;
+    return sessionCellsFromMirror(sk.session).then(function (cells) {
+      return cells ? withCells(sk, cells) : opsFromGas();
     });
   }
 
@@ -667,6 +799,8 @@
     },
     logout: function () {
       setToken('');
+      opsSkeleton = null;
+      lastWriteByTeam = {};
       try { sessionStorage.clear(); } catch (e) { /* 무시 */ }
     },
     me: function () {
@@ -691,17 +825,38 @@
     },
     /** 여러 지점을 **한 요청**으로 (D-045). 서버는 단건도 그대로 받는다. */
     progressSetBatch: function (items) {
+      var sent = sentAt();
       return call('progress.set', { items: items })
-        .then(function (list) { lastProgressWrite = Date.now(); return list; });
+        .then(function (list) { lastProgressWrite = sent; return list; });
     },
     progressSet: function (checkpoint, status, score, memo) {
+      var sent = sentAt();
       return call('progress.set', { checkpoint: checkpoint, status: status, score: score, memo: memo })
         .then(function (list) {
           // 사본이 이보다 낡으면 푸시가 실패한 것이다. 다음 읽기에서 미러를 건너뛴다.
-          lastProgressWrite = Date.now();
+          lastProgressWrite = sent;
           return list;
         });
     },
+
+    /**
+     * 거점 스태프 "내 지점" (D-071). cp = bootstrap 의 담당 지점(이름·미션·퀴즈).
+     * 사본이 꺼졌거나 지점을 모르면 예전 그대로 `station.board` — 지점코드가 틀렸다는 안내도 서버가 한다.
+     */
+    stationBoard: function (cp) {
+      if (!mirrorEnabled() || !cp) return call('station.board');
+      return opsBoard().then(function (b) { return stationFromOps(b, cp); });
+    },
+    /** 스태프 기록. 응답은 갱신된 "내 지점"(서버). 기록한 조를 적어 둔다 — 사본이 그보다 낡으면 다음 읽기는 GAS. */
+    stationSet: function (items) {
+      var sent = sentAt();
+      return call('station.set', { items: items }).then(function (b) {
+        (items || []).forEach(function (it) { lastWriteByTeam[String(it.group)] = sent; });
+        return b;
+      });
+    },
+    /** 교역자·스태프 "진행" (D-071). */
+    opsBoard: opsBoard,
     journalList: function (scope, cursor, limit) {
       return call('journal.list', { scope: scope, cursor: cursor || 0, limit: limit || 30 });
     },
