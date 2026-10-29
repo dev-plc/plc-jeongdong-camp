@@ -327,8 +327,16 @@ function load(opt) {
     fresh();
     return JSON.parse(run(`doGet({parameter:${JSON.stringify(params || {})}}).getContent()`));
   };
-  /** 서버의 "오늘" 을 고정한다 (회차 판정). 요청 간 초기화 대상이 아니므로 유지된다. */
-  const setToday = (d) => run(`todayStr_ = function () { return ${JSON.stringify(d)}; }`);
+  /**
+   * 서버의 "오늘" 을 고정한다 (회차 판정). 요청 간 초기화 대상이 아니므로 유지된다.
+   * 🔴 시계(Date.now)도 그날 서울 오전 10시로 맞춘다. 토큰 만료는 Date.now 로 재는데, "오늘" 만 고정하고
+   *    시계를 그대로 두면 실제 날짜가 지나면서 테스트가 저절로 깨진다 — 10/21 로 고정한 캠프 토큰
+   *    테스트가 10/23 이 지나자 "다시 로그인" 으로 죽었다. 가짜 서버의 날짜와 시계는 한 세계여야 한다 (D-069).
+   *    정오가 아닌 까닭: 12시간 TTL 토큰이 내일 0시에 끝나 어제 사본 토큰(token_prev)과 같은 글자가 된다.
+   *    (`new Date()` 로 찍는 기록 시각은 그대로 실제 시각이다 — 비교에 쓰지 않는다.)
+   */
+  const setToday = (d) => run(`todayStr_ = function () { return ${JSON.stringify(d)}; };
+    Date.now = function () { return ${Date.parse(d + 'T10:00:00+09:00')}; };`);
   /** 탭 내용을 [헤더, …행] 그대로 본다. */
   const sheet = (logical) => {
     const name = run(`resolveSheetName_(${JSON.stringify(logical)})`);

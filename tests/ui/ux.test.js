@@ -178,6 +178,32 @@ withBrowser(async (env) => {
   ok('빈 미션은 그리지 않는다 · 글자는 이스케이프', pin[2] === '' && pin[3].includes('&lt;b&gt;') && !pin[3].includes('<b>'), pin.slice(2));
 
   // ------------------------------------------------------------ 글씨
+  section('내 정보 — 칸 이름이 글자 중간에서 끊기지 않는다 (D-069)');
+  for (const width of [390, 320]) {
+    const pg = await env.open({ persona: 'member', width });
+    await login(pg);
+    await pg.click('#tabbar [data-view="me"]');
+    await pg.waitForSelector('.kv dt');
+    const kv = await pg.evaluate(() => {
+      const card = document.querySelector('.kv').closest('.card');
+      const dts = [...card.querySelectorAll('.kv dt')], dds = [...card.querySelectorAll('.kv dd')];
+      const lines = el => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight));
+      return { labels: dts.map(d => d.textContent), wrapped: dts.filter(d => lines(d) > 1).map(d => d.textContent),
+               lefts: [...new Set(dds.map(d => Math.round(d.getBoundingClientRect().left)))] };
+    });
+    ok(`🔴 ${width}px: 칸 이름이 모두 한 줄 (참여 일자 · 여행자 보험 가입 …)`, kv.labels.includes('여행자 보험 가입') && kv.wrapped.length === 0, kv);
+    ok(`${width}px: 값이 한 줄로 맞춰 선다`, kv.lefts.length === 1, kv.lefts);
+    ok(`${width}px: 가로로 밀리지 않는다 · 13px 미만 없음`, (await noHScroll(pg)) && (await smallText(pg)).length === 0);
+    await pg.context().close();
+  }
+  {
+    const pg = await env.open({ persona: 'member' });
+    await login(pg);
+    const home = await pg.evaluate(() => [...document.querySelectorAll('.card--team .kv dd')].map(d => Math.round(d.getBoundingClientRect().left)));
+    ok('홈 조 카드의 값도 한 줄로 맞춰 선다', home.length >= 3 && new Set(home).size === 1, home);
+    await pg.context().close();
+  }
+
   section('제목·지점명은 고딕, 본문은 크게');
   const font = await page.evaluate(() => {
     const cs = (s) => { const el = document.querySelector(s); return el ? getComputedStyle(el) : null; };
