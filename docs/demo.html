@@ -1452,15 +1452,15 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * api.js · v23 · 2026-10-21
+ * api.js · v23.2 · 2026-10-29
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23.2 2026-10-29  코스: 기록 0건인 조도 사본에서 "전부 대기" — 동기화 신선 + 표를 읽을 수 있을 때만 (D-070)
  *  v23   2026-10-21  내 정보: GAS 가 건넨 사본 토큰(campToken)으로 바꿔 든다 — 다음부터 사본에서 (D-068)
  *  v22   2026-10-17  사진 여러 장(photos·addPhotos)도 업로드 시간 예산으로 (D-064)
  *  v19   2026-09-30  캠프 모드 동안 로그인·내 정보·회비를 명단 사본에서 (D-055)
  *  v15   2026-09-26  파일 버전 표시 시작
  *  —     2026-09-19  진행 기록을 묶어서 보낸다
- *  —     2026-09-19  진행을 미러에서 읽는다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -1905,10 +1905,11 @@ window.APP_CONFIG = {
       '&select=checkpoint,status,arrived_at,completed_at,score,memo,updated_at';
 
     return mirrorGet(path, 'progress.list:supabase').then(function (rows) {
-      // 🔴 빈 결과는 **쓰지 않는다.** 아직 한 곳도 기록 안 한 조일 수도 있지만,
-      //    권한(GRANT) 누락일 때도 똑같이 빈 배열이 온다. 둘을 구분할 수 없으니
-      //    안전한 쪽으로 간다 — GAS 가 답한다. 첫 기록 전 한 번만 손해다.
-      if (!rows || !rows.length) return null;
+      if (!rows) return null;
+      // 🔴 빈 결과는 **그대로 믿지 않는다.** 아직 한 곳도 기록 안 한 조일 수도 있지만,
+      //    권한(RLS 정책) 누락일 때도 똑같이 빈 배열이 온다. 둘을 가르는 근거를 따로 읽는다 (D-070).
+      //    예전엔 바로 GAS 로 갔다 — 캠프 전에는 모든 조가 0건이라 코스 탭이 늘 2~4초였다.
+      if (!rows.length) return emptyTeamFromMirror(team);
 
       var newest = 0;
       var byCode = {};
@@ -1930,18 +1931,49 @@ window.APP_CONFIG = {
       //    그대로 쓰면 조장이 자기가 누른 값이 되돌아간 것처럼 본다.
       if (lastProgressWrite && newest < lastProgressWrite) return null;
 
-      return team.route.map(function (code, i) {
-        var r = byCode[code];
-        return {
-          checkpoint: code,
-          visitOrder: i + 1,
-          status: (r && r.status) || '대기',
-          arrivedAt: (r && r.arrived_at) || '',
-          completedAt: (r && r.completed_at) || '',
-          score: (r && r.score !== null && r.score !== undefined) ? Number(r.score) : null,
-          memo: (r && r.memo) || ''
-        };
-      });
+      return routeFromRows(team.route, byCode);
+    });
+  }
+
+  /** 조의 코스 순서대로 — 사본에 없는 지점은 '대기'. 서버 `progressListFor_` 와 같은 모양. */
+  function routeFromRows(route, byCode) {
+    return route.map(function (code, i) {
+      var r = byCode[code];
+      return {
+        checkpoint: code,
+        visitOrder: i + 1,
+        status: (r && r.status) || '대기',
+        arrivedAt: (r && r.arrived_at) || '',
+        completedAt: (r && r.completed_at) || '',
+        score: (r && r.score !== null && r.score !== undefined) ? Number(r.score) : null,
+        memo: (r && r.memo) || ''
+      };
+    });
+  }
+
+  /**
+   * 사본에 이 조의 행이 하나도 없을 때 (D-070). **두 가지가 다 맞을 때만** "전부 대기" 다 — 아니면 null(GAS).
+   *   ① 동기화가 살아 있다 — `progress_meta.syncedAt` 이 신선하다(GAS 가 정합 때마다 남긴다).
+   *   ② 표를 실제로 읽을 수 있다 — 다른 조의 행이 하나라도 보이거나, 마지막 동기화가 "0행" 이었다.
+   *      정책이 빠졌으면 다른 조도 안 보이므로 ② 에서 걸린다. 0행이면 막혀 있어도 읽을 것이 없다.
+   * 이 기기가 기록한 뒤라면 비어 있을 수 없다 — 사본 푸시가 실패한 것이므로 GAS 로 간다.
+   */
+  function emptyTeamFromMirror(team) {
+    if (lastProgressWrite) return Promise.resolve(null);
+    return Promise.all([
+      mirrorGet('/rest/v1/app_cache?key=eq.progress_meta&select=value', 'progress.meta:supabase'),
+      mirrorGet('/rest/v1/progress_cache?select=checkpoint&limit=1', 'progress.probe:supabase')
+    ]).then(function (got) {
+      var meta = got[0] && got[0][0] && got[0][0].value;
+      var probe = got[1];
+      if (!meta || !probe) return null;
+
+      var maxAge = CFG.MIRROR_PROGRESS_MAX_AGE || CFG.MIRROR_MAX_AGE;
+      var age = Date.now() - new Date(meta.syncedAt).getTime();
+      if (!(age >= 0) || age > maxAge) return null;
+      if (!probe.length && Number(meta.rows) !== 0) return null;
+
+      return routeFromRows(team.route, {});
     });
   }
 
