@@ -19,7 +19,7 @@ function memoryStorage() {
 /**
  * @param {object} cfg   APP_CONFIG 덮어쓰기 (SUPABASE_URL 등)
  * @param {function} route (url, init) => {status, body} | Promise<…>
- * @param {object} [opt] crypto: false 면 crypto.subtle 이 없는 옛 브라우저
+ * @param {object} [opt] crypto: false 면 crypto.subtle 이 없는 옛 브라우저 · atob: false 면 atob 이 없는 환경
  */
 function loadApi(cfg, route, opt) {
   opt = opt || {};
@@ -53,7 +53,8 @@ function loadApi(cfg, route, opt) {
     });
   };
   const ctx = vm.createContext(Object.assign(win, {
-    setTimeout, clearTimeout, Promise, AbortController, TextEncoder, Uint8Array, JSON, Date, Math, Array, Object, String
+    setTimeout, clearTimeout, Promise, AbortController, TextEncoder, Uint8Array, JSON, Date, Math, Array, Object, String,
+    atob: opt.atob === false ? undefined : globalThis.atob
   }));
   vm.runInContext('localStorage = window.localStorage; sessionStorage = window.sessionStorage;', ctx);
   vm.runInContext(SRC, ctx, { filename: 'api.js' });
