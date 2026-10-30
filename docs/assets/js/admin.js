@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v22 · 2026-10-17
+ * admin.js · v23.4 · 2026-10-30
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23.4 2026-10-30  열 때 토큰을 읽고 바로 그림 · 진행·시상은 칸만 사본에서 · 로그인 거절이면 로그인 화면 (D-072)
  *  v22   2026-10-17  일지 사진 여러 장 — 검수에 전부, 시상 ★ 는 사진마다 (D-064)
  *  v20.2 2026-10-17  진행 현황: 조를 숫자 순서로 — 카드와 표가 같은 순서 (D-059)
  *  v19   2026-09-30  점수 칸·시상 퀴즈 부문 삭제 — 정정은 상태만 (D-056)
  *  v16   2026-09-26  진행 칸 정정, 🏆 시상, 일지 일괄 승인 (D-052)
- *  v15.1 2026-09-26  진행표를 조별 카드로 + 40분 무소식 ⚠ (D-050)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -65,7 +65,12 @@
       .then(function (boot) {
         state.boot = boot;
         if (!API.getToken()) return null;
-        // 토큰이 아직 유효한지 가벼운 호출로 확인한다.
+        // 🔴 토큰 앞부분을 읽어 **만료 전 관리자면 바로 그린다** (D-072). 예전에는 확인용 GAS 호출(2~3초)이 끝나야
+        //    첫 탭을 그렸고, 첫 탭도 GAS 라 두 번을 연달아 기다렸다. 서명은 첫 요청에서 서버가 검증한다 —
+        //    틀리면(TOKEN_SECRET 교체 등) UNAUTHORIZED 가 오고 authLost 가 로그인 화면으로 돌린다.
+        var c = API.tokenClaims();
+        if (c) { state.authed = c.pid === 'ADMIN' && c.exp > Date.now(); return null; }
+        // 읽을 수 없는 토큰은 예전처럼 서버에 물어본다.
         return API.call('admin.journal.pending').then(function () { state.authed = true; });
       })
       .catch(function () { state.authed = false; })
@@ -119,10 +124,25 @@
   function loadThenPaint(key, action, paint) {
     if (state.cache[key]) { paint(state.cache[key]); return; }
     setView('<p class="loading">불러오는 중…</p>');
-    API.call(action)
+    (typeof action === 'function' ? action() : API.call(action))
       .then(function (data) { state.cache[key] = data; paint(data); })
-      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+      .catch(function (err) { if (!authLost(err)) setView('<p class="empty">' + esc(err.message) + '</p>'); });
   }
+
+  /**
+   * 서버가 로그인을 거절했다(만료·서명 불일치) — 로그인 화면으로 (D-072). 토큰은 api.js 가 이미 지웠다.
+   * 열 때 토큰을 서버에 묻지 않으므로, 거절은 첫 요청에서 온다. 그 화면에 오류 글만 남기면 콘솔에 갇힌다.
+   */
+  function authLost(err) {
+    if (!err || err.code !== 'UNAUTHORIZED') return false;
+    state.authed = false;
+    render();
+    toast(err.message, 'error');
+    return true;
+  }
+
+  /** 쓰기 실패 알림 — 로그인 거절이면 로그인 화면으로. */
+  function failed(err) { if (!authLost(err)) toast(err.message, 'error'); }
 
   /** 쓰기 뒤에는 캐시를 버린다. 옛 목록을 그리면 화면이 거짓말한다. */
   function invalidate(key) { state.cache[key] = null; }
@@ -335,7 +355,7 @@
         if (!yes) return;
         API.call('admin.journal.delete', { id: id })
           .then(function () { invalidate('review'); renderReview(); toast('삭제했습니다.'); })
-          .catch(function (err) { toast(err.message, 'error'); });
+          .catch(function (err) { failed(err); });
       });
     }
   }
@@ -355,7 +375,7 @@
             toast(r.approved.length + '건 승인했습니다.' +
               (r.skipped.length ? ' (' + r.skipped.length + '건은 이미 처리돼 건너뜀)' : ''));
           })
-          .catch(function (err) { UI.setBusy(btn, false); toast(err.message, 'error'); });
+          .catch(function (err) { UI.setBusy(btn, false); failed(err); });
       });
   }
 
@@ -368,7 +388,7 @@
         renderReview();
         toast(payload.decision + ' 처리했습니다.');
       })
-      .catch(function (err) { UI.setBusy(btn, false); toast(err.message, 'error'); });
+      .catch(function (err) { UI.setBusy(btn, false); failed(err); });
   }
 
   // ------------------------------------------------------------ 공지 (D-048)
@@ -476,7 +496,7 @@
           renderNotice();
           toast('공지를 올렸습니다.');
         })
-        .catch(function (err) { UI.setBusy(btn, false); toast(err.message, 'error'); });
+        .catch(function (err) { UI.setBusy(btn, false); failed(err); });
     });
   }
 
@@ -510,14 +530,15 @@
             renderNotice();
             toast('지웠습니다.');
           })
-          .catch(function (err) { toast(err.message, 'error'); });
+          .catch(function (err) { failed(err); });
       });
     }
   }
 
   // ------------------------------------------------------------ 진행 현황
 
-  function renderProgress() { loadThenPaint('progress', 'admin.progress.board', paintProgress); }
+  // 진행·시상은 뼈대(조·코스·조장)를 GAS 에서 10분 쓰고, 그 사이 다시 열면 칸만 사본에서 덮는다 (D-072).
+  function renderProgress() { loadThenPaint('progress', API.adminProgressBoard, paintProgress); }
 
   // 조별 카드는 교역자 화면과 같이 쓰므로 ui.js 에 있다 (UI.teamGrid, D-051).
   var STALE_MIN = UI.STALE_MIN;
@@ -625,14 +646,14 @@
       var payload = { session: session, group: group, checkpoint: code, status: status };
       var submit = f.querySelector('button[type="submit"]');
       UI.setBusy(submit, true, '저장 중…');
-      API.call('admin.progress.set', payload)
+      API.adminProgressSet(payload)
         .then(function (data) {
           close();
           state.cache.progress = data;
           paintProgress(data);
           toast(team.name + ' · ' + cp.name + ' 고쳤습니다.');
         })
-        .catch(function (err) { UI.setBusy(submit, false); toast(err.message, 'error'); });
+        .catch(function (err) { UI.setBusy(submit, false); if (authLost(err)) close(); else toast(err.message, 'error'); });
     });
   }
 
@@ -645,12 +666,12 @@
   function renderAwards() {
     if (state.cache.awards) { paintAwards(state.cache.awards); return; }
     setView('<p class="loading">불러오는 중…</p>');
-    Promise.all([API.call('admin.progress.board'), API.call('admin.journal.list')])
+    Promise.all([API.adminProgressBoard(), API.call('admin.journal.list')])
       .then(function (r) {
         state.cache.awards = { board: r[0], journals: r[1].items || [] };
         paintAwards(state.cache.awards);
       })
-      .catch(function (err) { setView('<p class="empty">' + esc(err.message) + '</p>'); });
+      .catch(function (err) { if (!authLost(err)) setView('<p class="empty">' + esc(err.message) + '</p>'); });
   }
 
   /** 동점은 같은 순위 (1, 2, 2, 4). */
@@ -769,7 +790,7 @@
         paintAwards(state.cache.awards);
         toast(on ? '★ 수상작으로 지정했습니다.' : '지정을 풀었습니다.');
       })
-      .catch(function (err) { UI.setBusy(btn, false); toast(err.message, 'error'); });
+      .catch(function (err) { UI.setBusy(btn, false); failed(err); });
   }
 
   // ------------------------------------------------------------ 회비
@@ -904,7 +925,7 @@
       })
       .catch(function (err) {
         if (btn) UI.setBusy(btn, false);
-        toast(err.message, 'error');
+        failed(err);
       });
   }
 
