@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v23.6 · 2026-10-31
+ * admin.js · v23.7 · 2026-10-31
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23.7 2026-10-31  지점별 체류: 최단·최장·평균을 한 줄씩 — 분이 한 세로선에 (D-075)
  *  v23.6 2026-10-31  지점별 체류: 3분 미만은 통계에서 빼고(기록은 그대로) · 평균 시간 (D-074)
  *  v23.5 2026-10-31  진행 현황: 지점별 현황(도착·머무는 중·완료·체류)·앞선/뒤처진 조 · 표를 한 화면에 (D-073)
  *  v23.4 2026-10-30  열 때 토큰을 읽고 바로 그림 · 진행·시상은 칸만 사본에서 · 로그인 거절이면 로그인 화면 (D-072)
  *  v22   2026-10-17  일지 사진 여러 장 — 검수에 전부, 시상 ★ 는 사진마다 (D-064)
- *  v20.2 2026-10-17  진행 현황: 조를 숫자 순서로 — 카드와 표가 같은 순서 (D-059)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -678,6 +678,22 @@
     return { lead: lead, lag: lag };
   }
 
+  /**
+   * 체류 — 최단·최장·평균을 **한 줄씩** (D-075). 한 줄로 이으면 조 이름까지 붙어 길어지고 읽기 어려웠다.
+   * "최단 | 20분 · 4조" 처럼 분을 앞에 두어 숫자가 한 세로선에 선다. 3분 미만은 건수만 적는다(D-074).
+   */
+  function stayHtml(ex, short) {
+    var row = function (label, min, teams) {
+      return '<div><dt>' + label + '</dt><dd><strong>' + min + '분</strong>' +
+        (teams ? ' · ' + esc(teamNames(teams)) : '') + '</dd></div>';
+    };
+    return (ex
+      ? '<p class="spot__cap">체류 시간</p><dl class="spot__stay">' +
+          row('최단', ex.lo, ex.loTeams) + row('최장', ex.hi, ex.hiTeams) + row('평균', ex.avg, null) + '</dl>'
+      : '<p class="spot__cap">체류 시간 —</p>') +
+      (short ? '<p class="spot__note">' + MIN_STAY_MIN + '분 미만 ' + short + '건 제외</p>' : '');
+  }
+
   /** 지점별 현황 카드 — 필터를 따른다. 전체 회차면 회차마다 한 묶음, 기록이 없는 회차는 한 줄. */
   function spotStatsHtml(board, teams) {
     var sessions = [];
@@ -702,10 +718,7 @@
               '<p class="spot__name">' + (i + 1) + '. ' + esc(s.cp.name) + '</p>' +
               '<p class="spot__nums">도착 <strong>' + s.arrived + '</strong>/' + s.total +
                 (s.here ? ' (머무는 중 ' + s.here + ')' : '') + ' · 완료 <strong>' + s.done + '</strong></p>' +
-              '<p class="spot__stay">' + (ex
-                ? '체류 최단 ' + esc(teamNames(ex.loTeams)) + ' ' + ex.lo + '분 · 최장 ' + esc(teamNames(ex.hiTeams)) + ' ' + ex.hi +
-                  '분 · 평균 ' + ex.avg + '분'
-                : '체류 —') + (s.short ? ' · ' + MIN_STAY_MIN + '분 미만 ' + s.short + '건 제외' : '') + '</p>' +
+              stayHtml(ex, s.short) +
             '</div>';
           }).join('') + '</div>';
       }).join('') +
