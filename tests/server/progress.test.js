@@ -141,41 +141,33 @@ ok('없는 조는 NOT_FOUND', !r.ok && r.error.code === 'NOT_FOUND');
 r = post({ action: 'admin.progress.set', token: leader, session: S1, group: '1조', checkpoint: 'CP1', status: '대기' });
 ok('🔴 참가자 토큰으로는 못 한다', !r.ok && r.error.code === 'FORBIDDEN', r.error);
 
-section('🔴 Progress 탭에 필터 — 새 행이 사라지던 날 (D-079)');
+section('🔴 새 행이 시트에 안 남으면 — 성공이 아니라 오류 (D-079)');
 {
-  // 10/31 저녁: 필터가 켜진 Progress 탭에서 관리자 정정 11번이 "저장했습니다" 와 함께 사라졌다.
-  // 있는 행 고치기는 됐고, 새 행이 필요한 칸만 시트에 남지 않았다.
+  // 10/31 저녁: 관리자 정정 11건의 새 행이 시트에 남지 않았는데 "저장했습니다" 가 떴다(원인 미확정 —
+  // 필터를 의심했으나 필터를 켠 채로도 정상이었다). 있는 행 고치기는 됐다. 그날을 흉내 낸다.
   const H = camp();
   H.addPeople([[S1, '가조장', '청4조', '조장', '010-1000-1001', '', 'C코스(보구여관 시작)']]);
   const adm = H.adminToken();
   const t = H.token('가조장', '1001');
   const sh = H.ss.getSheetByName('Progress');
-  const rows = () => sh.__data().filter((r, i) => i > 0 && r.some(v => v !== ''));
   const boardCell = (x, code) => ((x.data.teams.find(tm => tm.group === '청4조') || {}).cells || {})[code];
 
-  sh.appendRow = function () { return sh; };   // 필터 상황 흉내 — sh.appendRow() 로는 행이 남지 않는다
-  let x = H.post({ action: 'admin.progress.set', token: adm, session: S1, group: '청4조', checkpoint: 'CP4', status: '완료' });
-  ok('🔴 sh.appendRow() 가 아무것도 안 해도 새 칸이 행으로 남는다 (자리를 정해 쓴다)',
-    x.ok && rows().some(r => r.includes('청4조') && r.includes('CP4') && r.includes('완료')), x.ok ? rows() : x.error);
-  ok('보드에도 완료', x.ok && boardCell(x, 'CP4') && boardCell(x, 'CP4').status === '완료');
+  let x = H.post({ action: 'admin.progress.set', token: adm, session: S1, group: '청4조', checkpoint: 'CP2', status: '도착' });
+  ok('평소: 새 칸 저장 → 보드에 도착', x.ok && boardCell(x, 'CP2').status === '도착', x);
 
-  // 새 행 쓰기가 시트에 안 남으면(어떤 이유든) — 성공 대신 할 일을 알린다
-  const real = sh.getRange;
-  sh.getRange = (r, c, nr, nc) => { const g = real(r, c, nr, nc); if (r > sh.getLastRow()) g.setValues = () => g; return g; };
-  x = H.post({ action: 'admin.progress.set', token: adm, session: S1, group: '청4조', checkpoint: 'CP3', status: '완료' });
-  ok('🔴 관리자: 시트에 안 남으면 성공이 아니라 SERVER_ERROR · "필터 … 끄고"',
-    !x.ok && x.error.code === 'SERVER_ERROR' && /Progress 탭에 기록이 들어가지 않았습니다\(청4조 CP3\).*필터.*끄고/.test(x.error.message), x);
+  const append = sh.appendRow;
+  sh.appendRow = function () { return sh; };   // 새 행이 남지 않는다
+  x = H.post({ action: 'admin.progress.set', token: adm, session: S1, group: '청4조', checkpoint: 'CP4', status: '완료' });
+  ok('🔴 관리자: 새 행이 안 남으면 성공이 아니라 SERVER_ERROR · "다시 저장"',
+    !x.ok && x.error.code === 'SERVER_ERROR' && /Progress 탭에 기록이 들어가지 않았습니다\(청4조 CP4\)\. 다시 저장해 보세요/.test(x.error.message), x);
+  ok('🔴 오류에 필터 단정이 없다 (필터를 켠 채로도 정상이었다)', !x.ok && !/필터/.test(x.error.message), x.error);
   x = H.post({ action: 'progress.set', token: t, items: [{ checkpoint: 'CP1', status: '도착' }] });
-  ok('🔴 조장 기록도 같은 검사 — 소리 없이 사라지지 않는다', !x.ok && x.error.code === 'SERVER_ERROR' && /필터/.test(x.error.message), x);
-  x = H.post({ action: 'admin.progress.set', token: adm, session: S1, group: '청4조', checkpoint: 'CP4', status: '도착' });
-  ok('있는 행 고치기는 그대로 된다 (CP4 → 도착)', x.ok && boardCell(x, 'CP4').status === '도착', x.ok ? boardCell(x, 'CP4') : x.error);
-  sh.getRange = real;
-
-  // 격자가 꽉 찼으면 늘려서 넣는다 (sh.appendRow() 는 알아서 늘렸다)
-  sh.__setMaxRows(sh.getLastRow());
-  x = H.post({ action: 'admin.progress.set', token: adm, session: S1, group: '청4조', checkpoint: 'CP1', status: '완료' });
-  ok('🔴 격자 끝에서도 행을 늘려 넣는다', x.ok && boardCell(x, 'CP1').status === '완료' && sh.getMaxRows() > sh.getLastRow() - 1, x.ok ? sh.getMaxRows() : x.error);
-  ok('Log 에는 그대로 남는다 (같은 appendRow_)', /청4조\/CP1/.test(JSON.stringify(H.sheet('Log').slice(-1))), H.sheet('Log').slice(-1));
+  ok('🔴 조장 기록도 같은 검사 — 소리 없이 사라지지 않는다', !x.ok && x.error.code === 'SERVER_ERROR', x);
+  x = H.post({ action: 'admin.progress.set', token: adm, session: S1, group: '청4조', checkpoint: 'CP2', status: '완료' });
+  ok('있는 행 고치기는 그대로 된다 (CP2 → 완료)', x.ok && boardCell(x, 'CP2').status === '완료', x.ok ? boardCell(x, 'CP2') : x.error);
+  sh.appendRow = append;
+  x = H.post({ action: 'admin.progress.set', token: adm, session: S1, group: '청4조', checkpoint: 'CP4', status: '완료' });
+  ok('다시 저장하면 된다', x.ok && boardCell(x, 'CP4').status === '완료', x);
 }
 
 section('🔴 점수출처 열이 없으면 (초기 세팅 안 돌림)');

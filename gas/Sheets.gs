@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Sheets.gs · v24 · 2026-10-31
+ * Sheets.gs · v21 · 2026-10-17
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
- *  v24   2026-10-31  appendRow_ 가 sh.appendRow() 대신 마지막 행 다음 자리에 setValues — 필터가 켜진 탭에서 새 행이 사라졌다 (D-079)
  *  v21   2026-10-17  일정 시각이 글자로 들어가 있어도 HH:mm 을 뽑아 낸다 (D-062)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *  v16   2026-09-26  교역자·담당 지점·점수출처·수상 열, 지금 회차 (D-051·052)
  *  v15   2026-09-26  파일 버전 표시 시작
+ *  —     2026-09-19  진행 기록이 왜 8.5초인지 구간별로 잰다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_SHEETS = 'v24';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_SHEETS = 'v21';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Sheets.gs — 스프레드시트 접근 레이어
@@ -453,13 +453,7 @@ function applyColumnAliases_(map) {
 
 // ---------------------------------------------------------------- 쓰기
 
-/**
- * 객체 하나를 시트 끝에 붙인다. 정의되지 않은 헤더는 무시된다.
- *
- * 🔴 `sh.appendRow()` 를 쓰지 않는다 (D-079). 10/31 저녁 Progress 탭에 필터가 켜진 동안 새 행이 시트에 남지 않았다 —
- *    있는 행 고치기(updateRow_)는 되고 새 행만 사라져, 관리자 정정 11번이 오류 없이 없어졌다.
- *    **마지막 행 다음 자리를 정해** setValues 로 쓴다(MasterSync appendRows_ 와 같은 방식). 격자가 모자라면 늘린다.
- */
+/** 객체 하나를 시트 끝에 붙인다. 정의되지 않은 헤더는 무시된다. */
 function appendRow_(name, obj) {
   var sh = getSheet_(name);
   var idx = headerIndex_(name);
@@ -468,12 +462,9 @@ function appendRow_(name, obj) {
   Object.keys(obj).forEach(function (k) {
     if (idx[k]) row[idx[k] - 1] = obj[k];
   });
-  var at = sh.getLastRow() + 1;
-  var max = sh.getMaxRows();
-  if (at > max) sh.insertRowsAfter(max, at - max);
-  sh.getRange(at, 1, 1, width).setValues([row]);
+  sh.appendRow(row);
   invalidateTable_(name);
-  return at;
+  return sh.getLastRow();
 }
 
 /**
@@ -828,4 +819,4 @@ function logEvent_(action, actor, target, result, detail) {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_SHEETS = 'v24';
+var END_SHEETS = 'v21';

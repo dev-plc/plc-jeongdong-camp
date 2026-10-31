@@ -46,8 +46,7 @@ function chain(extra) {
 let ID_SEQ = 0;
 
 function makeSheet(name, ss) {
-  // maxRows: 0 이면 격자 제한 없음(기본). 테스트가 정하면 그 밖의 getRange 는 진짜처럼 실패하고 insertRowsAfter 로 늘린다
-  const sheet = { name, id: ++ID_SEQ, rows: [], frozen: 0, maxRows: 0 };
+  const sheet = { name, id: ++ID_SEQ, rows: [], frozen: 0 };
 
   const cell = (r, c) => (sheet.rows[r - 1] && sheet.rows[r - 1][c - 1] !== undefined ? sheet.rows[r - 1][c - 1] : '');
   const put = (r, c, v) => {
@@ -69,7 +68,6 @@ function makeSheet(name, ss) {
   function range(r, c, nr, nc) {
     nr = nr || 1; nc = nc || 1;
     if (r < 1 || c < 1 || nr < 1 || nc < 1) throw new Error('범위가 잘못되었습니다: ' + [r, c, nr, nc]);
-    if (sheet.maxRows && r + nr - 1 > sheet.maxRows) throw new Error('범위가 시트 밖입니다: ' + (r + nr - 1) + ' > ' + sheet.maxRows);
     const api = {
       getRow: () => r, getColumn: () => c, getNumRows: () => nr, getNumColumns: () => nc,
       getLastRow: () => r + nr - 1, getLastColumn: () => c + nc - 1,
@@ -102,13 +100,7 @@ function makeSheet(name, ss) {
     getParent: () => ss,
     getLastRow: lastRow,
     getLastColumn: lastCol,
-    getMaxRows: () => sheet.maxRows || Math.max(1000, sheet.rows.length),
-    insertRowsAfter(after, n) {
-      sheet.rows.splice(after, 0, ...Array.from({ length: n }, () => []));
-      if (sheet.maxRows) sheet.maxRows += n;
-      return api_;
-    },
-    __setMaxRows(n) { sheet.maxRows = n; return api_; },
+    getMaxRows: () => Math.max(1000, sheet.rows.length),
     getMaxColumns: () => Math.max(26, lastCol()),
     getFrozenRows: () => sheet.frozen,
     setFrozenRows: (n) => { sheet.frozen = n; return api_; },
