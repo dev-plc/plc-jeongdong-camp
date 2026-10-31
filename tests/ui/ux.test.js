@@ -255,7 +255,8 @@ withBrowser(async (env) => {
         ['사전답사(10/17) 1조', '사전답사(10/17) 2조', '사전답사(10/17) 9조', '사전답사(10/17) 10조', '사전답사(10/17) 운영', '11/07(토) 1조']), order);
       const same = await page.evaluate(() => {
         const cards = [...document.querySelectorAll('.team-card strong')].map(el => el.textContent);
-        const rows = [...document.querySelectorAll('.board-table tbody tr')].map(tr => tr.children[2].textContent);
+        // 표는 다섯 칸 — 조 이름은 첫 칸의 굵은 글씨 (D-073)
+        const rows = [...document.querySelectorAll('.board-table tbody tr')].map(tr => tr.children[0].querySelector('strong').textContent);
         return { cards, rows };
       });
       ok('표로 보기도 카드와 같은 순서', JSON.stringify(same.cards) === JSON.stringify(same.rows), same);

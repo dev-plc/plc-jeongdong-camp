@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v23.4 · 2026-10-30
+ * admin.js · v23.5 · 2026-10-31
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23.5 2026-10-31  진행 현황: 지점별 현황(도착·머무는 중·완료·체류)·앞선/뒤처진 조 · 표를 한 화면에 (D-073)
  *  v23.4 2026-10-30  열 때 토큰을 읽고 바로 그림 · 진행·시상은 칸만 사본에서 · 로그인 거절이면 로그인 화면 (D-072)
  *  v22   2026-10-17  일지 사진 여러 장 — 검수에 전부, 시상 ★ 는 사진마다 (D-064)
  *  v20.2 2026-10-17  진행 현황: 조를 숫자 순서로 — 카드와 표가 같은 순서 (D-059)
  *  v19   2026-09-30  점수 칸·시상 퀴즈 부문 삭제 — 정정은 상태만 (D-056)
- *  v16   2026-09-26  진행 칸 정정, 🏆 시상, 일지 일괄 승인 (D-052)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -543,33 +543,163 @@
   // 조별 카드는 교역자 화면과 같이 쓰므로 ui.js 에 있다 (UI.teamGrid, D-051).
   var STALE_MIN = UI.STALE_MIN;
 
+  /**
+   * 표로 보기 — **옆으로 밀지 않고 한 화면에** (D-073). 예전엔 아홉 칸(일자·대상·조·조장·인원 + 지점 넷)이
+   * 한 줄로 늘어서 콘솔(720px)에서 옆으로 밀어야 했다. 조 칸 하나에 이름·대상·조장·인원을 모으고,
+   * 지점 칸은 "몇 번째 · 상태 · 시각" 을 세 줄로 쌓는다.
+   */
   function progressTable(board, teams) {
-    return '<div class="table-scroll"><table class="admin-table">' +
-      '<thead><tr><th>' + esc(L('session', '참여 일자')) + '</th>' +
-      '<th>' + esc(L('audience', '캠프 대상')) + '</th>' +
-      '<th>' + esc(L('group', '조 배정')) + '</th><th>조장</th><th>인원</th>' +
-      board.checkpoints.map(function (c) { return '<th>' + esc(c.name) + '</th>'; }).join('') +
+    var showSession = state.session === '전체';
+    return '<table class="admin-table admin-table--fit">' +
+      '<colgroup><col class="col-team">' + board.checkpoints.map(function () { return '<col>'; }).join('') + '</colgroup>' +
+      '<thead><tr><th>' + esc(L('group', '조 배정')) + '</th>' +
+      board.checkpoints.map(function (c, i) { return '<th>' + (i + 1) + '. ' + esc(c.name) + '</th>'; }).join('') +
       '</tr></thead><tbody>' +
       teams.map(function (t) {
+        var meta = [showSession ? t.session : '', t.audience || '', '조장 ' + (t.leaderName || '—'), t.memberCount + '명']
+          .filter(function (x) { return x; });
         return '<tr>' +
-          '<td>' + esc(t.session) + '</td>' +
-          '<td>' + esc(t.audience || '—') + '</td>' +
-          '<td>' + esc(t.name) + '</td>' +
-          '<td>' + esc(t.leaderName || '—') + '</td>' +
-          '<td>' + t.memberCount + '</td>' +
+          '<td><strong>' + esc(t.name) + '</strong><small>' + esc(meta.join(' · ')) + '</small></td>' +
           board.checkpoints.map(function (c) {
-            var cell = t.cells[c.code];
+            var cell = t.cells[c.code] || {};
             var visit = t.route.indexOf(c.code);
-            var order = visit >= 0 ? '<small>' + (visit + 1) + '번째</small><br>' : '';
-            if (!cell) return '<td>' + order + '<span class="chip chip--wait">대기</span></td>';
-            var cls = cell.status === '완료' ? 'done' : cell.status === '도착' ? 'here' : 'wait';
+            var status = cell.status || '대기';
+            var cls = status === '완료' ? 'done' : status === '도착' ? 'here' : 'wait';
             var time = UI.hhmm(cell.completedAt || cell.arrivedAt);
-            return '<td>' + order + '<span class="chip chip--' + cls + '">' + esc(cell.status) + '</span>' +
-              (time ? ' <small>' + esc(time) + '</small>' : '') + '</td>';
+            return '<td>' + (visit >= 0 ? '<small>' + (visit + 1) + '번째</small>' : '') +
+              '<span class="chip chip--' + cls + '">' + esc(status) + '</span>' +
+              (time ? '<small>' + esc(time) + '</small>' : '') + '</td>';
           }).join('') +
         '</tr>';
       }).join('') +
-      '</tbody></table></div>';
+      '</tbody></table>';
+  }
+
+  // ------------------------------------------------------------ 지점별 현황 (D-073)
+  //
+  // 운영자 요청(10/31): 지점마다 도착 몇 조 · 완료 몇 조, 그리고 가장 빠른·느린 조.
+  // 도착은 **누적**(완료 포함)이고 지금 머무는 조를 따로 적는다. 빠름·느림은 두 가지 —
+  // 회차 전체 진행(앞선 조·뒤처진 조)과 지점마다 체류 시간(도착→완료, 최단·최장).
+
+  /** 조 이름 — 동률이면 둘까지, 나머지는 "외 N". */
+  function teamNames(list) {
+    return list.slice(0, 2).map(function (t) { return t.name; }).join(' · ') +
+      (list.length > 2 ? ' 외 ' + (list.length - 2) : '');
+  }
+
+  /** 지점마다: 지나는 조 · 도착(누적) · 머무는 중 · 완료 · 체류(분) */
+  function spotStats(teams, checkpoints) {
+    return checkpoints.map(function (c) {
+      var s = { cp: c, total: 0, arrived: 0, here: 0, done: 0, stays: [] };
+      teams.forEach(function (t) {
+        if (t.route.indexOf(c.code) < 0) return;
+        s.total++;
+        var cell = t.cells[c.code] || {};
+        if (cell.status === '도착' || cell.status === '완료') s.arrived++;
+        if (cell.status === '도착') s.here++;
+        if (cell.status !== '완료') return;
+        s.done++;
+        if (!cell.arrivedAt || !cell.completedAt) return;
+        var min = Math.round((new Date(cell.completedAt) - new Date(cell.arrivedAt)) / 60000);
+        if (min >= 0) s.stays.push({ team: t, min: min });
+      });
+      return s;
+    });
+  }
+
+  /** 가장 작은 값·큰 값과 그 조들 (동률 포함). 비면 null. */
+  function extremes(list) {
+    if (!list.length) return null;
+    var mins = list.map(function (x) { return x.min; });
+    var lo = Math.min.apply(null, mins), hi = Math.max.apply(null, mins);
+    var at = function (v) { return list.filter(function (x) { return x.min === v; }).map(function (x) { return x.team; }); };
+    return { lo: lo, loTeams: at(lo), hi: hi, hiTeams: at(hi) };
+  }
+
+  /**
+   * 회차 안에서 가장 앞선 조 · 가장 뒤처진 조. 기록이 하나도 없으면 null.
+   * 앞선 조 — 완주한 조가 있으면 소요 시간이 가장 짧은 조(시상과 같은 식, timeRanking).
+   *           없으면 진행이 가장 많은 조(완료 2점 · 도착 중 1점), 같으면 그 자리에 먼저 온 조.
+   * 뒤처진 조 — 진행이 가장 적은 조, 같으면 그 자리에 늦게 온(기록이 없는) 조. 모두 완주했으면 가장 오래 걸린 조.
+   */
+  function teamPace(teams) {
+    var rows = teams.filter(function (t) { return t.route.length; }).map(function (t) {
+      var done = 0, here = false, last = '';
+      t.route.forEach(function (code) {
+        var c = t.cells[code] || {};
+        if (c.status === '완료') done++;
+        if (c.status === '도착') here = true;
+        [c.arrivedAt, c.completedAt].forEach(function (x) { if (x && x > last) last = x; });
+      });
+      return { team: t, done: done, here: here, last: last, of: t.route.length, score: done * 2 + (here ? 1 : 0) };
+    });
+    if (!rows.some(function (r) { return r.last; })) return null;
+
+    var progress = function (r) {
+      return r.done + '/' + r.of + ' 완료' + (r.here ? ' · 도착 중' : '') +
+        (r.last ? ' · 마지막 ' + UI.hhmm(r.last) : ' · 기록 없음');
+    };
+    var finished = timeRanking(teams);
+    var lead, lag;
+    if (finished.length) {
+      lead = { teams: finished.filter(function (x) { return x.rank === 1; }).map(function (x) { return x.team; }),
+               text: '완주 ' + durText(finished[0].min) };
+    } else {
+      var best = Math.max.apply(null, rows.map(function (r) { return r.score; }));
+      var top = rows.filter(function (r) { return r.score === best; });
+      var first = top.reduce(function (m, r) { return r.last && (!m || r.last < m) ? r.last : m; }, '');
+      top = top.filter(function (r) { return r.last === first; });
+      lead = { teams: top.map(function (r) { return r.team; }), text: progress(top[0]) };
+    }
+    var open = rows.filter(function (r) { return r.done < r.of; });
+    if (open.length) {
+      var worst = Math.min.apply(null, open.map(function (r) { return r.score; }));
+      var low = open.filter(function (r) { return r.score === worst; });
+      var none = low.filter(function (r) { return !r.last; });
+      if (none.length) low = none;
+      else {
+        var latest = low.reduce(function (m, r) { return r.last > m ? r.last : m; }, '');
+        low = low.filter(function (r) { return r.last === latest; });
+      }
+      lag = { teams: low.map(function (r) { return r.team; }), text: progress(low[0]) };
+    } else {
+      var slow = finished[finished.length - 1].min;
+      lag = { teams: finished.filter(function (x) { return x.min === slow; }).map(function (x) { return x.team; }),
+              text: '완주 ' + durText(slow) };
+    }
+    return { lead: lead, lag: lag };
+  }
+
+  /** 지점별 현황 카드 — 필터를 따른다. 전체 회차면 회차마다 한 묶음, 기록이 없는 회차는 한 줄. */
+  function spotStatsHtml(board, teams) {
+    var sessions = [];
+    teams.forEach(function (t) { if (sessions.indexOf(t.session) < 0) sessions.push(t.session); });
+    if (!sessions.length) return '';
+    var titled = state.session === '전체';
+    return '<section class="card spot-stats"><h3 class="card__title">지점별 현황</h3>' +
+      sessions.map(function (session) {
+        var ts = teams.filter(function (t) { return t.session === session; });
+        var pace = teamPace(ts);
+        var head = titled ? '<p class="spot-stats__session">' + esc(session) + '</p>' : '';
+        if (!pace) return head + '<p class="hint spot-stats__none">아직 기록 없음</p>';
+        var line = function (icon, label, p) {
+          return '<li>' + icon + ' ' + label + ' <strong>' + esc(teamNames(p.teams)) + '</strong> ' +
+            '<span class="pace__meta">· ' + esc(p.text) + '</span></li>';
+        };
+        return head +
+          '<ul class="pace">' + line('🏃', '가장 앞선 조', pace.lead) + line('🐢', '가장 뒤처진 조', pace.lag) + '</ul>' +
+          '<div class="spot-grid">' + spotStats(ts, board.checkpoints).map(function (s, i) {
+            var ex = extremes(s.stays);
+            return '<div class="spot" data-spot="' + esc(s.cp.code) + '">' +
+              '<p class="spot__name">' + (i + 1) + '. ' + esc(s.cp.name) + '</p>' +
+              '<p class="spot__nums">도착 <strong>' + s.arrived + '</strong>/' + s.total +
+                (s.here ? ' (머무는 중 ' + s.here + ')' : '') + ' · 완료 <strong>' + s.done + '</strong></p>' +
+              '<p class="spot__stay">' + (ex
+                ? '체류 최단 ' + esc(teamNames(ex.loTeams)) + ' ' + ex.lo + '분 · 최장 ' + esc(teamNames(ex.hiTeams)) + ' ' + ex.hi + '분'
+                : '체류 —') + '</p>' +
+            '</div>';
+          }).join('') + '</div>';
+      }).join('') + '</section>';
   }
 
   function paintProgress(board) {
@@ -586,7 +716,7 @@
           sessionFilterHtml() +
           audienceFilterHtml() +
           (teams.length
-            ? grid.html +
+            ? spotStatsHtml(board, teams) + grid.html +
               '<details class="card board-table"><summary>표로 보기</summary>' +
                 progressTable(board, teams) + '</details>'
             : '<p class="empty">' + (state.audience === '전체'
