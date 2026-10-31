@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v23.5 · 2026-10-31
+ * admin.js · v23.6 · 2026-10-31
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23.6 2026-10-31  지점별 체류: 3분 미만은 통계에서 빼고(기록은 그대로) · 평균 시간 (D-074)
  *  v23.5 2026-10-31  진행 현황: 지점별 현황(도착·머무는 중·완료·체류)·앞선/뒤처진 조 · 표를 한 화면에 (D-073)
  *  v23.4 2026-10-30  열 때 토큰을 읽고 바로 그림 · 진행·시상은 칸만 사본에서 · 로그인 거절이면 로그인 화면 (D-072)
  *  v22   2026-10-17  일지 사진 여러 장 — 검수에 전부, 시상 ★ 는 사진마다 (D-064)
  *  v20.2 2026-10-17  진행 현황: 조를 숫자 순서로 — 카드와 표가 같은 순서 (D-059)
- *  v19   2026-09-30  점수 칸·시상 퀴즈 부문 삭제 — 정정은 상태만 (D-056)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -581,16 +581,22 @@
   // 도착은 **누적**(완료 포함)이고 지금 머무는 조를 따로 적는다. 빠름·느림은 두 가지 —
   // 회차 전체 진행(앞선 조·뒤처진 조)과 지점마다 체류 시간(도착→완료, 최단·최장).
 
+  /**
+   * 체류(도착→완료)가 이보다 짧으면 **잘못 누른 것**으로 보고 체류 통계에서 뺀다 (D-074).
+   * 기록은 그대로 두고(카드·표에 시각은 보인다), 최단·최장·평균에만 넣지 않고 시간도 적지 않는다.
+   */
+  var MIN_STAY_MIN = 3;
+
   /** 조 이름 — 동률이면 둘까지, 나머지는 "외 N". */
   function teamNames(list) {
     return list.slice(0, 2).map(function (t) { return t.name; }).join(' · ') +
       (list.length > 2 ? ' 외 ' + (list.length - 2) : '');
   }
 
-  /** 지점마다: 지나는 조 · 도착(누적) · 머무는 중 · 완료 · 체류(분) */
+  /** 지점마다: 지나는 조 · 도착(누적) · 머무는 중 · 완료 · 체류(분, 3분 이상만) · 뺀 짧은 체류 수 */
   function spotStats(teams, checkpoints) {
     return checkpoints.map(function (c) {
-      var s = { cp: c, total: 0, arrived: 0, here: 0, done: 0, stays: [] };
+      var s = { cp: c, total: 0, arrived: 0, here: 0, done: 0, stays: [], short: 0 };
       teams.forEach(function (t) {
         if (t.route.indexOf(c.code) < 0) return;
         s.total++;
@@ -601,19 +607,21 @@
         s.done++;
         if (!cell.arrivedAt || !cell.completedAt) return;
         var min = Math.round((new Date(cell.completedAt) - new Date(cell.arrivedAt)) / 60000);
-        if (min >= 0) s.stays.push({ team: t, min: min });
+        if (min >= MIN_STAY_MIN) s.stays.push({ team: t, min: min });
+        else if (min >= 0) s.short++;
       });
       return s;
     });
   }
 
-  /** 가장 작은 값·큰 값과 그 조들 (동률 포함). 비면 null. */
+  /** 가장 작은 값·큰 값과 그 조들 (동률 포함) · 평균(반올림한 분). 비면 null. */
   function extremes(list) {
     if (!list.length) return null;
     var mins = list.map(function (x) { return x.min; });
     var lo = Math.min.apply(null, mins), hi = Math.max.apply(null, mins);
+    var sum = mins.reduce(function (a, b) { return a + b; }, 0);
     var at = function (v) { return list.filter(function (x) { return x.min === v; }).map(function (x) { return x.team; }); };
-    return { lo: lo, loTeams: at(lo), hi: hi, hiTeams: at(hi) };
+    return { lo: lo, loTeams: at(lo), hi: hi, hiTeams: at(hi), avg: Math.round(sum / mins.length) };
   }
 
   /**
@@ -695,11 +703,14 @@
               '<p class="spot__nums">도착 <strong>' + s.arrived + '</strong>/' + s.total +
                 (s.here ? ' (머무는 중 ' + s.here + ')' : '') + ' · 완료 <strong>' + s.done + '</strong></p>' +
               '<p class="spot__stay">' + (ex
-                ? '체류 최단 ' + esc(teamNames(ex.loTeams)) + ' ' + ex.lo + '분 · 최장 ' + esc(teamNames(ex.hiTeams)) + ' ' + ex.hi + '분'
-                : '체류 —') + '</p>' +
+                ? '체류 최단 ' + esc(teamNames(ex.loTeams)) + ' ' + ex.lo + '분 · 최장 ' + esc(teamNames(ex.hiTeams)) + ' ' + ex.hi +
+                  '분 · 평균 ' + ex.avg + '분'
+                : '체류 —') + (s.short ? ' · ' + MIN_STAY_MIN + '분 미만 ' + s.short + '건 제외' : '') + '</p>' +
             '</div>';
           }).join('') + '</div>';
-      }).join('') + '</section>';
+      }).join('') +
+      '<p class="hint">체류 시간은 도착→완료입니다. ' + MIN_STAY_MIN + '분 미만은 잘못 누른 것으로 보고 통계에서 뺍니다(기록은 그대로).</p>' +
+      '</section>';
   }
 
   function paintProgress(board) {
