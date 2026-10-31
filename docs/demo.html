@@ -15,14 +15,14 @@
 <style>
 /*
    ────────────────────────────────────────────────────────────────
-    app.css · v23.1 · 2026-10-29
+    app.css · v23.5 · 2026-10-31
    ────────────────────────────────────────────────────────────────
     변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+     v23.5 2026-10-31  사진 ‹ › · 크게 보기 · 진행표 한 화면 · 지점별 현황 (D-073)
      v23.1 2026-10-29  내 정보 칸 이름이 글자 중간에서 끊기지 않게 — 이름 칸을 가장 긴 이름에 맞춤 (D-069)
      v22   2026-10-17  출발 안내 줄 · 사진 여러 장(고른 사진 칸, 넘기는 띠) (D-063·064)
      v20.4 2026-10-17  미션 ※ 주의 줄 (D-061)
      v20.3 2026-10-17  사진 버튼 주석 — 갤러리 하나 (D-060)
-     v20.2 2026-10-17  조별 카드: 지점을 한 줄씩 이름 전체로, 카드 최소 폭 260px (D-059)
 
     버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
           — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -467,6 +467,38 @@ textarea.input { resize: vertical; min-height: 96px; }
   position: absolute; right: 8px; bottom: 8px; padding: 2px 9px; border-radius: 999px;
   background: rgba(44, 35, 32, .72); color: #fff; font-size: 13px; pointer-events: none;
 }
+/* 띠 ‹ › (D-073) — PC 에는 손가락이 없다. 뷰어에서도 같은 버튼을 쓴다. */
+.gal-btn {
+  position: absolute; top: 50%; z-index: 2; transform: translateY(-50%);
+  width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%;
+  background: rgba(44, 35, 32, .55); color: #fff; font-size: 28px; line-height: 40px; cursor: pointer;
+}
+.gal-btn--prev { left: 8px; }
+.gal-btn--next { right: 8px; }
+
+/* 사진 크게 보기 (D-073) — 옆으로 넘기는 띠. 사진 바깥을 누르면 닫힌다. */
+body.is-viewing { overflow: hidden; }
+/* z-index: 모달(70)·데모 바(90) 위, 실측 패널(120) 아래 */
+.viewer { position: fixed; inset: 0; z-index: 100; background: rgba(20, 16, 14, .94); }
+.viewer__strip {
+  display: flex; height: 100%; overflow-x: auto; scroll-snap-type: x mandatory;
+  scrollbar-width: none; overscroll-behavior: contain;
+}
+.viewer__strip::-webkit-scrollbar { display: none; }
+.viewer__slide {
+  flex: 0 0 100%; height: 100%; margin: 0; padding: 60px 12px; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center; scroll-snap-align: center;
+}
+.viewer__slide img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.viewer__close {
+  position: absolute; top: calc(10px + env(safe-area-inset-top)); right: 10px;
+  width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, .16); color: #fff; font-size: 20px; cursor: pointer;
+}
+.viewer__count {
+  position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  margin: 0; padding: 3px 12px; border-radius: 999px; background: rgba(255, 255, 255, .16); color: #fff; font-size: 14px;
+}
 .jcard__body { padding: 14px; }
 .jcard__meta { margin: 0 0 6px; font-size: 13px; color: var(--ink-2); }
 .jcard__meta strong { color: var(--ink); font-weight: 500; }
@@ -717,6 +749,27 @@ details.cp:not([open]) { padding-top: 12px; padding-bottom: 12px; }
 .step__state { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .step--wait .step__state { font-weight: 400; }
 .board-table > summary { cursor: pointer; font-size: 14px; color: var(--ink-2); }
+
+/* 진행표 — 옆으로 밀지 않고 한 화면에 (D-073). 조 칸에 이름·대상·조장·인원을 모으고, 지점 칸은 세 줄로 쌓는다. */
+.admin-table--fit { table-layout: fixed; }
+.admin-table--fit col.col-team { width: 30%; }
+.admin-table--fit th, .admin-table--fit td {
+  padding: 6px 4px; vertical-align: top; white-space: normal; word-break: keep-all; overflow-wrap: anywhere;
+}
+.admin-table--fit small { display: block; }
+.admin-table--fit .chip { padding: 2px 6px; }
+
+/* 지점별 현황 (D-073) — 회차마다 앞선·뒤처진 조, 지점마다 도착·완료·체류 */
+.spot-stats__session { margin: 14px 0 6px; font-weight: 700; color: var(--brick); }
+.spot-stats__session:first-of-type { margin-top: 0; }
+.pace { margin: 0 0 10px; padding: 0; list-style: none; font-size: 14px; }
+.pace li + li { margin-top: 2px; }
+.pace__meta { color: var(--ink-2); }
+.spot-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); }
+.spot { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; min-width: 0; }
+.spot p { margin: 0; font-size: 13px; color: var(--ink-2); }
+.spot .spot__name { font-size: 14px; font-weight: 700; color: var(--ink); word-break: keep-all; overflow-wrap: anywhere; }
+.spot .spot__nums { margin-top: 2px; font-size: 14px; color: var(--ink); }
 .board-table[open] > summary { margin-bottom: 10px; }
 
 /* ==========================================================================
@@ -2366,14 +2419,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v22 · 2026-10-17
+ * ui.js · v23.5 · 2026-10-31
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23.5 2026-10-31  사진 띠 ‹ › (PC) · 크게 보기에서도 넘기기 — 일지·검수·시상 사진 (D-073)
  *  v22   2026-10-17  일지 사진 여러 장 — 옆으로 넘기는 띠 · "📷 N장" (D-064)
  *  v20.5 2026-10-17  지도 주소 검색어 다듬기 — 괄호 메모·"대한민국" 을 뺀다 (D-061)
  *  v20.4 2026-10-17  미션 여러 줄 · ※ 주의 줄 강조 · 지도는 좌표 → 주소 → 이름 순 (D-061)
  *  v20.2 2026-10-17  조별 카드: 조를 숫자 순서로(10조는 9조 다음) · 지점을 한 줄씩 이름 전체로 (D-059)
- *  v20.1 2026-10-16  알림 5초(오류 6초) · 전화번호 링크 (D-058)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -2471,8 +2524,133 @@ window.APP_CONFIG = {
     if (list.length === 1) return one(list[0], 0);
     return '<div class="jcard__gallery">' +
       '<div class="jcard__photos">' + list.map(one).join('') + '</div>' +
+      // PC 에는 손가락이 없다 — 띠를 한 장씩 넘기는 버튼 (D-073)
+      '<button type="button" class="gal-btn gal-btn--prev" data-gal="prev" aria-label="이전 사진">‹</button>' +
+      '<button type="button" class="gal-btn gal-btn--next" data-gal="next" aria-label="다음 사진">›</button>' +
       '<span class="jcard__count">📷 ' + list.length + '장 · 옆으로 넘겨 보세요</span>' +
     '</div>';
+  }
+
+  // ------------------------------------------------------------ 사진 넘기기 · 크게 보기 (D-073)
+  //
+  // 예전에는 띠를 손가락으로만 넘길 수 있었고(PC 불가), 사진을 누르면 새 탭에 **한 장만** 열려
+  // 다음 장으로 갈 수 없었다. 클릭은 문서에 한 번만 걸어 일지·검수·시상 어디서나 같게 한다.
+
+  /** 띠에서 지금 몇 번째 사진인가. 마지막 장은 띠 끝에 닿아 왼쪽에 붙지 못하므로 끝이면 마지막으로 본다. */
+  function stripIndex(strip) {
+    var items = strip.children;
+    if (items.length < 2) return 0;
+    if (strip.scrollLeft + strip.clientWidth >= strip.scrollWidth - 2) return items.length - 1;
+    var step = items[1].offsetLeft - items[0].offsetLeft;
+    return step > 0 ? Math.max(0, Math.min(items.length - 1, Math.round(strip.scrollLeft / step))) : 0;
+  }
+
+  function stripGo(strip, i) {
+    var items = strip.children;
+    i = Math.max(0, Math.min(items.length - 1, i));
+    strip.scrollTo({ left: items[i].offsetLeft - items[0].offsetLeft, behavior: 'smooth' });
+  }
+
+  var viewerKeys = null;
+
+  /**
+   * 사진 크게 보기. photos: [{url, alt}], start: 처음 볼 장.
+   * 여러 장이면 옆으로 넘긴다 — 손가락, ‹ ›, ←·→ 키. ✕·Esc·사진 바깥을 누르면 닫는다.
+   */
+  function openPhotoViewer(photos, start) {
+    if (!photos || !photos.length) return;
+    closePhotoViewer();
+    var many = photos.length > 1;
+    var wrap = document.createElement('div');
+    wrap.className = 'viewer';
+    wrap.id = 'photoViewer';
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-modal', 'true');
+    wrap.setAttribute('aria-label', '사진 크게 보기');
+    wrap.innerHTML =
+      '<div class="viewer__strip">' + photos.map(function (p) {
+        return '<figure class="viewer__slide"><img src="' + esc(p.url) + '" alt="' + esc(p.alt || '') + '"></figure>';
+      }).join('') + '</div>' +
+      '<button type="button" class="viewer__close" data-viewer="close" aria-label="닫기">✕</button>' +
+      (many
+        ? '<button type="button" class="gal-btn gal-btn--prev" data-viewer="prev" aria-label="이전 사진">‹</button>' +
+          '<button type="button" class="gal-btn gal-btn--next" data-viewer="next" aria-label="다음 사진">›</button>' +
+          '<p class="viewer__count" aria-live="polite"></p>'
+        : '');
+    document.body.appendChild(wrap);
+    document.body.classList.add('is-viewing');
+
+    var strip = $('.viewer__strip', wrap);
+    var count = $('.viewer__count', wrap);
+    var at = function () { return Math.round(strip.scrollLeft / (strip.clientWidth || 1)); };
+    var show = function () { if (count) count.textContent = (at() + 1) + ' / ' + photos.length; };
+    var go = function (i) {
+      i = Math.max(0, Math.min(photos.length - 1, i));
+      strip.scrollTo({ left: i * strip.clientWidth, behavior: 'smooth' });
+    };
+    strip.scrollLeft = Math.max(0, Math.min(photos.length - 1, start || 0)) * strip.clientWidth;
+    show();
+    strip.addEventListener('scroll', show);
+    wrap.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-viewer]');
+      if (b) {
+        var act = b.getAttribute('data-viewer');
+        if (act === 'close') closePhotoViewer();
+        else go(at() + (act === 'next' ? 1 : -1));
+        return;
+      }
+      if (!e.target.closest('img')) closePhotoViewer();
+    });
+    viewerKeys = function (e) {
+      if (e.key === 'Escape') closePhotoViewer();
+      else if (e.key === 'ArrowRight') go(at() + 1);
+      else if (e.key === 'ArrowLeft') go(at() - 1);
+    };
+    document.addEventListener('keydown', viewerKeys);
+    $('.viewer__close', wrap).focus();
+  }
+
+  function closePhotoViewer() {
+    var v = document.getElementById('photoViewer');
+    if (!v) return;
+    v.parentNode.removeChild(v);
+    document.body.classList.remove('is-viewing');
+    if (viewerKeys) { document.removeEventListener('keydown', viewerKeys); viewerKeys = null; }
+  }
+
+  /** 띠 ‹ › · 사진을 누르면 크게 보기. Ctrl·⌘·Shift 클릭은 예전처럼 새 탭(href 를 남겨 둔다). */
+  function onPhotoClick(e) {
+    if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    var nav = e.target.closest('[data-gal]');
+    if (nav) {
+      var strip = $('.jcard__photos', nav.parentNode);
+      if (strip) stripGo(strip, stripIndex(strip) + (nav.getAttribute('data-gal') === 'next' ? 1 : -1));
+      return;
+    }
+    var link = e.target.closest('a.jcard__photo');
+    var award = !link && e.target.closest('.award-photo img');
+    if (!link && !award) return;
+    e.preventDefault();
+    var group = link
+      ? (link.parentNode.classList.contains('jcard__photos') ? $$('a.jcard__photo', link.parentNode) : [link])
+      : $$('.award-photo img', award.closest('.award-grid') || document);
+    openPhotoViewer(group.map(function (el) {
+      var img = el.tagName === 'IMG' ? el : $('img', el);
+      return { url: img.getAttribute('src'), alt: img.getAttribute('alt') };
+    }), group.indexOf(link || award));
+  }
+
+  /** 띠를 넘기면 장수 표시를 "📷 2 / 3" 으로. scroll 은 거품이 없어 문서에서 capture 로 받는다. */
+  function onStripScroll(e) {
+    var strip = e.target;
+    if (!strip || !strip.classList || !strip.classList.contains('jcard__photos')) return;
+    var count = $('.jcard__count', strip.parentNode);
+    if (count) count.textContent = '📷 ' + (stripIndex(strip) + 1) + ' / ' + strip.children.length;
+  }
+
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('click', onPhotoClick);
+    document.addEventListener('scroll', onStripScroll, true);
   }
 
   /**
@@ -2921,6 +3099,7 @@ window.APP_CONFIG = {
   global.UI = {
     $: $, $$: $$, esc: esc, nl2br: nl2br, telLinks: telLinks, missionHtml: missionHtml, mapUrl: mapUrl,
     journalPhotos: journalPhotos, journalPhotosHtml: journalPhotosHtml,
+    openPhotoViewer: openPhotoViewer, closePhotoViewer: closePhotoViewer,
     toast: toast, confirmDialog: confirmDialog, setBusy: setBusy,
     resizePhoto: resizePhoto, hhmm: hhmm, localIso: localIso, prettyDateTime: prettyDateTime,
     localDate: localDate, hmToMin: hmToMin, minutesSince: minutesSince, agoText: agoText,
@@ -4340,14 +4519,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v23.4 · 2026-10-30
+ * admin.js · v23.5 · 2026-10-31
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23.5 2026-10-31  진행 현황: 지점별 현황(도착·머무는 중·완료·체류)·앞선/뒤처진 조 · 표를 한 화면에 (D-073)
  *  v23.4 2026-10-30  열 때 토큰을 읽고 바로 그림 · 진행·시상은 칸만 사본에서 · 로그인 거절이면 로그인 화면 (D-072)
  *  v22   2026-10-17  일지 사진 여러 장 — 검수에 전부, 시상 ★ 는 사진마다 (D-064)
  *  v20.2 2026-10-17  진행 현황: 조를 숫자 순서로 — 카드와 표가 같은 순서 (D-059)
  *  v19   2026-09-30  점수 칸·시상 퀴즈 부문 삭제 — 정정은 상태만 (D-056)
- *  v16   2026-09-26  진행 칸 정정, 🏆 시상, 일지 일괄 승인 (D-052)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -4883,33 +5062,163 @@ window.APP_CONFIG = {
   // 조별 카드는 교역자 화면과 같이 쓰므로 ui.js 에 있다 (UI.teamGrid, D-051).
   var STALE_MIN = UI.STALE_MIN;
 
+  /**
+   * 표로 보기 — **옆으로 밀지 않고 한 화면에** (D-073). 예전엔 아홉 칸(일자·대상·조·조장·인원 + 지점 넷)이
+   * 한 줄로 늘어서 콘솔(720px)에서 옆으로 밀어야 했다. 조 칸 하나에 이름·대상·조장·인원을 모으고,
+   * 지점 칸은 "몇 번째 · 상태 · 시각" 을 세 줄로 쌓는다.
+   */
   function progressTable(board, teams) {
-    return '<div class="table-scroll"><table class="admin-table">' +
-      '<thead><tr><th>' + esc(L('session', '참여 일자')) + '</th>' +
-      '<th>' + esc(L('audience', '캠프 대상')) + '</th>' +
-      '<th>' + esc(L('group', '조 배정')) + '</th><th>조장</th><th>인원</th>' +
-      board.checkpoints.map(function (c) { return '<th>' + esc(c.name) + '</th>'; }).join('') +
+    var showSession = state.session === '전체';
+    return '<table class="admin-table admin-table--fit">' +
+      '<colgroup><col class="col-team">' + board.checkpoints.map(function () { return '<col>'; }).join('') + '</colgroup>' +
+      '<thead><tr><th>' + esc(L('group', '조 배정')) + '</th>' +
+      board.checkpoints.map(function (c, i) { return '<th>' + (i + 1) + '. ' + esc(c.name) + '</th>'; }).join('') +
       '</tr></thead><tbody>' +
       teams.map(function (t) {
+        var meta = [showSession ? t.session : '', t.audience || '', '조장 ' + (t.leaderName || '—'), t.memberCount + '명']
+          .filter(function (x) { return x; });
         return '<tr>' +
-          '<td>' + esc(t.session) + '</td>' +
-          '<td>' + esc(t.audience || '—') + '</td>' +
-          '<td>' + esc(t.name) + '</td>' +
-          '<td>' + esc(t.leaderName || '—') + '</td>' +
-          '<td>' + t.memberCount + '</td>' +
+          '<td><strong>' + esc(t.name) + '</strong><small>' + esc(meta.join(' · ')) + '</small></td>' +
           board.checkpoints.map(function (c) {
-            var cell = t.cells[c.code];
+            var cell = t.cells[c.code] || {};
             var visit = t.route.indexOf(c.code);
-            var order = visit >= 0 ? '<small>' + (visit + 1) + '번째</small><br>' : '';
-            if (!cell) return '<td>' + order + '<span class="chip chip--wait">대기</span></td>';
-            var cls = cell.status === '완료' ? 'done' : cell.status === '도착' ? 'here' : 'wait';
+            var status = cell.status || '대기';
+            var cls = status === '완료' ? 'done' : status === '도착' ? 'here' : 'wait';
             var time = UI.hhmm(cell.completedAt || cell.arrivedAt);
-            return '<td>' + order + '<span class="chip chip--' + cls + '">' + esc(cell.status) + '</span>' +
-              (time ? ' <small>' + esc(time) + '</small>' : '') + '</td>';
+            return '<td>' + (visit >= 0 ? '<small>' + (visit + 1) + '번째</small>' : '') +
+              '<span class="chip chip--' + cls + '">' + esc(status) + '</span>' +
+              (time ? '<small>' + esc(time) + '</small>' : '') + '</td>';
           }).join('') +
         '</tr>';
       }).join('') +
-      '</tbody></table></div>';
+      '</tbody></table>';
+  }
+
+  // ------------------------------------------------------------ 지점별 현황 (D-073)
+  //
+  // 운영자 요청(10/31): 지점마다 도착 몇 조 · 완료 몇 조, 그리고 가장 빠른·느린 조.
+  // 도착은 **누적**(완료 포함)이고 지금 머무는 조를 따로 적는다. 빠름·느림은 두 가지 —
+  // 회차 전체 진행(앞선 조·뒤처진 조)과 지점마다 체류 시간(도착→완료, 최단·최장).
+
+  /** 조 이름 — 동률이면 둘까지, 나머지는 "외 N". */
+  function teamNames(list) {
+    return list.slice(0, 2).map(function (t) { return t.name; }).join(' · ') +
+      (list.length > 2 ? ' 외 ' + (list.length - 2) : '');
+  }
+
+  /** 지점마다: 지나는 조 · 도착(누적) · 머무는 중 · 완료 · 체류(분) */
+  function spotStats(teams, checkpoints) {
+    return checkpoints.map(function (c) {
+      var s = { cp: c, total: 0, arrived: 0, here: 0, done: 0, stays: [] };
+      teams.forEach(function (t) {
+        if (t.route.indexOf(c.code) < 0) return;
+        s.total++;
+        var cell = t.cells[c.code] || {};
+        if (cell.status === '도착' || cell.status === '완료') s.arrived++;
+        if (cell.status === '도착') s.here++;
+        if (cell.status !== '완료') return;
+        s.done++;
+        if (!cell.arrivedAt || !cell.completedAt) return;
+        var min = Math.round((new Date(cell.completedAt) - new Date(cell.arrivedAt)) / 60000);
+        if (min >= 0) s.stays.push({ team: t, min: min });
+      });
+      return s;
+    });
+  }
+
+  /** 가장 작은 값·큰 값과 그 조들 (동률 포함). 비면 null. */
+  function extremes(list) {
+    if (!list.length) return null;
+    var mins = list.map(function (x) { return x.min; });
+    var lo = Math.min.apply(null, mins), hi = Math.max.apply(null, mins);
+    var at = function (v) { return list.filter(function (x) { return x.min === v; }).map(function (x) { return x.team; }); };
+    return { lo: lo, loTeams: at(lo), hi: hi, hiTeams: at(hi) };
+  }
+
+  /**
+   * 회차 안에서 가장 앞선 조 · 가장 뒤처진 조. 기록이 하나도 없으면 null.
+   * 앞선 조 — 완주한 조가 있으면 소요 시간이 가장 짧은 조(시상과 같은 식, timeRanking).
+   *           없으면 진행이 가장 많은 조(완료 2점 · 도착 중 1점), 같으면 그 자리에 먼저 온 조.
+   * 뒤처진 조 — 진행이 가장 적은 조, 같으면 그 자리에 늦게 온(기록이 없는) 조. 모두 완주했으면 가장 오래 걸린 조.
+   */
+  function teamPace(teams) {
+    var rows = teams.filter(function (t) { return t.route.length; }).map(function (t) {
+      var done = 0, here = false, last = '';
+      t.route.forEach(function (code) {
+        var c = t.cells[code] || {};
+        if (c.status === '완료') done++;
+        if (c.status === '도착') here = true;
+        [c.arrivedAt, c.completedAt].forEach(function (x) { if (x && x > last) last = x; });
+      });
+      return { team: t, done: done, here: here, last: last, of: t.route.length, score: done * 2 + (here ? 1 : 0) };
+    });
+    if (!rows.some(function (r) { return r.last; })) return null;
+
+    var progress = function (r) {
+      return r.done + '/' + r.of + ' 완료' + (r.here ? ' · 도착 중' : '') +
+        (r.last ? ' · 마지막 ' + UI.hhmm(r.last) : ' · 기록 없음');
+    };
+    var finished = timeRanking(teams);
+    var lead, lag;
+    if (finished.length) {
+      lead = { teams: finished.filter(function (x) { return x.rank === 1; }).map(function (x) { return x.team; }),
+               text: '완주 ' + durText(finished[0].min) };
+    } else {
+      var best = Math.max.apply(null, rows.map(function (r) { return r.score; }));
+      var top = rows.filter(function (r) { return r.score === best; });
+      var first = top.reduce(function (m, r) { return r.last && (!m || r.last < m) ? r.last : m; }, '');
+      top = top.filter(function (r) { return r.last === first; });
+      lead = { teams: top.map(function (r) { return r.team; }), text: progress(top[0]) };
+    }
+    var open = rows.filter(function (r) { return r.done < r.of; });
+    if (open.length) {
+      var worst = Math.min.apply(null, open.map(function (r) { return r.score; }));
+      var low = open.filter(function (r) { return r.score === worst; });
+      var none = low.filter(function (r) { return !r.last; });
+      if (none.length) low = none;
+      else {
+        var latest = low.reduce(function (m, r) { return r.last > m ? r.last : m; }, '');
+        low = low.filter(function (r) { return r.last === latest; });
+      }
+      lag = { teams: low.map(function (r) { return r.team; }), text: progress(low[0]) };
+    } else {
+      var slow = finished[finished.length - 1].min;
+      lag = { teams: finished.filter(function (x) { return x.min === slow; }).map(function (x) { return x.team; }),
+              text: '완주 ' + durText(slow) };
+    }
+    return { lead: lead, lag: lag };
+  }
+
+  /** 지점별 현황 카드 — 필터를 따른다. 전체 회차면 회차마다 한 묶음, 기록이 없는 회차는 한 줄. */
+  function spotStatsHtml(board, teams) {
+    var sessions = [];
+    teams.forEach(function (t) { if (sessions.indexOf(t.session) < 0) sessions.push(t.session); });
+    if (!sessions.length) return '';
+    var titled = state.session === '전체';
+    return '<section class="card spot-stats"><h3 class="card__title">지점별 현황</h3>' +
+      sessions.map(function (session) {
+        var ts = teams.filter(function (t) { return t.session === session; });
+        var pace = teamPace(ts);
+        var head = titled ? '<p class="spot-stats__session">' + esc(session) + '</p>' : '';
+        if (!pace) return head + '<p class="hint spot-stats__none">아직 기록 없음</p>';
+        var line = function (icon, label, p) {
+          return '<li>' + icon + ' ' + label + ' <strong>' + esc(teamNames(p.teams)) + '</strong> ' +
+            '<span class="pace__meta">· ' + esc(p.text) + '</span></li>';
+        };
+        return head +
+          '<ul class="pace">' + line('🏃', '가장 앞선 조', pace.lead) + line('🐢', '가장 뒤처진 조', pace.lag) + '</ul>' +
+          '<div class="spot-grid">' + spotStats(ts, board.checkpoints).map(function (s, i) {
+            var ex = extremes(s.stays);
+            return '<div class="spot" data-spot="' + esc(s.cp.code) + '">' +
+              '<p class="spot__name">' + (i + 1) + '. ' + esc(s.cp.name) + '</p>' +
+              '<p class="spot__nums">도착 <strong>' + s.arrived + '</strong>/' + s.total +
+                (s.here ? ' (머무는 중 ' + s.here + ')' : '') + ' · 완료 <strong>' + s.done + '</strong></p>' +
+              '<p class="spot__stay">' + (ex
+                ? '체류 최단 ' + esc(teamNames(ex.loTeams)) + ' ' + ex.lo + '분 · 최장 ' + esc(teamNames(ex.hiTeams)) + ' ' + ex.hi + '분'
+                : '체류 —') + '</p>' +
+            '</div>';
+          }).join('') + '</div>';
+      }).join('') + '</section>';
   }
 
   function paintProgress(board) {
@@ -4926,7 +5235,7 @@ window.APP_CONFIG = {
           sessionFilterHtml() +
           audienceFilterHtml() +
           (teams.length
-            ? grid.html +
+            ? spotStatsHtml(board, teams) + grid.html +
               '<details class="card board-table"><summary>표로 보기</summary>' +
                 progressTable(board, teams) + '</details>'
             : '<p class="empty">' + (state.audience === '전체'

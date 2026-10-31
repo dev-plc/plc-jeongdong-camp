@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v22 · 2026-10-17
+ * ui.js · v23.5 · 2026-10-31
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23.5 2026-10-31  사진 띠 ‹ › (PC) · 크게 보기에서도 넘기기 — 일지·검수·시상 사진 (D-073)
  *  v22   2026-10-17  일지 사진 여러 장 — 옆으로 넘기는 띠 · "📷 N장" (D-064)
  *  v20.5 2026-10-17  지도 주소 검색어 다듬기 — 괄호 메모·"대한민국" 을 뺀다 (D-061)
  *  v20.4 2026-10-17  미션 여러 줄 · ※ 주의 줄 강조 · 지도는 좌표 → 주소 → 이름 순 (D-061)
  *  v20.2 2026-10-17  조별 카드: 조를 숫자 순서로(10조는 9조 다음) · 지점을 한 줄씩 이름 전체로 (D-059)
- *  v20.1 2026-10-16  알림 5초(오류 6초) · 전화번호 링크 (D-058)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -105,8 +105,133 @@
     if (list.length === 1) return one(list[0], 0);
     return '<div class="jcard__gallery">' +
       '<div class="jcard__photos">' + list.map(one).join('') + '</div>' +
+      // PC 에는 손가락이 없다 — 띠를 한 장씩 넘기는 버튼 (D-073)
+      '<button type="button" class="gal-btn gal-btn--prev" data-gal="prev" aria-label="이전 사진">‹</button>' +
+      '<button type="button" class="gal-btn gal-btn--next" data-gal="next" aria-label="다음 사진">›</button>' +
       '<span class="jcard__count">📷 ' + list.length + '장 · 옆으로 넘겨 보세요</span>' +
     '</div>';
+  }
+
+  // ------------------------------------------------------------ 사진 넘기기 · 크게 보기 (D-073)
+  //
+  // 예전에는 띠를 손가락으로만 넘길 수 있었고(PC 불가), 사진을 누르면 새 탭에 **한 장만** 열려
+  // 다음 장으로 갈 수 없었다. 클릭은 문서에 한 번만 걸어 일지·검수·시상 어디서나 같게 한다.
+
+  /** 띠에서 지금 몇 번째 사진인가. 마지막 장은 띠 끝에 닿아 왼쪽에 붙지 못하므로 끝이면 마지막으로 본다. */
+  function stripIndex(strip) {
+    var items = strip.children;
+    if (items.length < 2) return 0;
+    if (strip.scrollLeft + strip.clientWidth >= strip.scrollWidth - 2) return items.length - 1;
+    var step = items[1].offsetLeft - items[0].offsetLeft;
+    return step > 0 ? Math.max(0, Math.min(items.length - 1, Math.round(strip.scrollLeft / step))) : 0;
+  }
+
+  function stripGo(strip, i) {
+    var items = strip.children;
+    i = Math.max(0, Math.min(items.length - 1, i));
+    strip.scrollTo({ left: items[i].offsetLeft - items[0].offsetLeft, behavior: 'smooth' });
+  }
+
+  var viewerKeys = null;
+
+  /**
+   * 사진 크게 보기. photos: [{url, alt}], start: 처음 볼 장.
+   * 여러 장이면 옆으로 넘긴다 — 손가락, ‹ ›, ←·→ 키. ✕·Esc·사진 바깥을 누르면 닫는다.
+   */
+  function openPhotoViewer(photos, start) {
+    if (!photos || !photos.length) return;
+    closePhotoViewer();
+    var many = photos.length > 1;
+    var wrap = document.createElement('div');
+    wrap.className = 'viewer';
+    wrap.id = 'photoViewer';
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-modal', 'true');
+    wrap.setAttribute('aria-label', '사진 크게 보기');
+    wrap.innerHTML =
+      '<div class="viewer__strip">' + photos.map(function (p) {
+        return '<figure class="viewer__slide"><img src="' + esc(p.url) + '" alt="' + esc(p.alt || '') + '"></figure>';
+      }).join('') + '</div>' +
+      '<button type="button" class="viewer__close" data-viewer="close" aria-label="닫기">✕</button>' +
+      (many
+        ? '<button type="button" class="gal-btn gal-btn--prev" data-viewer="prev" aria-label="이전 사진">‹</button>' +
+          '<button type="button" class="gal-btn gal-btn--next" data-viewer="next" aria-label="다음 사진">›</button>' +
+          '<p class="viewer__count" aria-live="polite"></p>'
+        : '');
+    document.body.appendChild(wrap);
+    document.body.classList.add('is-viewing');
+
+    var strip = $('.viewer__strip', wrap);
+    var count = $('.viewer__count', wrap);
+    var at = function () { return Math.round(strip.scrollLeft / (strip.clientWidth || 1)); };
+    var show = function () { if (count) count.textContent = (at() + 1) + ' / ' + photos.length; };
+    var go = function (i) {
+      i = Math.max(0, Math.min(photos.length - 1, i));
+      strip.scrollTo({ left: i * strip.clientWidth, behavior: 'smooth' });
+    };
+    strip.scrollLeft = Math.max(0, Math.min(photos.length - 1, start || 0)) * strip.clientWidth;
+    show();
+    strip.addEventListener('scroll', show);
+    wrap.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-viewer]');
+      if (b) {
+        var act = b.getAttribute('data-viewer');
+        if (act === 'close') closePhotoViewer();
+        else go(at() + (act === 'next' ? 1 : -1));
+        return;
+      }
+      if (!e.target.closest('img')) closePhotoViewer();
+    });
+    viewerKeys = function (e) {
+      if (e.key === 'Escape') closePhotoViewer();
+      else if (e.key === 'ArrowRight') go(at() + 1);
+      else if (e.key === 'ArrowLeft') go(at() - 1);
+    };
+    document.addEventListener('keydown', viewerKeys);
+    $('.viewer__close', wrap).focus();
+  }
+
+  function closePhotoViewer() {
+    var v = document.getElementById('photoViewer');
+    if (!v) return;
+    v.parentNode.removeChild(v);
+    document.body.classList.remove('is-viewing');
+    if (viewerKeys) { document.removeEventListener('keydown', viewerKeys); viewerKeys = null; }
+  }
+
+  /** 띠 ‹ › · 사진을 누르면 크게 보기. Ctrl·⌘·Shift 클릭은 예전처럼 새 탭(href 를 남겨 둔다). */
+  function onPhotoClick(e) {
+    if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    var nav = e.target.closest('[data-gal]');
+    if (nav) {
+      var strip = $('.jcard__photos', nav.parentNode);
+      if (strip) stripGo(strip, stripIndex(strip) + (nav.getAttribute('data-gal') === 'next' ? 1 : -1));
+      return;
+    }
+    var link = e.target.closest('a.jcard__photo');
+    var award = !link && e.target.closest('.award-photo img');
+    if (!link && !award) return;
+    e.preventDefault();
+    var group = link
+      ? (link.parentNode.classList.contains('jcard__photos') ? $$('a.jcard__photo', link.parentNode) : [link])
+      : $$('.award-photo img', award.closest('.award-grid') || document);
+    openPhotoViewer(group.map(function (el) {
+      var img = el.tagName === 'IMG' ? el : $('img', el);
+      return { url: img.getAttribute('src'), alt: img.getAttribute('alt') };
+    }), group.indexOf(link || award));
+  }
+
+  /** 띠를 넘기면 장수 표시를 "📷 2 / 3" 으로. scroll 은 거품이 없어 문서에서 capture 로 받는다. */
+  function onStripScroll(e) {
+    var strip = e.target;
+    if (!strip || !strip.classList || !strip.classList.contains('jcard__photos')) return;
+    var count = $('.jcard__count', strip.parentNode);
+    if (count) count.textContent = '📷 ' + (stripIndex(strip) + 1) + ' / ' + strip.children.length;
+  }
+
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('click', onPhotoClick);
+    document.addEventListener('scroll', onStripScroll, true);
   }
 
   /**
@@ -555,6 +680,7 @@
   global.UI = {
     $: $, $$: $$, esc: esc, nl2br: nl2br, telLinks: telLinks, missionHtml: missionHtml, mapUrl: mapUrl,
     journalPhotos: journalPhotos, journalPhotosHtml: journalPhotosHtml,
+    openPhotoViewer: openPhotoViewer, closePhotoViewer: closePhotoViewer,
     toast: toast, confirmDialog: confirmDialog, setBusy: setBusy,
     resizePhoto: resizePhoto, hhmm: hhmm, localIso: localIso, prettyDateTime: prettyDateTime,
     localDate: localDate, hmToMin: hmToMin, minutesSince: minutesSince, agoText: agoText,
