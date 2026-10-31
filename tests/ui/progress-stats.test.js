@@ -14,10 +14,11 @@ const spots = (page) => page.evaluate(() => Object.fromEntries([...document.quer
   [s.getAttribute('data-spot'), { nums: s.querySelector('.spot__nums').textContent, stay: s.querySelector('.spot__stay').textContent }])));
 const pace = (page) => page.evaluate(() => [...document.querySelectorAll('.spot-stats .pace li')].map(li => li.textContent.replace(/\s+/g, ' ').trim()));
 const EXPECT = {
-  CP1: { nums: '도착 2/4 · 완료 2', stay: '체류 최단 4조 정동길 20분 · 최장 2조 정동 24분' },
-  CP2: { nums: '도착 3/4 · 완료 3', stay: '체류 최단 4조 정동길 20분 · 최장 3조 이화 25분' },
-  CP3: { nums: '도착 4/4 (머무는 중 1) · 완료 3', stay: '체류 최단 3조 이화 · 4조 정동길 20분 · 최장 1조 배재 24분' },
-  CP4: { nums: '도착 3/4 (머무는 중 1) · 완료 2', stay: '체류 최단 3조 이화 17분 · 최장 4조 정동길 18분' }
+  // 평균은 반올림한 분 (D-074): CP2 (22+25+20)/3=22.3 · CP3 (24+20+20)/3=21.3 · CP4 (17+18)/2=17.5→18
+  CP1: { nums: '도착 2/4 · 완료 2', stay: '체류 최단 4조 정동길 20분 · 최장 2조 정동 24분 · 평균 22분' },
+  CP2: { nums: '도착 3/4 · 완료 3', stay: '체류 최단 4조 정동길 20분 · 최장 3조 이화 25분 · 평균 22분' },
+  CP3: { nums: '도착 4/4 (머무는 중 1) · 완료 3', stay: '체류 최단 3조 이화 · 4조 정동길 20분 · 최장 1조 배재 24분 · 평균 21분' },
+  CP4: { nums: '도착 3/4 (머무는 중 1) · 완료 2', stay: '체류 최단 3조 이화 17분 · 최장 4조 정동길 18분 · 평균 18분' }
 };
 
 async function openProgress(env, width) {
@@ -29,7 +30,7 @@ async function openProgress(env, width) {
 }
 
 withBrowser(async (env) => {
-  section('🔴 지점별 현황 — 도착(누적)·머무는 중·완료·체류 최단/최장');
+  section('🔴 지점별 현황 — 도착(누적)·머무는 중·완료·체류 최단/최장/평균');
   let page = await openProgress(env, 1100);
   const s = await spots(page);
   Object.keys(EXPECT).forEach(code => {
@@ -63,7 +64,24 @@ withBrowser(async (env) => {
   await page.click('#cellForm button[type="submit"]');
   await page.waitForFunction(() => !document.querySelector('#cellForm'));
   const cp4 = (await spots(page)).CP4;
-  ok('1조 CP4 완료(15:25) → 도착 3/4 · 완료 3 · 최장 1조 49분', cp4.nums === '도착 3/4 · 완료 3' && /최장 1조 배재 49분$/.test(cp4.stay), cp4);
+  ok('1조 CP4 완료(15:25) → 도착 3/4 · 완료 3 · 최장 1조 49분 · 평균 28분(17·18·49)',
+    cp4.nums === '도착 3/4 · 완료 3' && /최장 1조 배재 49분 · 평균 28분$/.test(cp4.stay), cp4);
+  // 🔴 3분 미만 체류 (D-074): 2조 CP4 를 도착 → 바로 완료(0분). 기록은 남고 개수는 늘지만, 체류 통계에는 안 들어간다
+  for (const st of ['도착', '완료']) {
+    await page.click('[data-edit-session="10/31(토)"][data-edit-group="2조"][data-edit-code="CP4"]');
+    await page.waitForSelector('#cellForm');
+    await page.click('#cellForm input[value="' + st + '"]', { force: true });
+    await page.click('#cellForm button[type="submit"]');
+    await page.waitForFunction(() => !document.querySelector('#cellForm'));
+  }
+  const short = (await spots(page)).CP4;
+  ok('🔴 0분 체류: 도착·완료 개수는 센다 (4/4 · 완료 4)', short.nums === '도착 4/4 · 완료 4', short);
+  ok('🔴 0분 체류: 최단·최장·평균에서 빠진다 (그대로 17 · 49 · 28)',
+    short.stay.startsWith('체류 최단 3조 이화 17분 · 최장 1조 배재 49분 · 평균 28분'), short);
+  ok('🔴 "3분 미만 1건 제외" 를 붙이고, 그 시간(0분)은 적지 않는다', /· 3분 미만 1건 제외$/.test(short.stay) && !/ 0분/.test(short.stay), short);
+  ok('기록은 그대로 — 표·카드의 2조 CP4 는 완료', await page.evaluate(() =>
+    [...document.querySelectorAll('.team-card')].some(c => c.textContent.includes('2조 정동') && /이화여고 박물관\s*완료/.test(c.textContent))));
+  ok('안내: 3분 미만은 통계에서 뺀다', await page.evaluate(() => document.querySelector('.spot-stats').textContent.includes('3분 미만은 잘못 누른 것으로 보고 통계에서 뺍니다')));
   p = await pace(page);
   ok('뒤처진 조가 2/4 의 1조(머무는 곳 없음)로', /가장 뒤처진 조 1조 배재 · 2\/4 완료 · 마지막 15:25/.test(p[1]), p);
   await page.context().close();
