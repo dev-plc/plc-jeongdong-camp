@@ -10,20 +10,21 @@
 const { ok, section, done } = require('../lib/check');
 const { withBrowser, adminLogin, noHScroll, smallText } = require('../lib/browser');
 
-/** 지점 칸 — 체류는 한 줄씩(D-075)이라 "최단: 20분 · 4조 정동길 | 최장: … | 평균: …" 으로 모아 읽는다. */
+/** 지점 칸 — 도착·완료(D-076)와 체류(D-075)는 한 줄씩이라 "도착: 4/4 | 완료: 3" · "최단: 20분 · 4조 정동길 | …" 으로 모아 읽는다. */
 const spots = (page) => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.spot-stats .spot')].map(s => {
-  const rows = [...s.querySelectorAll('.spot__stay > div')].map(d => d.querySelector('dt').textContent + ': ' + d.querySelector('dd').textContent);
+  const kv = (sel) => [...s.querySelectorAll(sel + ' > div')].map(d => d.querySelector('dt').textContent + ': ' + d.querySelector('dd').textContent);
+  const rows = kv('.spot__stay');
   const note = s.querySelector('.spot__note');
-  return [s.getAttribute('data-spot'), { nums: s.querySelector('.spot__nums').textContent,
+  return [s.getAttribute('data-spot'), { nums: kv('.spot__nums').join(' | '),
     stay: (rows.length ? rows.join(' | ') : s.querySelector('.spot__cap').textContent) + (note ? ' (' + note.textContent + ')' : '') }];
 })));
 const pace = (page) => page.evaluate(() => [...document.querySelectorAll('.spot-stats .pace li')].map(li => li.textContent.replace(/\s+/g, ' ').trim()));
 const EXPECT = {
   // 평균은 반올림한 분 (D-074): CP2 (22+25+20)/3=22.3 · CP3 (24+20+20)/3=21.3 · CP4 (17+18)/2=17.5→18
-  CP1: { nums: '도착 2/4 · 완료 2', stay: '최단: 20분 · 4조 정동길 | 최장: 24분 · 2조 정동 | 평균: 22분' },
-  CP2: { nums: '도착 3/4 · 완료 3', stay: '최단: 20분 · 4조 정동길 | 최장: 25분 · 3조 이화 | 평균: 22분' },
-  CP3: { nums: '도착 4/4 (머무는 중 1) · 완료 3', stay: '최단: 20분 · 3조 이화 · 4조 정동길 | 최장: 24분 · 1조 배재 | 평균: 21분' },
-  CP4: { nums: '도착 3/4 (머무는 중 1) · 완료 2', stay: '최단: 17분 · 3조 이화 | 최장: 18분 · 4조 정동길 | 평균: 18분' }
+  CP1: { nums: '도착: 2/4 | 완료: 2', stay: '최단: 20분 · 4조 정동길 | 최장: 24분 · 2조 정동 | 평균: 22분' },
+  CP2: { nums: '도착: 3/4 | 완료: 3', stay: '최단: 20분 · 4조 정동길 | 최장: 25분 · 3조 이화 | 평균: 22분' },
+  CP3: { nums: '도착: 4/4 (머무는 중 1) | 완료: 3', stay: '최단: 20분 · 3조 이화 · 4조 정동길 | 최장: 24분 · 1조 배재 | 평균: 21분' },
+  CP4: { nums: '도착: 3/4 (머무는 중 1) | 완료: 2', stay: '최단: 17분 · 3조 이화 | 최장: 18분 · 4조 정동길 | 평균: 18분' }
 };
 
 async function openProgress(env, width) {
@@ -70,7 +71,7 @@ withBrowser(async (env) => {
   await page.waitForFunction(() => !document.querySelector('#cellForm'));
   const cp4 = (await spots(page)).CP4;
   ok('1조 CP4 완료(15:25) → 도착 3/4 · 완료 3 · 최장 1조 49분 · 평균 28분(17·18·49)',
-    cp4.nums === '도착 3/4 · 완료 3' && /최장: 49분 · 1조 배재 \| 평균: 28분$/.test(cp4.stay), cp4);
+    cp4.nums === '도착: 3/4 | 완료: 3' && /최장: 49분 · 1조 배재 \| 평균: 28분$/.test(cp4.stay), cp4);
   // 🔴 3분 미만 체류 (D-074): 2조 CP4 를 도착 → 바로 완료(0분). 기록은 남고 개수는 늘지만, 체류 통계에는 안 들어간다
   for (const st of ['도착', '완료']) {
     await page.click('[data-edit-session="10/31(토)"][data-edit-group="2조"][data-edit-code="CP4"]');
@@ -80,7 +81,7 @@ withBrowser(async (env) => {
     await page.waitForFunction(() => !document.querySelector('#cellForm'));
   }
   const short = (await spots(page)).CP4;
-  ok('🔴 0분 체류: 도착·완료 개수는 센다 (4/4 · 완료 4)', short.nums === '도착 4/4 · 완료 4', short);
+  ok('🔴 0분 체류: 도착·완료 개수는 센다 (4/4 · 완료 4)', short.nums === '도착: 4/4 | 완료: 4', short);
   ok('🔴 0분 체류: 최단·최장·평균에서 빠진다 (그대로 17 · 49 · 28)',
     short.stay.startsWith('최단: 17분 · 3조 이화 | 최장: 49분 · 1조 배재 | 평균: 28분'), short);
   ok('🔴 "3분 미만 1건 제외" 를 붙이고, 그 시간(0분)은 적지 않는다', / \(3분 미만 1건 제외\)$/.test(short.stay) && !/ 0분/.test(short.stay), short);
@@ -91,18 +92,25 @@ withBrowser(async (env) => {
   ok('뒤처진 조가 2/4 의 1조(머무는 곳 없음)로', /가장 뒤처진 조 1조 배재 · 2\/4 완료 · 마지막 15:25/.test(p[1]), p);
   await page.context().close();
 
-  section('🔴 체류는 최단·최장·평균 한 줄씩 — 분이 한 세로선에 (D-075)');
+  section('🔴 도착·완료 / 체류 최단·최장·평균 — 한 줄씩, 숫자가 한 세로선에 (D-075·076)');
   for (const width of [1100, 390]) {
     page = await openProgress(env, width);
     const lay = await page.evaluate(() => {
-      const rows = [...document.querySelectorAll('.spot[data-spot="CP3"] .spot__stay > div')];
       const box = (el) => el.getBoundingClientRect();
-      const dts = rows.map(r => box(r.querySelector('dt'))), mins = rows.map(r => box(r.querySelector('dd strong')));
-      return { n: rows.length, tops: dts.map(b => Math.round(b.top)), lefts: mins.map(b => Math.round(b.left)),
+      const measure = (sel) => {
+        // 머무는 중이 있는 CP3 — 예전에는 "… (머무는 중 1) · 완료 3" 이 좁은 칸에서 완료를 다음 줄 중간으로 밀었다
+        const rows = [...document.querySelectorAll('.spot[data-spot="CP3"] ' + sel + ' > div')];
+        return { n: rows.length, tops: rows.map(r => Math.round(box(r.querySelector('dt')).top)),
+                 lefts: rows.map(r => Math.round(box(r.querySelector('dd strong')).left)) };
+      };
+      return { nums: measure('.spot__nums'), stay: measure('.spot__stay'),
                inside: [...document.querySelectorAll('.spot')].every(sp => sp.scrollWidth <= sp.clientWidth + 1) };
     });
-    ok('🔴 ' + width + 'px: 세 줄(최단·최장·평균)이 서로 다른 줄', lay.n === 3 && lay.tops[0] < lay.tops[1] && lay.tops[1] < lay.tops[2], lay);
-    ok(width + 'px: 분 숫자가 한 세로선에서 시작', new Set(lay.lefts).size === 1, lay);
+    const { nums, stay } = lay;
+    ok('🔴 ' + width + 'px: 도착·완료가 서로 다른 줄 (머무는 중이 있어도)', nums.n === 2 && nums.tops[0] < nums.tops[1], lay);
+    ok(width + 'px: 도착·완료 숫자가 한 세로선에서 시작', new Set(nums.lefts).size === 1, lay);
+    ok('🔴 ' + width + 'px: 세 줄(최단·최장·평균)이 서로 다른 줄', stay.n === 3 && stay.tops[0] < stay.tops[1] && stay.tops[1] < stay.tops[2], lay);
+    ok(width + 'px: 분 숫자가 한 세로선에서 시작', new Set(stay.lefts).size === 1, lay);
     ok(width + 'px: 지점 칸 밖으로 넘치지 않는다', lay.inside, lay);
     ok(width + 'px: 13px 미만 글자 없음 (현황)', (await smallText(page)).length === 0, await smallText(page));
     await page.context().close();
