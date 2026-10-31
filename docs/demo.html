@@ -4536,14 +4536,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v23.9 · 2026-10-31
+ * admin.js · v23.10 · 2026-10-31
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23.10 2026-10-31  칸 정정: 지금 상태를 미리 고르지 않고, 같은 상태여도 보낸다 · 진행 새로고침·기준 시각 (D-078)
  *  v23.9 2026-10-31  지점 칸 넷이 한 줄(안 되면 둘씩) · 조 이름·머무는 중이 가운데서 갈라지지 않게 (D-077)
  *  v23.8 2026-10-31  지점별 도착·완료를 한 줄씩 — 머무는 중이 껴도 완료가 밀리지 않게 (D-076)
  *  v23.7 2026-10-31  지점별 체류: 최단·최장·평균을 한 줄씩 — 분이 한 세로선에 (D-075)
  *  v23.6 2026-10-31  지점별 체류: 3분 미만은 통계에서 빼고(기록은 그대로) · 평균 시간 (D-074)
- *  v23.5 2026-10-31  진행 현황: 지점별 현황(도착·머무는 중·완료·체류)·앞선/뒤처진 조 · 표를 한 화면에 (D-073)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -4574,6 +4574,7 @@ window.APP_CONFIG = {
     editingNotice: null,   // 수정 중인 공지 id (null 이면 새로 쓰기)
     photoOnly: false,      // 일지 관리 — 사진 있는 글만 (D-052)
     present: false,        // 시상 — 크게 보기(발표용)
+    progressAt: 0,         // 진행 현황을 받은 시각(ms) — "HH:MM 기준" (D-078)
     cache: { review: null, progress: null, fee: null, notice: null, awards: null }
   };
 
@@ -5074,7 +5075,19 @@ window.APP_CONFIG = {
   // ------------------------------------------------------------ 진행 현황
 
   // 진행·시상은 뼈대(조·코스·조장)를 GAS 에서 10분 쓰고, 그 사이 다시 열면 칸만 사본에서 덮는다 (D-072).
-  function renderProgress() { loadThenPaint('progress', API.adminProgressBoard, paintProgress); }
+  function renderProgress() {
+    loadThenPaint('progress', function () {
+      return API.adminProgressBoard().then(function (b) { state.progressAt = Date.now(); return b; });
+    }, paintProgress);
+  }
+
+  /**
+   * 진행 현황은 한 번 받으면 다시 읽지 않는다(D-046). 당일엔 기록이 계속 바뀌므로 **언제 것인지** 보이고,
+   * 단추 하나로 다시 읽는다 (D-078). 낡은 화면에서 칸을 고치다 저장이 무시된 일이 있었다.
+   */
+  function progressAtText() {
+    return state.progressAt ? UI.hhmm(UI.localIso(new Date(state.progressAt))) + ' 기준' : '';
+  }
 
   // 조별 카드는 교역자 화면과 같이 쓰므로 ui.js 에 있다 (UI.teamGrid, D-051).
   var STALE_MIN = UI.STALE_MIN;
@@ -5219,10 +5232,14 @@ window.APP_CONFIG = {
         low = low.filter(function (r) { return r.last === latest; });
       }
       lag = { teams: low.map(function (r) { return r.team; }), text: progress(low[0]) };
-    } else {
+    } else if (finished.length) {
       var slow = finished[finished.length - 1].min;
       lag = { teams: finished.filter(function (x) { return x.min === slow; }).map(function (x) { return x.team; }),
               text: '완주 ' + durText(slow) };
+    } else {
+      // 모두 완료인데 시각이 비었다(시트를 손으로 고친 경우) — 잴 수 없으니 줄을 뺀다 (D-078).
+      // 예전엔 여기서 TypeError 가 나 저장 뒤 그리기가 멈췄다 — 창만 닫히고 화면은 그대로였다.
+      lag = null;
     }
     return { lead: lead, lag: lag };
   }
@@ -5271,7 +5288,7 @@ window.APP_CONFIG = {
             '<span class="pace__meta">· ' + esc(p.text) + '</span></li>';
         };
         return head +
-          '<ul class="pace">' + line('🏃', '가장 앞선 조', pace.lead) + line('🐢', '가장 뒤처진 조', pace.lag) + '</ul>' +
+          '<ul class="pace">' + line('🏃', '가장 앞선 조', pace.lead) + (pace.lag ? line('🐢', '가장 뒤처진 조', pace.lag) : '') + '</ul>' +
           '<div class="spot-grid">' + spotStats(ts, board.checkpoints).map(function (s, i) {
             var ex = extremes(s.stays);
             return '<div class="spot" data-spot="' + esc(s.cp.code) + '">' +
@@ -5298,6 +5315,10 @@ window.APP_CONFIG = {
             '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다. 칸을 누르면 상태를 고칠 수 있습니다.</p></section>' +
           sessionFilterHtml() +
           audienceFilterHtml() +
+          '<div class="review-tools">' +
+            '<button type="button" class="btn btn--ghost btn--sm" data-reload>새로고침</button>' +
+            '<span class="hint" id="progressAt">' + esc(progressAtText()) + '</span>' +
+          '</div>' +
           (teams.length
             ? spotStatsHtml(board, teams) + grid.html +
               '<details class="card board-table"><summary>표로 보기</summary>' +
@@ -5317,6 +5338,7 @@ window.APP_CONFIG = {
    * 상태만 고친다 — 점수 입력은 D-056 에서 뺐다.
    */
   function onProgressEdit(e) {
+    if (e.target.closest('[data-reload]')) { invalidate('progress'); renderProgress(); return; }
     var btn = e.target.closest('[data-edit-code]');
     if (!btn) return;
     var board = state.cache.progress;
@@ -5334,10 +5356,12 @@ window.APP_CONFIG = {
     wrap.innerHTML =
       '<form class="modal__panel" id="cellForm" role="dialog" aria-modal="true">' +
         '<p class="modal__msg"><strong>' + esc(team.name) + '</strong> · ' + esc(cp.name) + '<br>' +
-          '<span class="hint">' + esc(session) + ' · 지금 ' + esc(cur) + '</span></p>' +
+          '<span class="hint">' + esc(session) + ' · 지금 ' + esc(cur) +
+            (progressAtText() ? ' (' + esc(progressAtText()) + ')' : '') + '</span></p>' +
+        // 🔴 지금 상태를 **미리 고르지 않는다** (D-078). 미리 골라 두면 '완료' 누름이 안 먹은 채 저장해도
+        //    지금 상태가 그대로 가서 무시됐다 — 창만 닫히고 아무 일도 없었다.
         '<div class="seg">' + ['대기', '도착', '완료'].map(function (st) {
-          return '<label class="seg__item"><input type="radio" name="status" value="' + st + '"' +
-            (st === cur ? ' checked' : '') + '><span>' + st + '</span></label>';
+          return '<label class="seg__item"><input type="radio" name="status" value="' + st + '"><span>' + st + '</span></label>';
         }).join('') + '</div>' +
         '<p class="hint">고친 상태는 조장·스태프 화면에도 바로 반영됩니다.</p>' +
         '<div class="modal__actions">' +
@@ -5355,7 +5379,9 @@ window.APP_CONFIG = {
       ev.preventDefault();
       var f = ev.target;
       var status = (f.querySelector('input[name="status"]:checked') || {}).value;
-      if (!status || status === cur) { close(); return; }
+      if (!status) { toast('바꿀 상태를 고르세요.', 'error'); return; }
+      // 🔴 지금과 같은 상태여도 **보낸다** (D-078). 화면의 "지금" 은 처음 받은 뒤 다시 읽지 않은 값이라
+      //    낡았을 수 있다. 서버는 같은 상태면 시각을 그대로 두고, 응답(최신 보드)이 화면을 바로잡는다.
       var payload = { session: session, group: group, checkpoint: code, status: status };
       var submit = f.querySelector('button[type="submit"]');
       UI.setBusy(submit, true, '저장 중…');
@@ -5363,8 +5389,9 @@ window.APP_CONFIG = {
         .then(function (data) {
           close();
           state.cache.progress = data;
+          state.progressAt = Date.now();
           paintProgress(data);
-          toast(team.name + ' · ' + cp.name + ' 고쳤습니다.');
+          toast(team.name + ' · ' + cp.name + ' → ' + status + (status === '도착' ? '으로' : '로') + ' 저장했습니다.');
         })
         .catch(function (err) { UI.setBusy(submit, false); if (authLost(err)) close(); else toast(err.message, 'error'); });
     });
