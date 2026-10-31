@@ -151,6 +151,112 @@ withBrowser(async (env) => {
     await page.context().close();
   }
 
+  section('🔴 칸 정정 — 저장이 소리 없이 무시되지 않는다 · 새로고침 · 기준 시각 (D-078)');
+  // 현장 신고: '완료' 로 바꾸고 저장 → 창만 닫히고 그대로. 창이 지금 상태를 미리 골라 두고,
+  // 고른 것이 지금과 같으면 아무것도 보내지 않고 닫았다. 화면의 "지금" 은 처음 받은 뒤 다시 읽지 않아 낡을 수 있다.
+  page = await openProgress(env, 1100);
+  const CELL = (g, c) => '.team-card [data-edit-session="10/31(토)"][data-edit-group="' + g + '"][data-edit-code="' + c + '"]';
+  const cellText = (g, c) => page.evaluate(s => document.querySelector(s).textContent.replace(/\s+/g, ' ').trim(), CELL(g, c));
+  const sets = () => page.evaluate(() => window.__BODIES.filter(b => b.action === 'admin.progress.set'));
+  const boards = () => page.evaluate(() => window.__BODIES.filter(b => b.action === 'admin.progress.board').length);
+  const toastText = () => page.evaluate(() => document.querySelector('#toast').textContent);
+  const openCell = async (g, c) => { await page.click(CELL(g, c)); await page.waitForSelector('#cellForm'); };
+  // 창이 닫힐 때까지 — 되돌려 보는 실험에서 30초씩 멈추지 않게 짧게 기다리고, 안 닫혔으면 닫는다
+  const saveAndWait = async () => {
+    await page.click('#cellForm button[type="submit"]');
+    const closed = await page.waitForFunction(() => !document.querySelector('#cellForm'), null, { timeout: 4000 }).then(() => true, () => false);
+    if (!closed) await page.click('#cellForm [data-act="cancel"]');
+    return closed;
+  };
+  const pick = (st) => page.locator('#cellForm .seg__item', { hasText: st }).locator('span').click();   // 사람처럼 글자를 누른다
+  const reload = async () => {
+    const n = await boards();
+    await page.click('[data-reload]');
+    return page.waitForFunction(k => window.__BODIES.filter(b => b.action === 'admin.progress.board').length > k &&
+      !document.querySelector('#view .loading'), n, { timeout: 4000 }).then(() => true, () => false);
+  };
+  // 다음 admin.progress.board 응답을 한 번 꾸민다 — 그 사이 현장에서 바뀐 서버 값을 흉내 낸다
+  await page.evaluate(() => {
+    const f = window.fetch;
+    window.__TAMPER = null;
+    window.fetch = function (url, init) {
+      let body = {};
+      try { body = JSON.parse((init && init.body) || '{}'); } catch (e) { /* GET */ }
+      const p = f.apply(this, arguments);
+      const tamper = body.action === 'admin.progress.board' && window.__TAMPER;
+      if (!tamper) return p;
+      window.__TAMPER = null;
+      return p.then(r => r.text()).then(t => {
+        const j = JSON.parse(t); j.data = tamper(j.data);
+        const out = JSON.stringify(j);
+        return { ok: true, text: () => Promise.resolve(out) };
+      });
+    };
+  });
+
+  ok('기준 시각이 보인다 ("15:2x 기준")', /^15:2\d 기준$/.test(await page.evaluate(() => document.querySelector('#progressAt').textContent)),
+    await page.evaluate(() => document.querySelector('#progressAt').textContent));
+  ok('🔴 [새로고침] → 보드를 다시 읽는다', await reload());
+
+  await openCell('1조', 'CP4');
+  ok('🔴 창을 열어도 지금 상태(도착)를 미리 고르지 않는다', await page.evaluate(() => !document.querySelector('#cellForm input:checked')));
+  ok('창에 "지금 도착 (HH:MM 기준)"', /지금 도착 \(\d{2}:\d{2} 기준\)/.test(await page.evaluate(() => document.querySelector('#cellForm').textContent)));
+  let before = (await sets()).length;
+  await page.click('#cellForm button[type="submit"]');
+  await page.waitForTimeout(300);
+  ok('🔴 안 고르고 저장 → 창은 그대로 · "바꿀 상태를 고르세요" · 요청 없음',
+    await page.evaluate(() => !!document.querySelector('#cellForm')) && (await toastText()).includes('바꿀 상태를 고르세요') &&
+    (await sets()).length === before, await toastText());
+  if (await page.$('#cellForm')) await page.click('#cellForm [data-act="cancel"]');
+
+  await openCell('4조', 'CP1');
+  await pick('완료');
+  await saveAndWait();
+  let last = (await sets()).pop();
+  ok('🔴 지금과 같은 상태(완료)여도 서버에 보낸다', !!last && last.group === '4조' && last.checkpoint === 'CP1' && last.status === '완료', last);
+  ok('알림에 저장한 상태를 적는다', (await toastText()).includes('4조 정동길 · 배재학당역사박물관 → 완료로 저장했습니다'), await toastText());
+  ok('같은 상태면 시각은 그대로 (완료 14:00)', (await cellText('4조', 'CP1')).endsWith('완료 14:00'), await cellText('4조', 'CP1'));
+
+  // 🔴 낡은 화면: 콘솔은 1조 CP4 를 완료(14:50)로 보지만 서버는 아직 도착이다
+  await page.evaluate(() => {
+    window.__TAMPER = (d) => {
+      d.teams.forEach(t => {
+        if (t.session === '10/31(토)' && t.group === '1조') t.cells.CP4 = Object.assign({}, t.cells.CP4, { status: '완료', completedAt: '2026-10-31T14:50:00+09:00' });
+      });
+      return d;
+    };
+  });
+  ok('[새로고침] (낡은 값을 받는다)', await reload());
+  ok('낡은 화면: 1조 CP4 완료 14:50', (await cellText('1조', 'CP4')).endsWith('완료 14:50'), await cellText('1조', 'CP4'));
+  await openCell('1조', 'CP4');
+  await pick('완료');
+  before = (await sets()).length;
+  await saveAndWait();
+  ok('🔴 낡은 "지금 완료" 와 같아도 보낸다 — 예전엔 창만 닫히고 아무 일도 없었다', (await sets()).length === before + 1, await sets());
+  ok('🔴 화면이 서버 값으로 바로잡힌다 (완료 15:2x — 서버가 지금 찍은 시각)', /완료 15:2\d$/.test(await cellText('1조', 'CP4')), await cellText('1조', 'CP4'));
+  await openCell('2조', 'CP4');
+  await pick('도착');
+  await saveAndWait();
+  ok('알림 받침: "도착으로" (완료·대기는 "로")', (await toastText()).includes('2조 정동 · 이화여고 박물관 → 도착으로 저장했습니다'), await toastText());
+
+  // teamPace 가드: 모두 완료인데 도착 시각이 비어 소요 시간을 잴 수 없다(시트를 손으로 고친 경우)
+  await page.evaluate(() => {
+    window.__TAMPER = (d) => {
+      d.teams.forEach(t => {
+        if (t.session !== '10/31(토)') return;
+        t.route.forEach(code => { t.cells[code] = { status: '완료', arrivedAt: '', completedAt: '2026-10-31T15:00:00+09:00', score: null, scoreSource: '' }; });
+      });
+      return d;
+    };
+  });
+  ok('[새로고침] (모두 완료 · 도착 시각 없음)', await reload());
+  const guard = await page.evaluate(() => ({ stats: !!document.querySelector('.spot-stats'),
+    pace: [...document.querySelectorAll('.spot-stats .pace li')].map(li => li.textContent.replace(/\s+/g, ' ').trim()),
+    error: (document.querySelector('#view > .empty') || {}).textContent || '' }));
+  ok('🔴 모두 완료인데 시각이 비어도 화면이 그려진다 (예전엔 TypeError)', guard.stats && !guard.error, guard);
+  ok('앞선 조 줄만 — 잴 수 없는 뒤처진 조 줄은 뺀다', guard.pace.length === 1 && guard.pace[0].startsWith('🏃'), guard);
+  await page.context().close();
+
   section('🔴 표로 보기 — 옆으로 밀지 않고 한 화면에');
   for (const width of [1100, 390]) {
     page = await openProgress(env, width);
