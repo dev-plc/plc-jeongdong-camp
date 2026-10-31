@@ -28,7 +28,7 @@ node tests/run.js -v        # 스위트 출력을 전부 본다
 | `app/api.test.js` | `api.js` 사본 경로와 폴백(404·500·null·시간 초과·WebCrypto 없음 → GAS) |
 | `app/admin.test.js` | 운영 콘솔 진행 — 뼈대 GAS 10분 + 전 회차 칸 사본(`회차|조`) = 서버 화면, 정정 가드, 토큰 읽기 (D-072) |
 | `ui/photo-viewer.test.js` | 사진 띠 ‹ › · 크게 보기 뷰어(‹ ›·←→·Esc) — 일지·검수·시상 (D-073) |
-| `ui/progress-stats.test.js` | 진행 현황 지점별 현황·앞선/뒤처진 조(데모 손계산) · 표가 폭 안에 (D-073) |
+| `ui/progress-stats.test.js` | 진행 현황 지점별 현황·앞선/뒤처진 조(데모 손계산) · 도착·완료·체류 한 줄씩 · 표가 폭 안에 (D-073~076) |
 | `ui/admin-open.test.js` | 콘솔 열기 — 만료 전 관리자 토큰이면 확인 호출 없이, 거절되면 로그인 화면 (D-072) |
 | `app/station.test.js` | 내 지점·진행 — 뼈대 GAS 10분 + 칸 사본. 앱을 **가짜 GAS 서버에 그대로** 물려 사본으로 덮은 화면 = 서버 화면인지, 기록 뒤 가드(보낸 시각) (D-071) |
 | `app/progress.test.js` | 코스 사본 읽기 — 기록 0건인 조는 근거(동기화 신선·표 읽기)가 맞을 때만 "전부 대기", 아니면 GAS. 사본 결과 = 서버 `progress.list` (D-070) |
