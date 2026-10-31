@@ -4536,14 +4536,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v23.11 · 2026-10-31
+ * admin.js · v23.12 · 2026-10-31
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23.12 2026-10-31  지점별 체류: 1시간 넘는 체류도 통계에서 뺀다 · 저장 확인 알림에서 필터 단정을 뺀다 (D-080·079)
  *  v23.11 2026-10-31  칸 정정: 응답 진행표에 고른 상태가 없으면 "저장했습니다" 대신 빨간 알림 (D-079)
  *  v23.10 2026-10-31  칸 정정: 지금 상태를 미리 고르지 않고, 같은 상태여도 보낸다 · 진행 새로고침·기준 시각 (D-078)
  *  v23.9 2026-10-31  지점 칸 넷이 한 줄(안 되면 둘씩) · 조 이름·머무는 중이 가운데서 갈라지지 않게 (D-077)
  *  v23.8 2026-10-31  지점별 도착·완료를 한 줄씩 — 머무는 중이 껴도 완료가 밀리지 않게 (D-076)
- *  v23.7 2026-10-31  지점별 체류: 최단·최장·평균을 한 줄씩 — 분이 한 세로선에 (D-075)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -5135,6 +5135,8 @@ window.APP_CONFIG = {
    * 기록은 그대로 두고(카드·표에 시각은 보인다), 최단·최장·평균에만 넣지 않고 시간도 적지 않는다.
    */
   var MIN_STAY_MIN = 3;
+  /** 이보다 길면 **완료를 늦게 누른 것**으로 보고 같은 식으로 뺀다 (D-080). 경계(정확히 60분)는 넣는다. */
+  var MAX_STAY_MIN = 60;
 
   /** 조 이름 — 동률이면 둘까지, 나머지는 "외 N". */
   function teamNames(list) {
@@ -5155,10 +5157,10 @@ window.APP_CONFIG = {
     }).join(' ');
   }
 
-  /** 지점마다: 지나는 조 · 도착(누적) · 머무는 중 · 완료 · 체류(분, 3분 이상만) · 뺀 짧은 체류 수 */
+  /** 지점마다: 지나는 조 · 도착(누적) · 머무는 중 · 완료 · 체류(분, 3분~1시간만) · 뺀 짧은·긴 체류 수 */
   function spotStats(teams, checkpoints) {
     return checkpoints.map(function (c) {
-      var s = { cp: c, total: 0, arrived: 0, here: 0, done: 0, stays: [], short: 0 };
+      var s = { cp: c, total: 0, arrived: 0, here: 0, done: 0, stays: [], short: 0, long: 0 };
       teams.forEach(function (t) {
         if (t.route.indexOf(c.code) < 0) return;
         s.total++;
@@ -5169,8 +5171,10 @@ window.APP_CONFIG = {
         s.done++;
         if (!cell.arrivedAt || !cell.completedAt) return;
         var min = Math.round((new Date(cell.completedAt) - new Date(cell.arrivedAt)) / 60000);
-        if (min >= MIN_STAY_MIN) s.stays.push({ team: t, min: min });
-        else if (min >= 0) s.short++;
+        if (min < 0) return;
+        if (min < MIN_STAY_MIN) s.short++;
+        else if (min > MAX_STAY_MIN) s.long++;
+        else s.stays.push({ team: t, min: min });
       });
       return s;
     });
@@ -5248,7 +5252,7 @@ window.APP_CONFIG = {
    * 체류 — 최단·최장·평균을 **한 줄씩** (D-075). 한 줄로 이으면 조 이름까지 붙어 길어지고 읽기 어려웠다.
    * "최단 | 20분 · 4조" 처럼 분을 앞에 두어 숫자가 한 세로선에 선다. 3분 미만은 건수만 적는다(D-074).
    */
-  function stayHtml(ex, short) {
+  function stayHtml(ex, s) {
     var row = function (label, min, teams) {
       return '<div><dt>' + label + '</dt><dd><strong>' + min + '분</strong>' +
         (teams ? '&nbsp;· ' + teamNamesHtml(teams) : '') + '</dd></div>';
@@ -5257,7 +5261,15 @@ window.APP_CONFIG = {
       ? '<p class="spot__cap">체류 시간</p><dl class="spot__stay">' +
           row('최단', ex.lo, ex.loTeams) + row('최장', ex.hi, ex.hiTeams) + row('평균', ex.avg, null) + '</dl>'
       : '<p class="spot__cap">체류 시간 —</p>') +
-      (short ? '<p class="spot__note">' + MIN_STAY_MIN + '분 미만 ' + short + '건 제외</p>' : '');
+      excludedHtml(s);
+  }
+
+  /** 뺀 체류 — "3분 미만 1건 · 1시간 초과 2건 제외". 시간은 적지 않는다 (D-074·080). */
+  function excludedHtml(s) {
+    var parts = [];
+    if (s.short) parts.push(MIN_STAY_MIN + '분 미만 ' + s.short + '건');
+    if (s.long) parts.push((MAX_STAY_MIN / 60) + '시간 초과 ' + s.long + '건');
+    return parts.length ? '<p class="spot__note">' + parts.join(' · ') + ' 제외</p>' : '';
   }
 
   /**
@@ -5294,11 +5306,12 @@ window.APP_CONFIG = {
             return '<div class="spot" data-spot="' + esc(s.cp.code) + '">' +
               '<p class="spot__name">' + (i + 1) + '. ' + esc(s.cp.name) + '</p>' +
               numsHtml(s) +
-              stayHtml(ex, s.short) +
+              stayHtml(ex, s) +
             '</div>';
           }).join('') + '</div>';
       }).join('') +
-      '<p class="hint">체류 시간은 도착→완료입니다. ' + MIN_STAY_MIN + '분 미만은 잘못 누른 것으로 보고 통계에서 뺍니다(기록은 그대로).</p>' +
+      '<p class="hint">체류 시간은 도착→완료입니다. ' + MIN_STAY_MIN + '분 미만(잘못 누름)과 ' + (MAX_STAY_MIN / 60) +
+        '시간 초과(완료를 늦게 누름)는 통계에서 뺍니다(기록은 그대로).</p>' +
       '</section>';
   }
 
@@ -5391,11 +5404,11 @@ window.APP_CONFIG = {
           state.cache.progress = data;
           state.progressAt = Date.now();
           paintProgress(data);
-          // 🔴 서버가 "됐다" 고 해도 **응답 진행표에서 그 칸을 확인**한다 (D-079). Progress 탭에 필터가 켜져 있던 날,
-          //    새 행이 시트에 남지 않았는데 "저장했습니다" 가 떠 11번을 다시 눌렀다.
+          // 🔴 서버가 "됐다" 고 해도 **응답 진행표에서 그 칸을 확인**한다 (D-079). 10/31 저녁 새 행이 시트에 남지 않았는데
+          //    "저장했습니다" 가 떠 11번을 다시 눌렀다(원인 미확정).
           var saved = data.teams.filter(function (t) { return t.session === session && t.group === group; })[0];
           if (!saved || ((saved.cells || {})[code] || {}).status !== status) {
-            toast('서버는 받았지만 진행표에 들어가지 않았습니다. Progress 탭에 필터가 켜져 있으면 끄고 다시 저장하세요.', 'error');
+            toast('서버는 받았지만 진행표에 들어가지 않았습니다. 다시 저장해 보세요.', 'error');
             return;
           }
           toast(team.name + ' · ' + cp.name + ' → ' + status + (status === '도착' ? '으로' : '로') + ' 저장했습니다.');

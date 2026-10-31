@@ -28,8 +28,8 @@ const EXPECT = {
   CP4: { nums: '도착: 3/4 (머무는 중 1) | 완료: 2', stay: '최단: 17분 · 3조 이화 | 최장: 18분 · 4조 정동길 | 평균: 18분' }
 };
 
-async function openProgress(env, width) {
-  const page = await env.open({ mode: 'admin', width });
+async function openProgress(env, width, at) {
+  const page = await env.open({ mode: 'admin', width, at });
   await adminLogin(page);
   await page.click('#tabbar [data-view="progress"]');
   await page.waitForSelector('.spot-stats');
@@ -88,10 +88,40 @@ withBrowser(async (env) => {
   ok('🔴 "3분 미만 1건 제외" 를 붙이고, 그 시간(0분)은 적지 않는다', / \(3분 미만 1건 제외\)$/.test(short.stay) && !/ 0분/.test(short.stay), short);
   ok('기록은 그대로 — 표·카드의 2조 CP4 는 완료', await page.evaluate(() =>
     [...document.querySelectorAll('.team-card')].some(c => c.textContent.includes('2조 정동') && /이화여고 박물관\s*완료/.test(c.textContent))));
-  ok('안내: 3분 미만은 통계에서 뺀다', await page.evaluate(() => document.querySelector('.spot-stats').textContent.includes('3분 미만은 잘못 누른 것으로 보고 통계에서 뺍니다')));
+  ok('안내: 3분 미만·1시간 초과는 통계에서 뺀다', await page.evaluate(() => document.querySelector('.spot-stats').textContent
+    .includes('3분 미만(잘못 누름)과 1시간 초과(완료를 늦게 누름)는 통계에서 뺍니다(기록은 그대로)')));
   p = await pace(page);
   ok('뒤처진 조가 2/4 의 1조(머무는 곳 없음)로', /가장 뒤처진 조 1조 배재 · 2\/4 완료 · 마지막 15:25/.test(p[1]), p);
   await page.context().close();
+
+  section('🔴 1시간 넘는 체류도 통계에서 뺀다 — 완료를 늦게 누른 것 (D-080)');
+  {
+    const setCell = async (pg, group, code, st) => {
+      await pg.click('.team-card [data-edit-session="10/31(토)"][data-edit-group="' + group + '"][data-edit-code="' + code + '"]');
+      await pg.waitForSelector('#cellForm');
+      await pg.click('#cellForm input[value="' + st + '"]', { force: true });
+      await pg.click('#cellForm button[type="submit"]');
+      await pg.waitForFunction(() => !document.querySelector('#cellForm'));
+    };
+    // 15:40 에 1조 CP4(14:36 도착)를 완료 → 64분
+    page = await openProgress(env, 1100, '2026-10-31T15:40:00+09:00');
+    await setCell(page, '1조', 'CP4', '완료');
+    let cp4 = (await spots(page)).CP4;
+    ok('🔴 64분 체류: 완료 개수는 센다 (완료 3)', cp4.nums === '도착: 3/4 | 완료: 3', cp4);
+    ok('🔴 64분 체류: 최단·최장·평균에서 빠지고 "1시간 초과 1건 제외" (시간은 적지 않는다)',
+      cp4.stay === '최단: 17분 · 3조 이화 | 최장: 18분 · 4조 정동길 | 평균: 18분 (1시간 초과 1건 제외)' && !/64분/.test(cp4.stay), cp4);
+    for (const st of ['도착', '완료']) await setCell(page, '2조', 'CP4', st);
+    cp4 = (await spots(page)).CP4;
+    ok('둘 다 있으면 한 줄로 — "3분 미만 1건 · 1시간 초과 1건 제외"', / \(3분 미만 1건 · 1시간 초과 1건 제외\)$/.test(cp4.stay) && cp4.nums === '도착: 4/4 | 완료: 4', cp4);
+    await page.context().close();
+
+    // 경계: 15:36 에 완료 → 정확히 60분은 넣는다
+    page = await openProgress(env, 1100, '2026-10-31T15:36:00+09:00');
+    await setCell(page, '1조', 'CP4', '완료');
+    cp4 = (await spots(page)).CP4;
+    ok('🔴 경계: 정확히 60분은 통계에 넣는다 (최장 60분 · 평균 32분)', cp4.stay === '최단: 17분 · 3조 이화 | 최장: 60분 · 1조 배재 | 평균: 32분', cp4);
+    await page.context().close();
+  }
 
   section('🔴 도착·완료 / 체류 최단·최장·평균 — 한 줄씩, 숫자가 한 세로선에 (D-075·076)');
   for (const width of [1100, 390]) {
@@ -242,7 +272,7 @@ withBrowser(async (env) => {
   await saveAndWait();
   ok('알림 받침: "도착으로" (완료·대기는 "로")', (await toastText()).includes('2조 정동 · 이화여고 박물관 → 도착으로 저장했습니다'), await toastText());
 
-  // 🔴 D-079: 서버가 "됐다" 고 했는데 응답 진행표에 그 칸이 없다 — Progress 탭에 필터가 켜져 새 행이 시트에 남지 않은 날
+  // 🔴 D-079: 서버가 "됐다" 고 했는데 응답 진행표에 그 칸이 없다 — 10/31 저녁 새 행이 시트에 남지 않은 날(원인 미확정)
   await page.evaluate(() => {
     window.__TAMPER_SET = (d) => {
       d.teams.forEach(t => { if (t.session === '10/31(토)' && t.group === '3조') delete t.cells.CP1; });
@@ -253,8 +283,9 @@ withBrowser(async (env) => {
   await pick('완료');
   await saveAndWait();
   const lost = await page.evaluate(() => ({ text: document.querySelector('#toast').textContent, error: document.querySelector('#toast').classList.contains('toast--error') }));
-  ok('🔴 응답 진행표에 고른 상태가 없으면 "저장했습니다" 대신 빨간 알림 (필터를 끄고 다시)',
-    lost.error && lost.text.includes('진행표에 들어가지 않았습니다') && lost.text.includes('필터') && !lost.text.includes('저장했습니다'), lost);
+  ok('🔴 응답 진행표에 고른 상태가 없으면 "저장했습니다" 대신 빨간 알림 (다시 저장)',
+    lost.error && lost.text.includes('진행표에 들어가지 않았습니다') && lost.text.includes('다시 저장해 보세요') && !lost.text.includes('저장했습니다') &&
+    !lost.text.includes('필터'), lost);
   ok('화면은 응답 그대로 — 3조 CP1 대기', (await cellText('3조', 'CP1')).endsWith('대기'), await cellText('3조', 'CP1'));
 
   // teamPace 가드: 모두 완료인데 도착 시각이 비어 소요 시간을 잴 수 없다(시트를 손으로 고친 경우)
