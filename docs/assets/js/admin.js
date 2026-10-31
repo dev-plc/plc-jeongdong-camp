@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v23.8 · 2026-10-31
+ * admin.js · v23.9 · 2026-10-31
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v23.9 2026-10-31  지점 칸 넷이 한 줄(안 되면 둘씩) · 조 이름·머무는 중이 가운데서 갈라지지 않게 (D-077)
  *  v23.8 2026-10-31  지점별 도착·완료를 한 줄씩 — 머무는 중이 껴도 완료가 밀리지 않게 (D-076)
  *  v23.7 2026-10-31  지점별 체류: 최단·최장·평균을 한 줄씩 — 분이 한 세로선에 (D-075)
  *  v23.6 2026-10-31  지점별 체류: 3분 미만은 통계에서 빼고(기록은 그대로) · 평균 시간 (D-074)
  *  v23.5 2026-10-31  진행 현황: 지점별 현황(도착·머무는 중·완료·체류)·앞선/뒤처진 조 · 표를 한 화면에 (D-073)
- *  v23.4 2026-10-30  열 때 토큰을 읽고 바로 그림 · 진행·시상은 칸만 사본에서 · 로그인 거절이면 로그인 화면 (D-072)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -593,6 +593,19 @@
       (list.length > 2 ? ' 외 ' + (list.length - 2) : '');
   }
 
+  /**
+   * 체류 줄의 조 이름 — 이름 하나는 한 덩어리로 줄을 바꾼다(D-077). 지점 칸이 좁아져(넷이 한 줄)
+   * "4조 / 정동길" 처럼 이름 가운데서 갈라졌다. "·" 는 앞 이름에 붙여 줄 머리에 오지 않게 한다.
+   */
+  function teamNamesHtml(list) {
+    var names = list.slice(0, 2).map(function (t) { return esc(t.name); });
+    if (list.length > 2) names[names.length - 1] += ' 외 ' + (list.length - 2);
+    // 덩어리(inline-block) 앞뒤는 어디서나 줄이 바뀔 수 있어, "·" 를 덩어리 안에 넣어야 줄 머리에 안 온다
+    return names.map(function (n, i) {
+      return '<span class="spot__team">' + n + (i < names.length - 1 ? '&nbsp;·' : '') + '</span>';
+    }).join(' ');
+  }
+
   /** 지점마다: 지나는 조 · 도착(누적) · 머무는 중 · 완료 · 체류(분, 3분 이상만) · 뺀 짧은 체류 수 */
   function spotStats(teams, checkpoints) {
     return checkpoints.map(function (c) {
@@ -685,7 +698,7 @@
   function stayHtml(ex, short) {
     var row = function (label, min, teams) {
       return '<div><dt>' + label + '</dt><dd><strong>' + min + '분</strong>' +
-        (teams ? ' · ' + esc(teamNames(teams)) : '') + '</dd></div>';
+        (teams ? '&nbsp;· ' + teamNamesHtml(teams) : '') + '</dd></div>';
     };
     return (ex
       ? '<p class="spot__cap">체류 시간</p><dl class="spot__stay">' +

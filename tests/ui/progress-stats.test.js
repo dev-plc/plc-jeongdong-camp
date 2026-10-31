@@ -1,5 +1,5 @@
 /**
- * 운영 콘솔 진행 현황 — 지점별 현황 · 앞선/뒤처진 조 · 표를 한 화면에 (D-073, 앱 v23.5).
+ * 운영 콘솔 진행 현황 — 지점별 현황 · 앞선/뒤처진 조 · 표를 한 화면에 (D-073, 앱 v23.5~23.9).
  * 기대값은 데모 데이터(10/31 네 조)로 손계산했다.
  *   1조 C코스  CP3 완료 14:00→14:24(24분) · CP4 도착 14:36
  *   2조 A코스  CP1 완료 14:02→14:26(24) · CP2 완료 14:38→15:00(22) · CP3 도착 15:12
@@ -12,7 +12,8 @@ const { withBrowser, adminLogin, noHScroll, smallText } = require('../lib/browse
 
 /** 지점 칸 — 도착·완료(D-076)와 체류(D-075)는 한 줄씩이라 "도착: 4/4 | 완료: 3" · "최단: 20분 · 4조 정동길 | …" 으로 모아 읽는다. */
 const spots = (page) => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.spot-stats .spot')].map(s => {
-  const kv = (sel) => [...s.querySelectorAll(sel + ' > div')].map(d => d.querySelector('dt').textContent + ': ' + d.querySelector('dd').textContent);
+  // 조 이름 덩어리 사이는 줄바꿈 안 되는 빈칸(&nbsp;)이라 보통 빈칸으로 읽는다 (D-077)
+  const kv = (sel) => [...s.querySelectorAll(sel + ' > div')].map(d => d.querySelector('dt').textContent + ': ' + d.querySelector('dd').textContent.replace(/\u00a0/g, ' '));
   const rows = kv('.spot__stay');
   const note = s.querySelector('.spot__note');
   return [s.getAttribute('data-spot'), { nums: kv('.spot__nums').join(' | '),
@@ -113,6 +114,40 @@ withBrowser(async (env) => {
     ok(width + 'px: 분 숫자가 한 세로선에서 시작', new Set(stay.lefts).size === 1, lay);
     ok(width + 'px: 지점 칸 밖으로 넘치지 않는다', lay.inside, lay);
     ok(width + 'px: 13px 미만 글자 없음 (현황)', (await smallText(page)).length === 0, await smallText(page));
+    await page.context().close();
+  }
+
+  section('🔴 지점 칸 배치 — 넷이 한 줄, 안 되면 둘씩 두 줄 (셋+하나 없음) (D-077)');
+  for (const [width, want] of [[1100, '4'], [640, '2,2'], [390, '2,2']]) {
+    page = await openProgress(env, width);
+    const lay = await page.evaluate(() => {
+      const rows = {};
+      document.querySelectorAll('.spot-grid')[0].querySelectorAll('.spot').forEach(sp => {
+        const top = Math.round(sp.getBoundingClientRect().top);
+        rows[top] = (rows[top] || 0) + 1;
+      });
+      const lines = (el) => { const r = el.getClientRects(); return r.length === 1 && r[0].height < parseFloat(getComputedStyle(el).fontSize) * 2; };
+      // "·" 가 줄 머리(값 칸 왼쪽 끝)에 오면 안 된다
+      const dotAtHead = [];
+      document.querySelectorAll('.spot__stay dd').forEach(dd => {
+        const left = dd.getBoundingClientRect().left;
+        const walk = document.createTreeWalker(dd, NodeFilter.SHOW_TEXT);
+        for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+          for (let i = n.data.indexOf('·'); i >= 0; i = n.data.indexOf('·', i + 1)) {
+            const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 1);
+            if (r.getBoundingClientRect().left - left < 3) dotAtHead.push(dd.textContent);
+          }
+        }
+      });
+      return { perRow: Object.keys(rows).sort((a, b) => a - b).map(k => rows[k]).join(),
+               split: [...document.querySelectorAll('.spot__team, .spot__here')].filter(el => !lines(el)).map(el => el.textContent),
+               dotAtHead,
+               inside: [...document.querySelectorAll('.spot')].every(sp => sp.scrollWidth <= sp.clientWidth + 1) };
+    });
+    ok('🔴 ' + width + 'px: 한 줄에 ' + (want === '4' ? '넷' : '둘씩 두 줄') + ' (' + want + ')', lay.perRow === want, lay);
+    ok('🔴 ' + width + 'px: 조 이름·머무는 중이 가운데서 갈라지지 않는다', lay.split.length === 0, lay);
+    ok(width + 'px: "·" 가 줄 머리에 오지 않는다', lay.dotAtHead.length === 0, lay);
+    ok(width + 'px: 지점 칸 밖으로 넘치지 않는다 · 13px 미만 글자 없음', lay.inside && (await smallText(page)).length === 0, lay);
     await page.context().close();
   }
 
