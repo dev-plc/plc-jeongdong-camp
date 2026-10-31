@@ -175,17 +175,20 @@ withBrowser(async (env) => {
     return page.waitForFunction(k => window.__BODIES.filter(b => b.action === 'admin.progress.board').length > k &&
       !document.querySelector('#view .loading'), n, { timeout: 4000 }).then(() => true, () => false);
   };
-  // 다음 admin.progress.board 응답을 한 번 꾸민다 — 그 사이 현장에서 바뀐 서버 값을 흉내 낸다
+  // 다음 admin.progress.board(__TAMPER) · admin.progress.set(__TAMPER_SET) 응답을 한 번 꾸민다 —
+  // 그 사이 현장에서 바뀐 서버 값, 또는 서버가 시트에 못 넣은 저장(D-079)을 흉내 낸다
   await page.evaluate(() => {
     const f = window.fetch;
     window.__TAMPER = null;
+    window.__TAMPER_SET = null;
     window.fetch = function (url, init) {
       let body = {};
       try { body = JSON.parse((init && init.body) || '{}'); } catch (e) { /* GET */ }
       const p = f.apply(this, arguments);
-      const tamper = body.action === 'admin.progress.board' && window.__TAMPER;
+      const key = body.action === 'admin.progress.board' ? '__TAMPER' : body.action === 'admin.progress.set' ? '__TAMPER_SET' : null;
+      const tamper = key && window[key];
       if (!tamper) return p;
-      window.__TAMPER = null;
+      window[key] = null;
       return p.then(r => r.text()).then(t => {
         const j = JSON.parse(t); j.data = tamper(j.data);
         const out = JSON.stringify(j);
@@ -238,6 +241,21 @@ withBrowser(async (env) => {
   await pick('도착');
   await saveAndWait();
   ok('알림 받침: "도착으로" (완료·대기는 "로")', (await toastText()).includes('2조 정동 · 이화여고 박물관 → 도착으로 저장했습니다'), await toastText());
+
+  // 🔴 D-079: 서버가 "됐다" 고 했는데 응답 진행표에 그 칸이 없다 — Progress 탭에 필터가 켜져 새 행이 시트에 남지 않은 날
+  await page.evaluate(() => {
+    window.__TAMPER_SET = (d) => {
+      d.teams.forEach(t => { if (t.session === '10/31(토)' && t.group === '3조') delete t.cells.CP1; });
+      return d;
+    };
+  });
+  await openCell('3조', 'CP1');
+  await pick('완료');
+  await saveAndWait();
+  const lost = await page.evaluate(() => ({ text: document.querySelector('#toast').textContent, error: document.querySelector('#toast').classList.contains('toast--error') }));
+  ok('🔴 응답 진행표에 고른 상태가 없으면 "저장했습니다" 대신 빨간 알림 (필터를 끄고 다시)',
+    lost.error && lost.text.includes('진행표에 들어가지 않았습니다') && lost.text.includes('필터') && !lost.text.includes('저장했습니다'), lost);
+  ok('화면은 응답 그대로 — 3조 CP1 대기', (await cellText('3조', 'CP1')).endsWith('대기'), await cellText('3조', 'CP1'));
 
   // teamPace 가드: 모두 완료인데 도착 시각이 비어 소요 시간을 잴 수 없다(시트를 손으로 고친 경우)
   await page.evaluate(() => {
