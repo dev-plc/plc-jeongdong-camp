@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Code.gs · v23 · 2026-10-21
+ * Code.gs · v24 · 2026-10-31
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v24   2026-10-31  진행 기록: 쓴 뒤 다시 읽어 확인 — 시트에 안 남았으면 성공 대신 오류(필터를 끄고) (D-079)
  *  v23   2026-10-21  내 정보: 캠프 모드면 사본 토큰(campToken)을 건네 앱이 사본 경로로 옮긴다 (D-068)
  *  v22   2026-10-17  공개 설정에 PHOTO_MAX_COUNT — 앱이 사진 장수 한도를 안다 (D-064)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *  v16   2026-09-26  점수출처·스태프 우선, 지점·운영·정정 액션 (D-051·052)
- *  v15   2026-09-26  파일 버전 표시 · health 가 파일별 버전을 알려 준다
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_CODE = 'v23';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_CODE = 'v24';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Code.gs — 웹앱 진입점 및 라우팅
@@ -645,6 +645,25 @@ function writeProgress_(actor, pid, entries, T) {
     });
     T.write = Date.now() - tWrite;
   });
+
+  // 🔴 쓴 것을 **다시 읽어 확인한다** (D-079). 10/31 저녁 Progress 탭에 필터가 켜진 동안 새 행이 시트에 남지 않았는데
+  //    성공을 돌려줘, 관리자가 "저장했습니다" 를 보고 11번을 다시 눌렀다. 실패면 성공 대신 할 일을 알린다.
+  // 락 밖에서 읽는다(D-044) — 쓰기가 표 캐시를 비웠으므로 어차피 뒤의 목록·사본·보드가 할 읽기를 앞당겨 한 번만 한다.
+  var tVerify = Date.now();
+  var after = {};
+  readTable_(SHEETS.PROGRESS).forEach(function (r) {
+    after[rowTeamKey_(r) + '#' + str_(r['지점코드'])] = r;
+  });
+  var lost = entries.filter(function (e) {
+    var r = after[teamKey_(e.session, e.group) + '#' + e.code];
+    return !r || (e.status && str_(r['상태']) !== e.status);
+  });
+  T.verify = Date.now() - tVerify;
+  if (lost.length) {
+    throw new AppError('SERVER_ERROR', 'Progress 탭에 기록이 들어가지 않았습니다(' +
+      lost.map(function (e) { return e.group + ' ' + e.code; }).join(', ') +
+      '). Progress 탭에 필터가 켜져 있으면 끄고 다시 시도해 주세요.');
+  }
   return ignored;
 }
 
@@ -1105,4 +1124,4 @@ function configSet_(ctx, body) {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_CODE = 'v23';
+var END_CODE = 'v24';
