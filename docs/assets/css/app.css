@@ -1,13 +1,13 @@
 /*
    ────────────────────────────────────────────────────────────────
-    app.css · v23.8 · 2026-10-31
+    app.css · v23.9 · 2026-10-31
    ────────────────────────────────────────────────────────────────
     변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+     v23.9 2026-10-31  지점 칸 넷이 한 줄, 안 되면 둘씩 · 이름이 가운데서 안 갈라지게 (D-077)
      v23.8 2026-10-31  지점별 도착·완료 한 줄씩 (D-076)
      v23.7 2026-10-31  지점별 체류: 최단·최장·평균 한 줄씩 (D-075)
      v23.5 2026-10-31  사진 ‹ › · 크게 보기 · 진행표 한 화면 · 지점별 현황 (D-073)
      v23.1 2026-10-29  내 정보 칸 이름이 글자 중간에서 끊기지 않게 — 이름 칸을 가장 긴 이름에 맞춤 (D-069)
-     v22   2026-10-17  출발 안내 줄 · 사진 여러 장(고른 사진 칸, 넘기는 띠) (D-063·064)
 
     버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
           — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -750,7 +750,12 @@ details.cp:not([open]) { padding-top: 12px; padding-bottom: 12px; }
 .pace { margin: 0 0 10px; padding: 0; list-style: none; font-size: 14px; }
 .pace li + li { margin-top: 2px; }
 .pace__meta { color: var(--ink-2); }
-.spot-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); }
+/* 지점 칸 배치 (D-077) — 넷이 한 줄에 들어가면 넷, 아니면 둘씩. 셋+하나로 남지 않게 폭 단계를 둘로만 나눈다.
+   기준은 화면이 아니라 카드 안쪽 폭(컨테이너 쿼리). 컨테이너 쿼리를 모르는 옛 브라우저는 둘씩. */
+.spot-stats { container-type: inline-size; }
+.spot-grid { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@container (min-width: 600px) { .spot-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@container (max-width: 279px) { .spot-grid { grid-template-columns: minmax(0, 1fr); } }
 .spot { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; min-width: 0; }
 .spot p { margin: 0; font-size: 13px; color: var(--ink-2); }
 .spot .spot__name { font-size: 14px; font-weight: 700; color: var(--ink); word-break: keep-all; overflow-wrap: anywhere; }
@@ -764,6 +769,9 @@ details.cp:not([open]) { padding-top: 12px; padding-bottom: 12px; }
 .spot__nums dd, .spot__stay dd { margin: 0; min-width: 0; color: var(--ink); word-break: keep-all; overflow-wrap: anywhere; }
 .spot__nums strong, .spot__stay dd strong { font-variant-numeric: tabular-nums; }
 .spot__here { color: var(--ink-2); }
+/* 한 덩어리로 줄을 바꾼다 (D-077) — "(머무는 중 / 1)" · "4조 / 정동길" 처럼 가운데서 갈라지지 않게.
+   칸보다 길면 그 안에서만 접힌다(max-width). */
+.spot__here, .spot__team { display: inline-block; max-width: 100%; }
 .board-table[open] > summary { margin-bottom: 10px; }
 
 /* ==========================================================================
