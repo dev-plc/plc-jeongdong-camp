@@ -59,7 +59,7 @@ r = post({ action: 'progress.set', token: leader, items: [{ checkpoint: 'CP2', s
 ok('같은 지점 두 번 → 마지막이 이긴다', r.ok && cell(r.data, 'CP2').status === '완료', r.data && cell(r.data, 'CP2'));
 r = post({ action: 'progress.set', token: leader, checkpoint: 'CP3', status: '도착' });
 ok('옛 앱의 단건 형식도 받는다', r.ok && cell(r.data, 'CP3').status === '도착');
-r = post({ action: 'progress.set', token: leader, items: [{ checkpoint: 'CP3', status: '대기' }] });
+r = post({ action: 'progress.set', token: leader, items: [{ checkpoint: 'CP3', status: '대기', undo: true }] });   // 취소 버튼 (D-082)
 ok('대기로 되돌리면 시각을 비운다', r.ok && cell(r.data, 'CP3').status === '대기' && !cell(r.data, 'CP3').arrivedAt);
 r = post({ action: 'progress.set', token: leader, items: [{ checkpoint: 'CP4', status: '도착', score: 150 }] });
 ok('점수 0~100 밖은 거절', !r.ok && /0~100/.test(r.error.message), r);
@@ -87,7 +87,8 @@ r = post({ action: 'progress.set', token: leader, items: [{ checkpoint: 'CP1', s
 ok('🔴 조장이 바꾸려 하면 거절이 아니라 점수만 무시', r.ok && cell(r.data, 'CP1').score === 9 && cell(r.data, 'CP1').scoreSource === '스태프', r.data && cell(r.data, 'CP1'));
 ok('로그에 "스태프 점수 유지"', /스태프 점수 유지 CP1/.test(lastLog()['결과']), lastLog());
 r = post({ action: 'progress.set', token: leader, items: [{ checkpoint: 'CP1', status: '도착', score: 1 }, { checkpoint: 'CP4', status: '도착', score: 6 }] });
-ok('🔴 같은 배치의 다른 지점은 들어간다', r.ok && cell(r.data, 'CP1').status === '도착' && cell(r.data, 'CP4').score === 6 && cell(r.data, 'CP1').score === 9, r.data);
+// CP1 은 이미 완료 — 취소 표시 없이 '도착' 을 보내면 첫 기록 유지로 그대로 둔다 (D-082)
+ok('🔴 같은 배치의 다른 지점은 들어간다 (CP1 은 완료 그대로 · 점수 9 유지)', r.ok && cell(r.data, 'CP1').status === '완료' && cell(r.data, 'CP4').score === 6 && cell(r.data, 'CP1').score === 9, r.data);
 
 section('스태프 — 지점·회차는 서버가 정한다');
 r = post({ action: 'station.board', token: staff });
@@ -174,9 +175,9 @@ section('🔴 조원도 도착·완료 — 한 사람이 누르면 조 전체에
   ok('Log 에 "앞선 기록 유지"', /앞선 기록 유지 CP3/.test(JSON.stringify(H.sheet('Log').slice(-1))), H.sheet('Log').slice(-1));
   x = H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP3', status: '도착', undo: true }] });
   ok('취소 버튼(undo:true)은 내려간다 — 완료 → 도착', x.ok && at(x.data, 'CP3').status === '도착', x.data);
-  H.post({ action: 'progress.set', token: lead, items: [{ checkpoint: 'CP3', status: '완료' }] });
+  H.post({ action: 'progress.set', token: lead, items: [{ checkpoint: 'CP3', status: '완료', undo: false }] });
   x = H.post({ action: 'progress.set', token: lead, items: [{ checkpoint: 'CP3', status: '도착' }] });
-  ok('키가 없는 옛 앱은 예전대로 (완료 → 도착)', x.ok && at(x.data, 'CP3').status === '도착', x.data);
+  ok('🔴 키가 없어도(옛 앱) 앞으로만 — 완료 그대로 (D-082)', x.ok && at(x.data, 'CP3').status === '완료' && at(x.data, 'CP3').held === true, x.data);
   x = H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP4', status: '도착', undo: false }] });
   ok('새 칸(행 없음)도 앞으로만 규칙과 상관없이 들어간다', x.ok && at(x.data, 'CP4').status === '도착', x.data);
 
@@ -189,6 +190,52 @@ section('🔴 조원도 도착·완료 — 한 사람이 누르면 조 전체에
   ok('🔴 꺼져 있으면 조원은 FORBIDDEN "지금은 조장만"', !x.ok && x.error.code === 'FORBIDDEN' && /지금은 조장만/.test(x.error.message), x);
   x = H.post({ action: 'progress.set', token: lead, items: [{ checkpoint: 'CP1', status: '도착', undo: false }] });
   ok('조장은 그대로 된다', x.ok && at(x.data, 'CP1').status === '도착', x);
+}
+
+section('🔴 첫 기록 유지 · 취소하면 지운다 (D-082)');
+{
+  const H = camp();
+  H.addPeople([
+    [S1, '가조장', '청4조', '조장', '010-1000-1001', '', 'C코스(보구여관 시작)'],
+    [S1, '나조원', '청4조', '일반', '010-1000-1002', '', 'C코스(보구여관 시작)'],
+    [S1, '다조원', '청4조', '일반', '010-1000-1003', '', 'C코스(보구여관 시작)'],
+    [S1, '라스태', '', '스태프', '010-2000-0001', 'CP3', '']
+  ]);
+  const m1 = H.token('나조원', '1002'), m2 = H.token('다조원', '1003'), st = H.token('라스태', '0001');
+  const adm = H.adminToken();
+  const rows = () => { const t = H.sheet('Progress'); const h = t[0]; return t.slice(1).map(x => Object.fromEntries(h.map((k, i) => [k, x[i]]))); };
+  const rowAt = (code) => rows().find(x => x['조 배정'] === '청4조' && x['지점코드'] === code);
+  const at = (list, code) => list.find(x => x.checkpoint === code);
+  const snap = (code) => JSON.stringify(rowAt(code));
+  const wait = () => { const t = Date.now(); while (Date.now() === t || new Date().getSeconds() === new Date(t).getSeconds()) { /* 다음 초 */ } };
+
+  H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP3', status: '도착', undo: false }] });
+  const first = snap('CP3');
+  wait();
+  let x = H.post({ action: 'progress.set', token: m2, items: [{ checkpoint: 'CP3', status: '도착', undo: false }] });
+  ok('🔴 뒤에 누른 조원의 같은 도착은 행을 건드리지 않는다 (기록자·도착시각·수정일시 그대로)', x.ok && snap('CP3') === first, { before: first, after: snap('CP3') });
+  ok('응답에 held — 앱이 "먼저 기록했습니다" 를 알린다', at(x.data, 'CP3').held === true && at(x.data, 'CP3').status === '도착', at(x.data, 'CP3'));
+  x = H.post({ action: 'station.set', token: st, items: [{ group: '청4조', status: '도착' }] });
+  ok('🔴 스태프의 같은 도착도 그대로 (첫 기록 유지)', x.ok && snap('CP3') === first, { before: first, after: snap('CP3') });
+
+  x = H.post({ action: 'progress.set', token: m2, items: [{ checkpoint: 'CP3', status: '완료', undo: false }] });
+  const done1 = rowAt('CP3')['완료시각'];
+  ok('완료는 된다 — 도착 시각은 첫 기록 그대로', x.ok && at(x.data, 'CP3').status === '완료' && done1 &&
+    new Date(rowAt('CP3')['도착시각']).getTime() === new Date(JSON.parse(first)['도착시각']).getTime(), rowAt('CP3'));
+  x = H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP3', status: '도착', undo: true }] });
+  ok('🔴 완료 취소(undo:true) → 도착 · 완료 시각을 지운다', x.ok && at(x.data, 'CP3').status === '도착' && !at(x.data, 'CP3').completedAt &&
+    rowAt('CP3')['완료시각'] === '', at(x.data, 'CP3'));
+  wait();
+  x = H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP3', status: '완료', undo: false }] });
+  ok('🔴 다시 완료하면 새 완료 시각이 들어간다 (옛 시각이 되살아나지 않는다)', x.ok && at(x.data, 'CP3').completedAt &&
+    String(rowAt('CP3')['완료시각']) !== String(done1), { old: done1, now: rowAt('CP3')['완료시각'] });
+  x = H.post({ action: 'station.set', token: st, items: [{ group: '청4조', status: '도착', undo: true }] });
+  ok('스태프 완료 취소(undo:true)도 완료 시각을 지운다', x.ok && rowAt('CP3')['상태'] === '도착' && rowAt('CP3')['완료시각'] === '', rowAt('CP3'));
+  x = H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP3', status: '대기', undo: true }] });
+  ok('도착 취소 → 대기 · 도착·완료 시각 모두 지운다', x.ok && rowAt('CP3')['도착시각'] === '' && rowAt('CP3')['완료시각'] === '', rowAt('CP3'));
+  H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP4', status: '완료', undo: false }] });
+  x = H.post({ action: 'admin.progress.set', token: adm, session: S1, group: '청4조', checkpoint: 'CP4', status: '도착' });
+  ok('콘솔 정정으로 완료 → 도착도 완료 시각을 지운다', x.ok && rowAt('CP4')['상태'] === '도착' && rowAt('CP4')['완료시각'] === '', rowAt('CP4'));
 }
 
 section('🔴 새 행이 시트에 안 남으면 — 성공이 아니라 오류 (D-079)');

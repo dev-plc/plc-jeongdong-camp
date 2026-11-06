@@ -44,8 +44,9 @@ withBrowser(async (env) => {
   r = await rows();
   ok('도착 확인 → 3조 도착', r.find(x => x.group === '3조').status === '도착', r.find(x => x.group === '3조'));
   const sent = await bodies(page, 'station.set');
-  ok('station.set 에 조와 상태만 (지점은 서버가 정한다)', sent.length === 1 &&
-    JSON.stringify(sent[0].items) === JSON.stringify([{ group: '3조', status: '도착' }]), sent.map(b => b.items));
+  // undo:false — 확인 창을 거친 취소만 되돌린다, 그 밖에는 첫 기록 유지 (D-082)
+  ok('station.set 에 조·상태·undo 만 (지점은 서버가 정한다)', sent.length === 1 &&
+    JSON.stringify(sent[0].items) === JSON.stringify([{ group: '3조', status: '도착', undo: false }]), sent.map(b => b.items));
 
   // 취소는 확인창 — 취소하면 그대로
   await page.click('.st-row[data-group="2조"] [data-st="set"]');

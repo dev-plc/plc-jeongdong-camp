@@ -1,5 +1,5 @@
 /**
- * 조원도 도착·완료 — 한 사람이 누르면 조 전체에 (D-081, GAS v24 · 앱 v24).
+ * 조원도 도착·완료 — 한 사람이 누르면 조 전체에 (D-081, GAS v24) · 첫 기록 유지·취소하면 지움 (D-082, GAS v25).
  *   현장 요청: "기록가가 도착/완료 찍을 수 있게". 기록가를 지정할 시간이 없어 조원 누구나 누르게 한다.
  *   서버가 MEMBER_PROGRESS 를 켜 보낼 때만 조원에게 버튼 — 옛 서버(v23)는 키가 없어 버튼이 숨는다.
  *   보통 버튼은 undo:false(앞으로만), 취소는 undo:true. 다른 조원이 먼저 더 앞으로 기록했으면 그대로 두고 알린다.
@@ -51,6 +51,9 @@ withBrowser(async (env) => {
   sent = (await bodies(page, 'progress.set')).pop();
   ok('🔴 완료 취소 → {CP4, 도착, undo:true}', sent && JSON.stringify(sent.items) === JSON.stringify([{ checkpoint: 'CP4', status: '도착', undo: true }]), sent);
   ok('카드가 도착으로', await status(page, 'CP4') === '도착');
+  ok('🔴 완료 취소 → 카드에서 완료 시각이 지워진다 (D-082)', !(await page.evaluate(() => document.querySelector('#cp-CP4').textContent)).includes('· 완료 '),
+    await page.evaluate(() => document.querySelector('#cp-CP4').textContent));
+  ok('카드 문구 "✓ 저장됨" (운영본부에 → 뺌)', (await page.evaluate(() => document.querySelector('#cp-CP4 .cp__saved').textContent)) === '✓ 저장됨');
 
   section('🔴 다른 조원이 먼저 더 앞으로 기록했으면 — 그대로 두고 알린다');
   await otherRecords(page, [{ checkpoint: 'CP1', status: '완료' }]);
@@ -58,14 +61,26 @@ withBrowser(async (env) => {
   await unpause(page);
   await page.evaluate(() => document.querySelector('#cp-CP1 .cp__next').click());   // 낡은 "도착했어요"
   await waitToast(page, '그대로 두었습니다');
-  ok('🔴 "다른 조원이 먼저 기록해 그대로 두었습니다 — 배재학당역사박물관 완료"',
-    (await toastText(page)).includes('다른 조원이 먼저 기록해 그대로 두었습니다 — 배재학당역사박물관 완료'), await toastText(page));
+  ok('🔴 "먼저 기록된 것을 그대로 두었습니다 — 배재학당역사박물관 완료 15:2x"',
+    /먼저 기록된 것을 그대로 두었습니다 — 배재학당역사박물관 완료 15:2\d/.test(await toastText(page)), await toastText(page));
   ok('🔴 CP1 은 완료 그대로 (도착으로 내려가지 않았다)', await status(page, 'CP1') === '완료');
+
+  section('🔴 첫 기록 유지 — 같은 도착을 뒤에 눌러도 먼저 찍힌 시각 그대로 (D-082)');
+  await unpause(page);
+  await otherRecords(page, [{ checkpoint: 'CP2', status: '도착' }]);
+  ok('이 화면은 아직 CP2 대기 (낡음)', await status(page, 'CP2') === '대기');
+  const sentBefore = (await bodies(page, 'progress.set')).length;
+  await page.evaluate(() => document.querySelector('#cp-CP2 .cp__next').click());   // 같은 "도착했어요"
+  await waitToast(page, '러시아 공사관과 킹스로드 도착').catch(() => {});   // 앞 알림(CP1)이 아직 떠 있을 수 있다
+  ok('보내기는 했다 (undo:false)', (await bodies(page, 'progress.set')).length === sentBefore + 1);
+  ok('🔴 "먼저 기록된 것을 그대로 두었습니다 — 러시아 공사관과 킹스로드 도착 15:2x"',
+    /러시아 공사관과 킹스로드 도착 15:2\d/.test(await toastText(page)), await toastText(page));
+  ok('카드는 도착 (서버 값)', await status(page, 'CP2') === '도착');
 
   section('🔴 다시 보이면 코스를 새로 읽는다 — 다른 조원이 누른 것이 보이게');
   await unpause(page);
-  await otherRecords(page, [{ checkpoint: 'CP2', status: '도착' }]);
-  ok('아직 CP2 대기', await status(page, 'CP2') === '대기');
+  await otherRecords(page, [{ checkpoint: 'CP2', status: '완료' }]);
+  ok('아직 CP2 도착', await status(page, 'CP2') === '도착');
   const lists = async () => (await bodies(page, 'progress.list')).length;
   const before = await lists();
   await page.evaluate(() => {
@@ -73,8 +88,8 @@ withBrowser(async (env) => {
     document.dispatchEvent(new Event('visibilitychange'));
   });
   const fresh = await page.waitForFunction(() => (document.querySelector('#cp-CP2') || {}).getAttribute &&
-    document.querySelector('#cp-CP2').getAttribute('data-status') === '도착', null, { timeout: 4000 }).then(() => true, () => false);
-  ok('🔴 visible → 코스를 다시 읽어 CP2 도착이 보인다', fresh && (await lists()) === before + 1, { fresh, before, after: await lists() });
+    document.querySelector('#cp-CP2').getAttribute('data-status') === '완료', null, { timeout: 4000 }).then(() => true, () => false);
+  ok('🔴 visible → 코스를 다시 읽어 CP2 완료가 보인다', fresh && (await lists()) === before + 1, { fresh, before, after: await lists() });
   await page.context().close();
 
   section('🔴 옛 서버(v23, MEMBER_PROGRESS 없음) — 조원 버튼을 그리지 않는다');
@@ -104,6 +119,21 @@ withBrowser(async (env) => {
   });
   ok('🔴 버튼 없음', await page.locator('.cp__actions').count() === 0);
   ok('안내: "상태는 조장이 기록합니다"', (await page.evaluate(() => document.querySelector('.section-head .hint').textContent)).includes('상태는 조장이 기록합니다'));
+  await page.context().close();
+
+  section('🔴 거점 스태프도 — 완료 취소는 undo:true, 완료 시각을 지운다 (D-082)');
+  page = await env.open({ persona: 'staff' });
+  await login(page);
+  await page.click('#tabbar [data-view="course"]');
+  await page.waitForSelector('.st-row');
+  ok('2조는 완료 (완료 시각이 보인다)', /완료/.test(await page.evaluate(() => document.querySelector('.st-row[data-group="2조"] .chip').textContent)));
+  await page.click('.st-row[data-group="2조"] [data-st="set"]');      // 완료 취소
+  await page.click('.modal [data-act="ok"]');
+  await waitToast(page, '2조 도착');
+  const st = (await bodies(page, 'station.set')).pop();
+  ok('🔴 확인 창을 거친 취소 → {2조, 도착, undo:true}', st && JSON.stringify(st.items) === JSON.stringify([{ group: '2조', status: '도착', undo: true }]), st);
+  const g2 = await page.evaluate(() => document.querySelector('.st-row[data-group="2조"]').textContent);
+  ok('2조 도착 · 완료 시각 없음', /도착/.test(g2) && !/완료 \d{2}:\d{2}/.test(g2), g2);
   await page.context().close();
 
   section('런타임 오류');

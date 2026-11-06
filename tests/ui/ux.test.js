@@ -1,6 +1,6 @@
 /**
  * 외부 사용성 보고서 반영 (D-058, v20.1) — 장년층 현장 사용.
- * 일지 임시저장 · 코스 "운영본부에 저장됨" · 공지 번호 → 전화 · 제목 고딕·글씨 · 알림 5초 · 로그아웃 문구.
+ * 일지 임시저장 · 코스 "저장됨" · 공지 번호 → 전화 · 제목 고딕·글씨 · 알림 5초 · 로그아웃 문구.
  * 시계는 10/31 15:25 KST.
  */
 const { ok, section, done } = require('../lib/check');
@@ -114,7 +114,7 @@ withBrowser(async (env) => {
   await page.context().close();
 
   // ------------------------------------------------------------ 코스 — 저장됨
-  section('코스 — "운영본부에 저장됨" 이 카드에 남는다');
+  section('코스 — "저장됨" 이 카드에 남는다 (D-058 · 문구 D-082)');
   page = await env.open({ persona: 'leader' });
   await login(page);
   await page.click('#tabbar [data-view="course"]');
@@ -124,7 +124,7 @@ withBrowser(async (env) => {
     return [c.getAttribute('data-code'), s ? (s.classList.contains('is-pending') ? 'pending:' : '') + s.textContent : ''];
   })));
   let sv = await saved();
-  ok('🔴 완료(CP3)·도착(CP4) 카드에 "운영본부에 저장됨"', sv.CP3 === '✓ 운영본부에 저장됨' && sv.CP4 === '✓ 운영본부에 저장됨', sv);
+  ok('🔴 완료(CP3)·도착(CP4) 카드에 "✓ 저장됨"', sv.CP3 === '✓ 저장됨' && sv.CP4 === '✓ 저장됨', sv);
   ok('대기 카드에는 없다', sv.CP1 === '' && sv.CP2 === '', sv);
 
   // 서버 응답을 붙잡아 "저장 중" 을 본다
@@ -142,8 +142,8 @@ withBrowser(async (env) => {
   await page.evaluate(() => window.__release());
   await page.waitForFunction(() => { const s = document.querySelector('#cp-CP4 .cp__saved'); return s && !s.classList.contains('is-pending'); });
   sv = await saved();
-  ok('🔴 응답이 오면 "운영본부에 저장됨"', sv.CP4 === '✓ 운영본부에 저장됨', sv);
-  ok('🔴 토스트가 사라져도 남는다', (await page.clock.runFor(8000), (await saved()).CP4) === '✓ 운영본부에 저장됨');
+  ok('🔴 응답이 오면 "✓ 저장됨"', sv.CP4 === '✓ 저장됨', sv);
+  ok('🔴 토스트가 사라져도 남는다', (await page.clock.runFor(8000), (await saved()).CP4) === '✓ 저장됨');
 
   // ------------------------------------------------------------ 미션 · 지도 (D-061)
   section('미션은 시트에 적은 줄 그대로 · 지도는 좌표 → 주소 → 이름');
