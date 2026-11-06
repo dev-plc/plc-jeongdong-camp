@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v23.3 · 2026-10-29
+ * app.js · v24 · 2026-11-06
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v24   2026-11-06  조원도 도착·완료 — 서버가 MEMBER_PROGRESS 를 켜면 · 낡은 화면은 앞으로만 · 다시 보이면 코스를 새로 읽는다 (D-081)
  *  v23.3 2026-10-29  내 지점·진행: API.stationBoard·opsBoard 로 — 새로고침은 칸만 사본에서 (D-071)
  *  v22   2026-10-17  출발 안내(시청역 몇 번 출구) · 일지 사진 여러 장 (D-063·064)
  *  v20.4 2026-10-17  미션을 시트에 적은 줄 그대로 · 지도는 좌표 → 주소 → 이름 순 (D-061)
  *  v20.3 2026-10-17  일지 사진: "촬영" 버튼 삭제 — 갤러리 하나만 (D-060)
- *  v20.2 2026-10-17  일지 사진: "갤러리에서 선택" 은 사진 고르는 화면이 바로 뜨게 — 형식을 나열 (D-059)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -531,10 +531,18 @@
     return null;
   }
 
+  /**
+   * 우리 조 도착·완료를 누를 수 있는 사람 (D-081) — 조장, 그리고 서버가 MEMBER_PROGRESS 를 켜 보내면 조원도.
+   * 🔴 `=== true` 다. 옛 서버(v23)는 이 키가 없어, 앱이 먼저 나가도 조원에게 "조장만" 오류가 날 버튼을 그리지 않는다.
+   */
+  function canRecord() {
+    return !!state.me.isLeader || (!!state.me.team && state.boot.config.MEMBER_PROGRESS === true);
+  }
+
   function paintCourse() {
     var byCode = {};
     (state.boot.checkpoints || []).forEach(function (c) { byCode[c.code] = c; });
-    var canEdit = state.me.isLeader && state.boot.config.PROGRESS_OPEN;
+    var canEdit = canRecord() && state.boot.config.PROGRESS_OPEN;
     var next = nextCheckpoint(state.progress);
     var done = state.progress.filter(function (p) { return p.status === '완료'; }).length;
 
@@ -610,8 +618,11 @@
     setView(
       '<section class="section-head"><h2>답사 코스</h2>' +
         '<p class="hint">우리 조 순서대로 표시됩니다.' +
-        (state.me.isLeader
-          ? (state.boot.config.PROGRESS_OPEN ? ' 도착하면 "도착했어요", 끝나면 "완료했어요" 를 눌러 주세요.' : ' 진행 기록은 마감되었습니다.')
+        (canRecord()
+          ? (state.boot.config.PROGRESS_OPEN
+              ? ' 도착하면 "도착했어요", 끝나면 "완료했어요" 를 눌러 주세요.' +
+                (state.boot.config.MEMBER_PROGRESS === true ? ' 조원 누구나 누를 수 있고, 한 사람이 누르면 조 전체에 반영됩니다.' : '')
+              : ' 진행 기록은 마감되었습니다.')
           : ' 상태는 조장이 기록합니다.') + '</p></section>' +
       summary +
       start +
@@ -679,8 +690,9 @@
   // 테스트가 이걸 잡았다. 서버가 준 목록은 언제나 깨끗하다.
   var lastServerList = [];
 
-  function queueProgress(code, status) {
-    sendQueue[code] = status;
+  /** undo — 확인 창을 거친 취소 버튼. 보통 버튼(false)은 서버가 **앞으로만** 받는다 (D-081). */
+  function queueProgress(code, status, undo) {
+    sendQueue[code] = { status: status, undo: !!undo };
     state.progress = applyProgressLocal(state.progress, code, status);
     paintCourse();
 
@@ -691,7 +703,7 @@
     var codes = Object.keys(sendQueue);
     if (!codes.length) { sending = false; return; }
 
-    var items = codes.map(function (c) { return { checkpoint: c, status: sendQueue[c] }; });
+    var items = codes.map(function (c) { return { checkpoint: c, status: sendQueue[c].status, undo: sendQueue[c].undo }; });
     sendQueue = {};
     sending = true;
 
@@ -700,7 +712,21 @@
         state.progress = list;              // 권위는 서버다
         lastServerList = list;
         paintCourse();
-        toast(items.length === 1 ? '기록했습니다: ' + items[0].status : items.length + '곳을 기록했습니다.');
+        // 다른 조원이 먼저 더 앞으로 기록해 서버가 그대로 둔 지점 (D-081) — 조용히 넘기지 않는다
+        var held = items.filter(function (it) {
+          var p = list.filter(function (x) { return x.checkpoint === it.checkpoint; })[0];
+          return !it.undo && p && p.status !== it.status;
+        });
+        if (held.length) {
+          var nameOf = {};
+          (state.boot.checkpoints || []).forEach(function (c) { nameOf[c.code] = c.name; });
+          toast('다른 조원이 먼저 기록해 그대로 두었습니다 — ' + held.map(function (it) {
+            var p = list.filter(function (x) { return x.checkpoint === it.checkpoint; })[0];
+            return (nameOf[it.checkpoint] || it.checkpoint) + ' ' + p.status;
+          }).join(', '));
+        } else {
+          toast(items.length === 1 ? '기록했습니다: ' + items[0].status : items.length + '곳을 기록했습니다.');
+        }
       })
       .catch(function (err) {
         // 🔴 배치 전체를 되돌린다. 일부만 남기면 화면이 거짓말한다.
@@ -713,9 +739,27 @@
   }
 
   // 🔴 앱이 닫히거나 가려질 때 큐가 남아 있으면 기록이 날아간다.
+  // 다시 보이면 코스를 새로 읽는다 (D-081) — 조원 누구나 기록하므로, 폰을 켜면 다른 조원이 누른 것이 보여야 한다.
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'hidden' && !sending) flushProgress();
+    if (document.visibilityState === 'hidden') { if (!sending) flushProgress(); return; }
+    if (document.visibilityState === 'visible') refreshCourse();
   });
+
+  /** 코스를 조용히 다시 읽는다. 보내는 중·잠금·큐가 있으면 화면이 서버보다 앞서 있으므로 건드리지 않는다. */
+  function refreshCourse() {
+    var quiet = function () {
+      return state.view === 'course' && state.me && state.me.team && !sending && !coursePaused() && !Object.keys(sendQueue).length;
+    };
+    if (!quiet()) return;
+    API.progressList(state.me.team)
+      .then(function (list) {
+        if (!quiet()) return;
+        state.progress = list;
+        lastServerList = list;
+        paintCourse();
+      })
+      .catch(function () { /* 다음에 다시 보일 때 또 읽는다 */ });
+  }
 
   function onProgressClick(e) {
     // 카드 자체에도 data-status(현재 상태)가 달려 있다 — 버튼만 잡는다.
@@ -727,10 +771,10 @@
     var code = wrap.getAttribute('data-cp');
     var target = btn.getAttribute('data-status');
     var ask = btn.getAttribute('data-ask');
-    if (!ask) { pauseCourse(); queueProgress(code, target); return; }
+    if (!ask) { pauseCourse(); queueProgress(code, target, false); return; }
     // 되돌리기는 기록을 지우므로 한 번 묻는다. 잠금은 "확인" 을 누른 뒤부터.
     UI.confirmDialog(ask, btn.textContent).then(function (yes) {
-      if (yes && !coursePaused()) { pauseCourse(); queueProgress(code, target); }
+      if (yes && !coursePaused()) { pauseCourse(); queueProgress(code, target, true); }
     });
   }
 

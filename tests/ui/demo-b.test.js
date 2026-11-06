@@ -101,7 +101,8 @@ withBrowser(async (env) => {
   await page.click('.cp--next .cp__next');
   await waitToast(page, '기록했습니다');
   const ps = (await bodies(page, 'progress.set')).pop();
-  ok('🔴 보낸 것은 지점과 상태뿐', ps && JSON.stringify(ps.items) === JSON.stringify([{ checkpoint: 'CP4', status: '완료' }]), ps && ps.items);
+  // undo:false — 보통 버튼은 서버가 앞으로만 받는다 (D-081). 점수는 여전히 보내지 않는다
+  ok('🔴 보낸 것은 지점·상태·undo 뿐 (점수 없음)', ps && JSON.stringify(ps.items) === JSON.stringify([{ checkpoint: 'CP4', status: '완료', undo: false }]), ps && ps.items);
   ok('13px 미만 글자 없음 (코스)', (await smallText(page)).length === 0, await smallText(page));
   await page.context().close();
 

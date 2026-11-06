@@ -1,9 +1,9 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Code.gs · v24 · 2026-10-31
+ * Code.gs · v24 · 2026-11-06
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
- *  v24   2026-10-31  진행 기록: 쓴 뒤 다시 읽어 확인 — 시트에 안 남았으면 성공 대신 오류 (D-079)
+ *  v24   2026-11-06  조원도 도착·완료(MEMBER_PROGRESS) · 낡은 화면은 앞으로만 · 쓴 뒤 다시 읽어 확인 (D-081·079)
  *  v23   2026-10-21  내 정보: 캠프 모드면 사본 토큰(campToken)을 건네 앱이 사본 경로로 옮긴다 (D-068)
  *  v22   2026-10-17  공개 설정에 PHOTO_MAX_COUNT — 앱이 사진 장수 한도를 안다 (D-064)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
@@ -268,6 +268,9 @@ function publicConfig_() {
     JOURNAL_REQUIRE_APPROVAL: confBool_('JOURNAL_REQUIRE_APPROVAL', true),
     JOURNAL_OPEN: confBool_('JOURNAL_OPEN', true),
     PROGRESS_OPEN: confBool_('PROGRESS_OPEN', true),
+    // 조원도 우리 조 도착·완료를 기록한다 (D-081). 앱은 이 키가 true 일 때만 조원에게 버튼을 그린다 —
+    // 옛 서버는 키가 없으므로 앱이 먼저 나가도 조원이 "조장만" 오류를 보지 않는다.
+    MEMBER_PROGRESS: confBool_('MEMBER_PROGRESS', true),
     SHOW_FEE: confBool_('SHOW_FEE', true),
     PHOTO_MAX_COUNT: photoMaxCount_(),   // 일지 한 편의 사진 수 (D-064)
     NOTICE_TICKER: confStr_('NOTICE_TICKER', '')
@@ -605,10 +608,19 @@ function writeProgress_(actor, pid, entries, T) {
     entries.forEach(function (e) {
       var existing = existingByKey[teamKey_(e.session, e.group) + '#' + e.code];
 
+      // 🔴 **앞으로만** (D-081). 조원 누구나 기록하면, 오래 켜 둔 폰의 "도착했어요" 가 이미 완료인 지점을
+      //    '도착' 으로 내린다. 새 앱은 보통 버튼에 undo:false 를 싣는다 — 그때 지금이 더 앞이면 상태를 그대로 둔다.
+      //    취소 버튼(undo:true)과 키가 없는 옛 앱은 예전대로 내려간다.
+      if (e.status && e.forwardOnly && existing &&
+          ENUM.PROGRESS.indexOf(str_(existing['상태']) || '대기') > ENUM.PROGRESS.indexOf(e.status)) {
+        e.held = true;
+        if (!e.hasScore && !e.hasMemo) return;
+      }
+
       // `updateRow_` 는 현재 행을 먼저 읽고 patch 에 있는 키만 덮어쓴다.
       // 그래서 **키를 빼면 기존 값이 그대로 남는다.**
       var patch = { '기록자ID': pid, '수정일시': now };
-      if (e.status) {
+      if (e.status && !e.held) {
         patch['상태'] = e.status;
         // 최초 도착·완료 시각만 남긴다(되돌렸다 다시 눌러도 처음 시각 유지).
         if (e.status === '도착' || e.status === '완료') {
@@ -623,7 +635,7 @@ function writeProgress_(actor, pid, entries, T) {
         }
       }
       if (e.hasScore) {
-        if (actor === '조장' && existing && str_(existing['점수출처']) === '스태프') {
+        if ((actor === '조장' || actor === '조원') && existing && str_(existing['점수출처']) === '스태프') {
           ignored.push(e.code);
         } else {
           patch['퀴즈점수'] = e.score;
@@ -656,7 +668,7 @@ function writeProgress_(actor, pid, entries, T) {
   });
   var lost = entries.filter(function (e) {
     var r = after[teamKey_(e.session, e.group) + '#' + e.code];
-    return !r || (e.status && str_(r['상태']) !== e.status);
+    return !r || (e.status && !e.held && str_(r['상태']) !== e.status);
   });
   T.verify = Date.now() - tVerify;
   if (lost.length) {
@@ -668,7 +680,8 @@ function writeProgress_(actor, pid, entries, T) {
 }
 
 /**
- * 조장 전용. (참여 일자, 조 배정, 지점코드) 당 1행을 upsert 한다.
+ * 우리 조 기록 — 조장, 그리고 MEMBER_PROGRESS 가 켜져 있으면 조원도 (D-081). (참여 일자, 조 배정, 지점코드) 당 1행을 upsert 한다.
+ * 진행은 조 단위 한 벌이라, 누가 누르든 같은 행에 쓰이고 사본도 조마다 민다 — 조 전체에 공유된다.
  *
  * 🔴 **여러 건을 한 번에 받는다** (D-045).
  *
@@ -684,14 +697,22 @@ function progressSet_(ctx, body) {
   if (!confBool_('PROGRESS_OPEN', true)) {
     throw new AppError('CLOSED', '진행 기록이 마감되었습니다.');
   }
-  if (!ctx.isLeader) throw new AppError('FORBIDDEN', '조장만 기록할 수 있습니다.');
+  var member = ctx.mode === 'member';
+  if (!ctx.isLeader && !member) throw new AppError('FORBIDDEN', '조에 속한 조장·조원만 기록할 수 있습니다.');
+  if (!ctx.isLeader && !confBool_('MEMBER_PROGRESS', true)) {
+    throw new AppError('FORBIDDEN', '지금은 조장만 기록할 수 있습니다.');
+  }
   if (!ctx.group) throw new AppError('NOT_FOUND', '배정된 조가 없습니다.');
 
   var raw = Array.isArray(body.items) ? body.items : [body];
   if (!raw.length) throw new AppError('BAD_REQUEST', '기록할 지점이 없습니다.');
 
   // 🔴 **전부 먼저 검증한다.** 쓰기 중간에 던지면 일부만 들어간 채로 끝난다.
-  var items = raw.map(function (it) { return normalizeProgressItem_(it, false); });
+  var items = raw.map(function (it) {
+    var n = normalizeProgressItem_(it, false);
+    n.forwardOnly = it.undo === false;     // 새 앱의 보통 버튼 (D-081). 키가 없으면 옛 앱 — 예전대로
+    return n;
+  });
 
   // 같은 지점이 두 번 오면 **마지막이 이긴다.** 앱의 큐도 같은 규칙이다.
   var byCode = {};
@@ -705,7 +726,8 @@ function progressSet_(ctx, body) {
   var t0 = Date.now();
 
   // 🔴 시트가 먼저, DB 가 나중 (D-038).
-  var ignored = writeProgress_('조장', ctx.pid, entries, T);
+  var ignored = writeProgress_(ctx.isLeader ? '조장' : '조원', ctx.pid, entries, T);
+  var held = entries.filter(function (e) { return e.held; }).map(function (e) { return e.code; });
 
   // 목록 만들기는 그냥 읽기다 — 락이 지켜야 할 것이 아니다 (D-044).
   var tList = Date.now();
@@ -724,7 +746,8 @@ function progressSet_(ctx, body) {
   T.total = Date.now() - t0;
   logEvent_('progress.set', ctx.pid, ctx.teamKey + '/' + codes.join(','),
     (codes.length === 1 ? (byCode[codes[0]].status || '점수') : codes.length + '건') +
-      (ignored.length ? ' · 스태프 점수 유지 ' + ignored.join(',') : ''),
+      (ignored.length ? ' · 스태프 점수 유지 ' + ignored.join(',') : '') +
+      (held.length ? ' · 앞선 기록 유지 ' + held.join(',') : ''),
     timingText_(T));
 
   return list;
