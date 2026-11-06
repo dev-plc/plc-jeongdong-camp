@@ -64,9 +64,7 @@ ok('대기로 되돌리면 시각을 비운다', r.ok && cell(r.data, 'CP3').sta
 r = post({ action: 'progress.set', token: leader, items: [{ checkpoint: 'CP4', status: '도착', score: 150 }] });
 ok('점수 0~100 밖은 거절', !r.ok && /0~100/.test(r.error.message), r);
 
-section('조장 권한');
-r = post({ action: 'progress.set', token: member, items: [{ checkpoint: 'CP1', status: '완료' }] });
-ok('🔴 조원은 기록 못 한다', !r.ok && r.error.code === 'FORBIDDEN', r);
+section('기록 권한 — 조장·조원 (D-081)');
 r = post({ action: 'progress.set', token: staff, items: [{ checkpoint: 'CP1', status: '완료' }] });
 ok('🔴 조 없는 스태프도 조장 기록은 못 한다', !r.ok && r.error.code === 'FORBIDDEN', r);
 r = post({ action: 'progress.list', token: ops });
@@ -140,6 +138,58 @@ r = post({ action: 'admin.progress.set', token: admin, session: S2, group: '7조
 ok('없는 조는 NOT_FOUND', !r.ok && r.error.code === 'NOT_FOUND');
 r = post({ action: 'admin.progress.set', token: leader, session: S1, group: '1조', checkpoint: 'CP1', status: '대기' });
 ok('🔴 참가자 토큰으로는 못 한다', !r.ok && r.error.code === 'FORBIDDEN', r.error);
+
+section('🔴 조원도 도착·완료 — 한 사람이 누르면 조 전체에 (D-081)');
+{
+  const H = camp();
+  H.addPeople([
+    [S1, '가조장', '청4조', '조장', '010-1000-1001', '', 'C코스(보구여관 시작)'],
+    [S1, '나조원', '청4조', '일반', '010-1000-1002', '', 'C코스(보구여관 시작)'],
+    [S1, '다조원', '청4조', '일반', '010-1000-1003', '', 'C코스(보구여관 시작)'],
+    ['', '라교역', '', '교역자', '010-2000-0003', '', '']
+  ]);
+  const lead = H.token('가조장', '1001'), m1 = H.token('나조원', '1002'), m2 = H.token('다조원', '1003');
+  const opsT = H.token('라교역', '0003');
+  const pidOf = (t) => H.post({ action: 'me', token: t }).data.participant.id;
+  const rows = () => { const t = H.sheet('Progress'); const h = t[0]; return t.slice(1).map(x => Object.fromEntries(h.map((k, i) => [k, x[i]]))); };
+  const rowAt = (code) => rows().find(x => x['조 배정'] === '청4조' && x['지점코드'] === code);
+  const at = (list, code) => list.find(x => x.checkpoint === code);
+
+  ok('🔴 bootstrap 공개 설정에 MEMBER_PROGRESS = true (기본 켜짐)', H.post({ action: 'bootstrap' }).data.config.MEMBER_PROGRESS === true);
+  let x = H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP3', status: '도착', undo: false }] });
+  ok('🔴 조원이 도착을 기록한다', x.ok && at(x.data, 'CP3').status === '도착', x);
+  ok('기록자ID 는 누른 조원', rowAt('CP3')['기록자ID'] === pidOf(m1), rowAt('CP3'));
+  x = H.post({ action: 'progress.list', token: lead });
+  ok('🔴 조장·다른 조원 화면에도 같은 값 (조 단위 한 벌)', at(x.data, 'CP3').status === '도착' &&
+    at(H.post({ action: 'progress.list', token: m2 }).data, 'CP3').status === '도착', x.data);
+  x = H.post({ action: 'progress.set', token: m2, items: [{ checkpoint: 'CP3', status: '완료', undo: false }] });
+  ok('다른 조원이 완료 — 도착 시각은 처음 것 그대로', x.ok && at(x.data, 'CP3').status === '완료' &&
+    at(x.data, 'CP3').arrivedAt === at(H.post({ action: 'progress.list', token: lead }).data, 'CP3').arrivedAt, x.data);
+
+  // 🔴 앞으로만 — 오래 켜 둔 폰(아직 '대기' 화면)의 "도착했어요" 가 완료를 되돌리지 않는다
+  const before = JSON.stringify(rowAt('CP3'));
+  x = H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP3', status: '도착', undo: false }] });
+  ok('🔴 낡은 화면의 도착(undo:false) → 완료 그대로 · 오류 아님', x.ok && at(x.data, 'CP3').status === '완료', x);
+  ok('그 행은 건드리지 않는다 (기록자·수정일시 그대로)', JSON.stringify(rowAt('CP3')) === before, rowAt('CP3'));
+  ok('Log 에 "앞선 기록 유지"', /앞선 기록 유지 CP3/.test(JSON.stringify(H.sheet('Log').slice(-1))), H.sheet('Log').slice(-1));
+  x = H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP3', status: '도착', undo: true }] });
+  ok('취소 버튼(undo:true)은 내려간다 — 완료 → 도착', x.ok && at(x.data, 'CP3').status === '도착', x.data);
+  H.post({ action: 'progress.set', token: lead, items: [{ checkpoint: 'CP3', status: '완료' }] });
+  x = H.post({ action: 'progress.set', token: lead, items: [{ checkpoint: 'CP3', status: '도착' }] });
+  ok('키가 없는 옛 앱은 예전대로 (완료 → 도착)', x.ok && at(x.data, 'CP3').status === '도착', x.data);
+  x = H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP4', status: '도착', undo: false }] });
+  ok('새 칸(행 없음)도 앞으로만 규칙과 상관없이 들어간다', x.ok && at(x.data, 'CP4').status === '도착', x.data);
+
+  x = H.post({ action: 'progress.set', token: opsT, items: [{ checkpoint: 'CP1', status: '도착' }] });
+  ok('교역자(조 없음)는 그대로 못 한다', !x.ok && x.error.code === 'FORBIDDEN', x);
+
+  H.run("configSet_({isAdmin:true}, {key:'MEMBER_PROGRESS', value:'FALSE', allowNew:true})");
+  ok('설정을 끄면 bootstrap 도 false', H.post({ action: 'bootstrap' }).data.config.MEMBER_PROGRESS === false);
+  x = H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP1', status: '도착', undo: false }] });
+  ok('🔴 꺼져 있으면 조원은 FORBIDDEN "지금은 조장만"', !x.ok && x.error.code === 'FORBIDDEN' && /지금은 조장만/.test(x.error.message), x);
+  x = H.post({ action: 'progress.set', token: lead, items: [{ checkpoint: 'CP1', status: '도착', undo: false }] });
+  ok('조장은 그대로 된다', x.ok && at(x.data, 'CP1').status === '도착', x);
+}
 
 section('🔴 새 행이 시트에 안 남으면 — 성공이 아니라 오류 (D-079)');
 {

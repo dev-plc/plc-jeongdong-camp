@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
  * ────────────────────────────────────────────────────────────────
- * build-demo.js · v22.1 · 2026-10-21
+ * build-demo.js · v24 · 2026-11-06
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v24   2026-11-06  가짜 서버도 조원 기록(MEMBER_PROGRESS)·앞으로만 — 서버와 같은 규칙 (D-081)
  *  v22.1 2026-10-21  지점 미션을 예시 문구로 — 실제 미션은 공개 데모에 두지 않는다 (D-066)
  *  v22   2026-10-17  출발 안내 · 일지 사진 여러 장과 사진마다 ★ — 가짜 서버도 같은 규칙 (D-063·064)
  *  v20.4 2026-10-17  지점 미션을 실제 문구로 · 주소 (D-061)
  *  v20.1 2026-10-16  긴급 연락 공지(가짜 번호) — 전화 링크를 보여 준다 (D-058)
- *  v20   2026-09-30  가짜 서버의 우리 조 일지 규칙을 서버와 맞춤 (D-057)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -164,6 +164,7 @@ body { padding-top: var(--demobar-h, 76px); }
     JOURNAL_REQUIRE_APPROVAL: true,
     JOURNAL_OPEN: true,
     PROGRESS_OPEN: true,
+    MEMBER_PROGRESS: true,          // 조원도 도착·완료 (D-081)
     SHOW_FEE: true,
     PHOTO_MAX_COUNT: 4,
     NOTICE_TICKER: '09:30까지 PL교회 본당 앞으로 모여 주세요'
@@ -477,10 +478,15 @@ body { padding-top: var(--demobar-h, 76px); }
         return listFor(MY_TEAM);
 
       // 🔴 앱은 **묶음**(items)으로 보낸다(D-045). 예전 데모는 단건만 받아 조장 버튼이 되돌아갔다.
+      // 조원도 기록한다(D-081) — 서버 progressSet_ 와 같은 규칙: 설정이 켜져 있을 때만, 보통 버튼(undo:false)은 앞으로만.
       case 'progress.set': {
-        if (!me().isLeader) return { __error: { code: 'FORBIDDEN', message: '조장만 기록할 수 있습니다.' } };
+        if (!me().team) return { __error: { code: 'FORBIDDEN', message: '조에 속한 조장·조원만 기록할 수 있습니다.' } };
+        if (!me().isLeader && !CONFIG.MEMBER_PROGRESS) return { __error: { code: 'FORBIDDEN', message: '지금은 조장만 기록할 수 있습니다.' } };
+        var RANK = ['대기', '도착', '완료'];
         (Array.isArray(body.items) ? body.items : [body]).forEach(function (it) {
-          writeCell(MY_TEAM, it.checkpoint, it, '조장');
+          var cur = (MY_TEAM.cells[it.checkpoint] || {}).status || '대기';
+          if (it.status && it.undo === false && RANK.indexOf(cur) > RANK.indexOf(it.status)) return;
+          writeCell(MY_TEAM, it.checkpoint, it, me().isLeader ? '조장' : '조원');
         });
         return listFor(MY_TEAM);
       }
@@ -701,6 +707,7 @@ body { padding-top: var(--demobar-h, 76px); }
           CAMP_NAME: CONFIG.CAMP_NAME, CAMP_SUBTITLE: CONFIG.CAMP_SUBTITLE,
           GALLERY_SCOPE: CONFIG.GALLERY_SCOPE, JOURNAL_REQUIRE_APPROVAL: CONFIG.JOURNAL_REQUIRE_APPROVAL,
           JOURNAL_OPEN: CONFIG.JOURNAL_OPEN, PROGRESS_OPEN: CONFIG.PROGRESS_OPEN,
+          MEMBER_PROGRESS: CONFIG.MEMBER_PROGRESS,
           SHOW_FEE: CONFIG.SHOW_FEE, NOTICE_TICKER: CONFIG.NOTICE_TICKER
         };
 

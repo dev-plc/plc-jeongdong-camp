@@ -23,7 +23,7 @@ node tests/run.js -v        # 스위트 출력을 전부 본다
 |---|---|
 | `server/health.test.js` | 파일 끝 표시 (D-054) — v16 `Setup.gs` 잘림 사고를 재현해 `problems` 가 잡는지 |
 | `server/roles.test.js` | 조 없는 교역자·스태프, 담당 지점, 공란 회차, 동명 회차 행 (D-051) |
-| `server/progress.test.js` | 스태프 점수 우선, 지점·회차는 서버가 정함, 배치 전부-아니면-전무, 정정·일괄 승인·시상 (D-045·052) · 새 행이 시트에 안 남으면 성공 대신 오류 (D-079) |
+| `server/progress.test.js` | 스태프 점수 우선, 지점·회차는 서버가 정함, 배치 전부-아니면-전무, 정정·일괄 승인·시상 (D-045·052) · 새 행이 시트에 안 남으면 성공 대신 오류 (D-079) · 조원 기록·MEMBER_PROGRESS·앞으로만 (D-081) |
 | `server/people.test.js` | 명단 사본(D-055) — 누가 올라가나(공란 제외), 연락처 원문 없음, 키 = 로그인 규칙, 사본 `me` = GAS `me`, 끄면 지움 |
 | `app/api.test.js` | `api.js` 사본 경로와 폴백(404·500·null·시간 초과·WebCrypto 없음 → GAS) |
 | `app/admin.test.js` | 운영 콘솔 진행 — 뼈대 GAS 10분 + 전 회차 칸 사본(`회차|조`) = 서버 화면, 정정 가드, 토큰 읽기 (D-072) |
@@ -36,6 +36,7 @@ node tests/run.js -v        # 스위트 출력을 전부 본다
 | `server/core.test.js` | 초기 세팅, 로그인·토큰, 일지 흐름, 공지(v13 사고), 회비, 설정 오타, 사본 실패 |
 | `ui/demo-a.test.js` | 홈 지금·다음, 코스 다음 동작·접기, 조별 카드·40분 ⚠ (D-050) |
 | `ui/demo-b.test.js` | 스태프 내 지점, 교역자 진행(읽기 전용), 조장 점수 칸 (D-051·052) |
+| `ui/member-progress.test.js` | 조원 코스 도착·완료 버튼(설정 키가 있을 때만) · undo 플래그 · 다른 조원이 앞선 기록은 그대로 두고 알림 · 다시 보이면 새로 읽기 (D-081) |
 | `ui/smoke.test.js` | 페르소나 넷 × 탭 전부 + 콘솔 탭 전부: JS 오류·오류 토스트·가로 넘침·13px 미만 글자 |
 | `tools.test.js` | `check-versions` 가 어긋남을 막는지(사본에서), `demo.html`·`?v=` 가 최신인지, 비밀 키가 없는지 |
 

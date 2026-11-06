@@ -157,7 +157,8 @@ const adminSet = (p) => { const r = G.post(Object.assign({ action: 'admin.progre
   section('토큰 읽기 (서명은 검증하지 않는다 — 화면을 먼저 그릴지만 정한다)');
   a = app(adminTok);
   let c = a.API.tokenClaims();
-  ok('관리자 토큰 → pid ADMIN · 만료 전', c && c.pid === 'ADMIN' && c.exp > Date.now(), c);
+  // 만료는 **가짜 서버의 시계**(10/31 10:00 KST, lib/gas setToday)로 잰다 — 실제 날짜와 비교하면 10/31 이 지나며 깨졌다(11/06)
+  ok('관리자 토큰 → pid ADMIN · 만료 전', c && c.pid === 'ADMIN' && c.exp > G.run('Date.now()'), { c, now: G.run('Date.now()') });
   a.win.localStorage.setItem('plc_jd_token', s1Leader);
   c = a.API.tokenClaims();
   ok('참가자 토큰 → 참가자 pid (관리자가 아니다)', c && c.pid !== 'ADMIN' && /^P\d+/.test(c.pid), c);
