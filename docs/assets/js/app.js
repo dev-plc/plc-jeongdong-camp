@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v24 · 2026-11-06
+ * app.js · v25 · 2026-11-06
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v25   2026-11-06  "저장됨" · 첫 기록 유지(먼저 기록한 시각을 알림) · 완료 취소는 완료 시각을 지운다 · 스태프 취소에도 undo (D-082)
  *  v24   2026-11-06  조원도 도착·완료 — 서버가 MEMBER_PROGRESS 를 켜면 · 낡은 화면은 앞으로만 · 다시 보이면 코스를 새로 읽는다 (D-081)
  *  v23.3 2026-10-29  내 지점·진행: API.stationBoard·opsBoard 로 — 새로고침은 칸만 사본에서 (D-071)
  *  v22   2026-10-17  출발 안내(시청역 몇 번 출구) · 일지 사진 여러 장 (D-063·064)
  *  v20.4 2026-10-17  미션을 시트에 적은 줄 그대로 · 지도는 좌표 → 주소 → 이름 순 (D-061)
- *  v20.3 2026-10-17  일지 사진: "촬영" 버튼 삭제 — 갤러리 하나만 (D-060)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -522,7 +522,7 @@
     if (p.status !== '도착' && p.status !== '완료') return '';
     return p.pending
       ? '<p class="cp__saved is-pending">저장 중… 화면을 닫지 마세요</p>'
-      : '<p class="cp__saved">✓ 운영본부에 저장됨</p>';
+      : '<p class="cp__saved">✓ 저장됨</p>';
   }
 
   /** 코스 순서상 아직 완료하지 않은 첫 지점. 모두 완료면 null. */
@@ -664,6 +664,7 @@
       }
       if (!next.arrivedAt) next.arrivedAt = now;
       if (status === '완료' && !next.completedAt) next.completedAt = now;
+      if (status === '도착') next.completedAt = '';      // 완료 취소는 완료 시각을 지운다 (D-082)
       return next;
     });
   }
@@ -712,17 +713,18 @@
         state.progress = list;              // 권위는 서버다
         lastServerList = list;
         paintCourse();
-        // 다른 조원이 먼저 더 앞으로 기록해 서버가 그대로 둔 지점 (D-081) — 조용히 넘기지 않는다
+        // 이미 같거나 앞선 기록이 있어 서버가 그대로 둔 지점 (D-081·082) — 첫 기록의 시각을 알린다
         var held = items.filter(function (it) {
           var p = list.filter(function (x) { return x.checkpoint === it.checkpoint; })[0];
-          return !it.undo && p && p.status !== it.status;
+          return !it.undo && p && (p.held || p.status !== it.status);
         });
         if (held.length) {
           var nameOf = {};
           (state.boot.checkpoints || []).forEach(function (c) { nameOf[c.code] = c.name; });
-          toast('다른 조원이 먼저 기록해 그대로 두었습니다 — ' + held.map(function (it) {
+          toast('먼저 기록된 것을 그대로 두었습니다 — ' + held.map(function (it) {
             var p = list.filter(function (x) { return x.checkpoint === it.checkpoint; })[0];
-            return (nameOf[it.checkpoint] || it.checkpoint) + ' ' + p.status;
+            var at = UI.hhmm(p.status === '완료' ? p.completedAt : p.arrivedAt);
+            return (nameOf[it.checkpoint] || it.checkpoint) + ' ' + p.status + (at ? ' ' + at : '');
           }).join(', '));
         } else {
           toast(items.length === 1 ? '기록했습니다: ' + items[0].status : items.length + '곳을 기록했습니다.');
@@ -878,9 +880,9 @@
     var row = btn.closest('[data-group]');
     if (!row) return;
     if (act !== 'set') return;
-    var item = { group: row.getAttribute('data-group'), status: btn.getAttribute('data-status') };
-
     var ask = btn.getAttribute('data-ask');
+    // 확인 창을 거친 취소만 되돌린다 — 서버는 그 밖에는 첫 기록을 유지한다 (D-082)
+    var item = { group: row.getAttribute('data-group'), status: btn.getAttribute('data-status'), undo: !!ask };
     (ask ? UI.confirmDialog(ask, btn.textContent) : Promise.resolve(true)).then(function (yes) {
       if (!yes) return;
       UI.$$('button', row).forEach(function (b) { b.disabled = true; });

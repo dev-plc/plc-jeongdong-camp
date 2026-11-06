@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
  * ────────────────────────────────────────────────────────────────
- * build-demo.js · v24 · 2026-11-06
+ * build-demo.js · v25 · 2026-11-06
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v25   2026-11-06  가짜 서버도 첫 기록 유지(같거나 앞선 상태면 그대로, held) · 완료 취소는 완료 시각을 지운다 (D-082)
  *  v24   2026-11-06  가짜 서버도 조원 기록(MEMBER_PROGRESS)·앞으로만 — 서버와 같은 규칙 (D-081)
  *  v22.1 2026-10-21  지점 미션을 예시 문구로 — 실제 미션은 공개 데모에 두지 않는다 (D-066)
  *  v22   2026-10-17  출발 안내 · 일지 사진 여러 장과 사진마다 ★ — 가짜 서버도 같은 규칙 (D-063·064)
- *  v20.4 2026-10-17  지점 미션을 실제 문구로 · 주소 (D-061)
  *  v20.1 2026-10-16  긴급 연락 공지(가짜 번호) — 전화 링크를 보여 준다 (D-058)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
@@ -342,6 +342,7 @@ body { padding-top: var(--demobar-h, 76px); }
       else {
         if (!c.arrivedAt) c.arrivedAt = now;
         if (it.status === '완료' && !c.completedAt) c.completedAt = now;
+        if (it.status === '도착') c.completedAt = '';      // 완료 취소는 완료 시각을 지운다 (D-082)
       }
     }
     if (it.score !== undefined && !(actor === '조장' && c.scoreSource === '스태프')) {
@@ -482,13 +483,14 @@ body { padding-top: var(--demobar-h, 76px); }
       case 'progress.set': {
         if (!me().team) return { __error: { code: 'FORBIDDEN', message: '조에 속한 조장·조원만 기록할 수 있습니다.' } };
         if (!me().isLeader && !CONFIG.MEMBER_PROGRESS) return { __error: { code: 'FORBIDDEN', message: '지금은 조장만 기록할 수 있습니다.' } };
-        var RANK = ['대기', '도착', '완료'];
+        // 첫 기록 유지(D-082): 취소(undo:true)가 아니면 같거나 앞선 상태는 그대로 두고 held 로 알린다
+        var RANK = ['대기', '도착', '완료'], held = [];
         (Array.isArray(body.items) ? body.items : [body]).forEach(function (it) {
           var cur = (MY_TEAM.cells[it.checkpoint] || {}).status || '대기';
-          if (it.status && it.undo === false && RANK.indexOf(cur) > RANK.indexOf(it.status)) return;
+          if (it.status && it.undo !== true && RANK.indexOf(cur) >= RANK.indexOf(it.status)) { held.push(it.checkpoint); return; }
           writeCell(MY_TEAM, it.checkpoint, it, me().isLeader ? '조장' : '조원');
         });
-        return listFor(MY_TEAM);
+        return listFor(MY_TEAM).map(function (p) { return held.indexOf(p.checkpoint) >= 0 ? Object.assign(p, { held: true }) : p; });
       }
 
       case 'station.board':
@@ -502,6 +504,8 @@ body { padding-top: var(--demobar-h, 76px); }
         (body.items || []).forEach(function (it) {
           var t = TEAMS.filter(function (x) { return x.session === sess && x.group === it.group; })[0];
           if (!t || t.route.indexOf(code) < 0) { bad = it.group; return; }
+          var cur = (t.cells[code] || {}).status || '대기';
+          if (it.status && it.undo !== true && ['대기', '도착', '완료'].indexOf(cur) >= ['대기', '도착', '완료'].indexOf(it.status)) return;   // 첫 기록 유지 (D-082)
           writeCell(t, code, it, '스태프');
         });
         if (bad) return { __error: { code: 'FORBIDDEN', message: bad + ' 은(는) 이 지점을 지나는 조가 아닙니다.' } };

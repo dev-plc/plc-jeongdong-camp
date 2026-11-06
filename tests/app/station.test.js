@@ -138,17 +138,18 @@ const leaderSet = (items) => { const r = G.post({ action: 'progress.set', token:
   a = app(leaderTok);
   const me = G.post({ action: 'me', token: leaderTok }).data;
   const team = { session: me.team.session, group: me.team.group, route: me.team.route };
-  await a.API.progressSet('CP2', '도착');
+  // CP2 는 위에서 스태프가 이미 완료로 기록했다 — 첫 기록 유지(D-082)로 '도착' 은 그대로 두므로, 아직 기록 없는 CP3 로 본다
+  await a.API.progressSet('CP3', '도착');
   a.calls.length = 0;
   let list = await a.API.progressList(team);
-  ok('🔴 기록 직후 코스 = 사본 (예전엔 응답 받은 시각과 비교해 늘 GAS 였다)', gasCalls(a).length === 0 && list.find(x => x.checkpoint === 'CP2').status === '도착', gasCalls(a));
+  ok('🔴 기록 직후 코스 = 사본 (예전엔 응답 받은 시각과 비교해 늘 GAS 였다)', gasCalls(a).length === 0 && list.find(x => x.checkpoint === 'CP3').status === '도착', gasCalls(a));
   await nextSecond();
   failPush = true;
-  await a.API.progressSet('CP2', '완료');
+  await a.API.progressSet('CP3', '완료');
   failPush = false;
   a.calls.length = 0;
   list = await a.API.progressList(team);
-  ok('푸시가 실패했으면 → GAS (그대로)', gasCalls(a).join() === 'progress.list' && list.find(x => x.checkpoint === 'CP2').status === '완료', gasCalls(a));
+  ok('푸시가 실패했으면 → GAS (그대로)', gasCalls(a).join() === 'progress.list' && list.find(x => x.checkpoint === 'CP3').status === '완료', gasCalls(a));
 
   section('뼈대는 10분 — 지나면 GAS 에서 다시 (조·코스 변경 반영)');
   a = app(opsTok, { OPS_SKELETON_TTL: 40 });

@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Code.gs · v24 · 2026-11-06
+ * Code.gs · v25 · 2026-11-06
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v25   2026-11-06  첫 기록 유지 — 같거나 앞선 상태면 손대지 않는다 · 완료 취소는 완료 시각을 지운다 (D-082)
  *  v24   2026-11-06  조원도 도착·완료(MEMBER_PROGRESS) · 낡은 화면은 앞으로만 · 쓴 뒤 다시 읽어 확인 (D-081·079)
  *  v23   2026-10-21  내 정보: 캠프 모드면 사본 토큰(campToken)을 건네 앱이 사본 경로로 옮긴다 (D-068)
  *  v22   2026-10-17  공개 설정에 PHOTO_MAX_COUNT — 앱이 사진 장수 한도를 안다 (D-064)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
- *  v16   2026-09-26  점수출처·스태프 우선, 지점·운영·정정 액션 (D-051·052)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_CODE = 'v24';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_CODE = 'v25';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Code.gs — 웹앱 진입점 및 라우팅
@@ -608,11 +608,11 @@ function writeProgress_(actor, pid, entries, T) {
     entries.forEach(function (e) {
       var existing = existingByKey[teamKey_(e.session, e.group) + '#' + e.code];
 
-      // 🔴 **앞으로만** (D-081). 조원 누구나 기록하면, 오래 켜 둔 폰의 "도착했어요" 가 이미 완료인 지점을
-      //    '도착' 으로 내린다. 새 앱은 보통 버튼에 undo:false 를 싣는다 — 그때 지금이 더 앞이면 상태를 그대로 둔다.
-      //    취소 버튼(undo:true)과 키가 없는 옛 앱은 예전대로 내려간다.
+      // 🔴 **첫 기록 유지** (D-081·082). 여럿이 누르므로, 이미 **같거나 앞선** 상태면 그 행을 건드리지 않는다 —
+      //    뒤에 누른 사람이 기록자·수정일시를 덮지 않고, 오래 켜 둔 폰의 "도착했어요" 가 완료를 내리지도 않는다.
+      //    되돌리는 것은 확인 창을 거친 취소(undo:true)뿐이다. 키가 없으면(옛 앱) 앞으로만으로 친다 — 기록이 안전한 쪽.
       if (e.status && e.forwardOnly && existing &&
-          ENUM.PROGRESS.indexOf(str_(existing['상태']) || '대기') > ENUM.PROGRESS.indexOf(e.status)) {
+          ENUM.PROGRESS.indexOf(str_(existing['상태']) || '대기') >= ENUM.PROGRESS.indexOf(e.status)) {
         e.held = true;
         if (!e.hasScore && !e.hasMemo) return;
       }
@@ -622,12 +622,16 @@ function writeProgress_(actor, pid, entries, T) {
       var patch = { '기록자ID': pid, '수정일시': now };
       if (e.status && !e.held) {
         patch['상태'] = e.status;
-        // 최초 도착·완료 시각만 남긴다(되돌렸다 다시 눌러도 처음 시각 유지).
+        // 앞으로 갈 때는 최초 시각만 남긴다. **취소로 뒤로 가면 그 단계의 시각을 지운다** (D-082) —
+        // 완료 취소 뒤 다시 완료하면 새 시각이 들어간다(예전엔 지운 완료의 옛 시각이 되살아났다).
         if (e.status === '도착' || e.status === '완료') {
           if (!existing || !str_(existing['도착시각'])) patch['도착시각'] = now;
         }
         if (e.status === '완료') {
           if (!existing || !str_(existing['완료시각'])) patch['완료시각'] = now;
+        }
+        if (e.status === '도착' && existing && str_(existing['완료시각'])) {
+          patch['완료시각'] = '';
         }
         if (e.status === '대기') {
           patch['도착시각'] = '';
@@ -710,7 +714,7 @@ function progressSet_(ctx, body) {
   // 🔴 **전부 먼저 검증한다.** 쓰기 중간에 던지면 일부만 들어간 채로 끝난다.
   var items = raw.map(function (it) {
     var n = normalizeProgressItem_(it, false);
-    n.forwardOnly = it.undo === false;     // 새 앱의 보통 버튼 (D-081). 키가 없으면 옛 앱 — 예전대로
+    n.forwardOnly = it.undo !== true;      // 취소(undo:true)만 되돌린다 — 키가 없어도 앞으로만 (D-082)
     return n;
   });
 
@@ -740,6 +744,8 @@ function progressSet_(ctx, body) {
   var tMirror = Date.now();
   mirrorProgressPush_(ctx.session, ctx.group, list);
   T.mirror = Date.now() - tMirror;
+  // 그대로 둔 지점을 앱에 알린다 (D-082) — "다른 사람이 먼저 기록했습니다 · 14:00". 사본에는 안 가는 칸이다.
+  list.forEach(function (p) { if (held.indexOf(p.checkpoint) >= 0) p.held = true; });
 
   // 🔴 기록도 락 **밖에서** 한다. 로그 쓰기도 시트 쓰기라, 락 안에 두면
   //    다른 조장이 그만큼 더 기다린다 (D-038 과 같은 이유).
@@ -841,6 +847,7 @@ function stationSet_(ctx, body) {
     }
     var n = normalizeProgressItem_({ status: it.status, score: it.score, memo: it.memo }, true);
     n.code = cp.code;
+    n.forwardOnly = it.undo !== true;      // 스태프도 첫 기록 유지 — 취소만 되돌린다 (D-082)
     byGroup[group] = Object.assign({ session: ctx.session, group: group }, n);
   });
   var groups = Object.keys(byGroup);
@@ -855,8 +862,10 @@ function stationSet_(ctx, body) {
     mirrorProgressPush_(ctx.session, g, progressListFor_(ctx.session, g, null));
   });
   T.total = Date.now() - t0;
+  var stHeld = entries.filter(function (e) { return e.held; }).map(function (e) { return e.group; });
   logEvent_('station.set', ctx.pid, ctx.session + '/' + cp.code + '/' + groups.join(','),
-    groups.length === 1 ? (entries[0].status || '점수') : groups.length + '건', timingText_(T));
+    (groups.length === 1 ? (entries[0].status || '점수') : groups.length + '건') +
+      (stHeld.length ? ' · 앞선 기록 유지 ' + stHeld.join(',') : ''), timingText_(T));
 
   return stationBoard_(ctx);
 }
@@ -1147,4 +1156,4 @@ function configSet_(ctx, body) {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_CODE = 'v24';
+var END_CODE = 'v25';
