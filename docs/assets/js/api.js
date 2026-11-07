@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * api.js · v23.4 · 2026-10-30
+ * api.js · v25 · 2026-11-07
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v25   2026-11-07  내 지점: 직전 지점 도착·완료 시각도 (서버 stationBoard_ 와 같게, D-087)
  *  v23.4 2026-10-30  운영 콘솔 진행: 뼈대 GAS 10분 + 전 회차 칸 사본 · 토큰 읽기(서명 검증 없이) (D-072)
  *  v23.3 2026-10-29  내 지점·진행: 뼈대는 GAS 10분, 칸은 사본 · 기록 시각은 보낸 시각으로 (D-071)
  *  v23.2 2026-10-29  코스: 기록 0건인 조도 사본에서 "전부 대기" — 동기화 신선 + 표를 읽을 수 있을 때만 (D-070)
  *  v23   2026-10-21  내 정보: GAS 가 건넨 사본 토큰(campToken)으로 바꿔 든다 — 다음부터 사본에서 (D-068)
- *  v22   2026-10-17  사진 여러 장(photos·addPhotos)도 업로드 시간 예산으로 (D-064)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -653,6 +653,8 @@
           visitOrder: i + 1,
           prevName: prevCode ? (nameOf[prevCode] || prevCode) : '',
           prevStatus: prevCode ? ((t.cells[prevCode] || {}).status || '대기') : '',
+          prevArrivedAt: prevCode ? ((t.cells[prevCode] || {}).arrivedAt || '') : '',
+          prevCompletedAt: prevCode ? ((t.cells[prevCode] || {}).completedAt || '') : '',
           status: cell.status || '대기',
           arrivedAt: cell.arrivedAt || '',
           completedAt: cell.completedAt || '',

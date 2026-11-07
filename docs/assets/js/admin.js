@@ -3,11 +3,11 @@
  * admin.js · v25 · 2026-11-07
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v25   2026-11-07  표로 보기: 조 칸 "장1조 장년부 / 조장 · 인원" · 지점 이름 낱말 사이 줄바꿈 · 머리 고정 (D-088)
  *  v25   2026-11-07  캠프 당일이면 그 회차가 기본 · 일지 검수에 회차 필터 · 체크해서 골라 승인 (D-083)
  *  v23.12 2026-10-31  지점별 체류: 1시간 넘는 체류도 통계에서 뺀다 · 저장 확인 알림에서 필터 단정을 뺀다 (D-080·079)
  *  v23.11 2026-10-31  칸 정정: 응답 진행표에 고른 상태가 없으면 "저장했습니다" 대신 빨간 알림 (D-079)
  *  v23.10 2026-10-31  칸 정정: 지금 상태를 미리 고르지 않고, 같은 상태여도 보낸다 · 진행 새로고침·기준 시각 (D-078)
- *  v23.9 2026-10-31  지점 칸 넷이 한 줄(안 되면 둘씩) · 조 이름·머무는 중이 가운데서 갈라지지 않게 (D-077)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -626,29 +626,60 @@
    */
   function progressTable(board, teams) {
     var showSession = state.session === '전체';
-    return '<table class="admin-table admin-table--fit">' +
+    // 🔴 표 머리는 화면 위에 붙어 있다 (D-088) — 조가 많아 내려가도 어느 칸이 어느 지점인지 보인다.
+    //    지점 이름은 번호를 윗줄로 떼고, 낱말 중간("박물 / 관")이 아니라 낱말 사이에서 줄을 바꾼다.
+    return '<table class="admin-table admin-table--fit board-grid">' +
       '<colgroup><col class="col-team">' + board.checkpoints.map(function () { return '<col>'; }).join('') + '</colgroup>' +
       '<thead><tr><th>' + esc(L('group', '조 배정')) + '</th>' +
-      board.checkpoints.map(function (c, i) { return '<th>' + (i + 1) + '. ' + esc(c.name) + '</th>'; }).join('') +
+      board.checkpoints.map(function (c, i) {
+        return '<th><span class="th-no">' + (i + 1) + '</span><span class="th-name">' + spotNameHtml(c.name) + '</span></th>';
+      }).join('') +
       '</tr></thead><tbody>' +
       teams.map(function (t) {
-        var meta = [showSession ? t.session : '', t.audience || '', '조장 ' + (t.leaderName || '—'), t.memberCount + '명']
+        // 조 칸 (D-088) — 첫 줄 "장1조 장년부", 둘째 줄 "조장 홍길동 · 6명". 전체 회차면 회차를 둘째 줄 앞에.
+        var sub = [showSession ? t.session : '', '조장 ' + (t.leaderName || '—'), t.memberCount + '명']
           .filter(function (x) { return x; });
         return '<tr>' +
-          '<td><strong>' + esc(t.name) + '</strong><small>' + esc(meta.join(' · ')) + '</small></td>' +
+          '<td><span class="team-line"><strong>' + esc(t.name) + '</strong>' +
+            (t.audience ? '<span class="team-tag">' + esc(t.audience) + '</span>' : '') + '</span>' +
+            '<small>' + esc(sub.join(' · ')) + '</small></td>' +
           board.checkpoints.map(function (c) {
             var cell = t.cells[c.code] || {};
             var visit = t.route.indexOf(c.code);
             var status = cell.status || '대기';
             var cls = status === '완료' ? 'done' : status === '도착' ? 'here' : 'wait';
             var time = UI.hhmm(cell.completedAt || cell.arrivedAt);
-            return '<td>' + (visit >= 0 ? '<small>' + (visit + 1) + '번째</small>' : '') +
-              '<span class="chip chip--' + cls + '">' + esc(status) + '</span>' +
-              (time ? '<small>' + esc(time) + '</small>' : '') + '</td>';
+            // 상태와 시각을 한 줄에 — 폭이 모자라면 시각만 다음 줄로 (D-088)
+            return '<td>' + (visit >= 0 ? '<small class="cell-no">' + (visit + 1) + '번째</small>' : '') +
+              '<span class="cell-st"><span class="chip chip--' + cls + '">' + esc(status) + '</span>' +
+              (time ? '<span class="cell-time">' + esc(time) + '</span>' : '') + '</span></td>';
           }).join('') +
         '</tr>';
       }).join('') +
       '</tbody></table>';
+  }
+
+  /**
+   * 표 머리가 붙을 높이 = 앱바가 붙는 자리 + 앱바 높이 (D-088). 앱바는 공지 띠(ticker)에 따라 높이가 바뀌고,
+   * 데모는 위에 데모 바가 하나 더 있다 — 숫자로 박지 않고 잰다.
+   */
+  function syncStickyTop() {
+    var bar = document.querySelector('.appbar');
+    if (!bar) return;
+    var top = (parseFloat(getComputedStyle(bar).top) || 0) + bar.offsetHeight;
+    document.documentElement.style.setProperty('--sticky-top', top + 'px');
+  }
+  window.addEventListener('resize', syncStickyTop);
+
+  /**
+   * 지점 이름에 줄 바꿀 자리를 준다 (D-088). 표 머리는 낱말 단위로만 줄을 바꾸는데(keep-all),
+   * "배재학당역사박물관" 처럼 띄어쓰기 없는 긴 이름은 칸보다 길면 글자 중간에서 끊겼다("…박물 / 관").
+   * 괄호 앞과 흔한 끝말(박물관·기념관·공사관·교회·학당) 앞에 <wbr> 을 넣는다.
+   */
+  function spotNameHtml(name) {
+    return esc(name)
+      .replace(/\(/g, '<wbr>(')
+      .replace(/([가-힣]{2,}?)((?:역사)?(?:박물관|기념관|공사관|교회|학당))(?=$|[\s(<])/g, '$1<wbr>$2');
   }
 
   // ------------------------------------------------------------ 지점별 현황 (D-073)
@@ -870,6 +901,7 @@
         );
         bindSessionFilter(function () { paintProgress(board); });
         bindAudienceFilter(function () { paintProgress(board); });
+        syncStickyTop();
   }
 
   /**

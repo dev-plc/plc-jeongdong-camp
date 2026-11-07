@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
  * ────────────────────────────────────────────────────────────────
- * build-demo.js · v25 · 2026-11-06
+ * build-demo.js · v25 · 2026-11-07
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v25   2026-11-07  가짜 서버도 다음 지점 도착이면 머물던 지점 완료(AUTO_COMPLETE_PREV) · 스태프 보드 직전 시각·held (D-087)
  *  v25   2026-11-06  가짜 서버도 첫 기록 유지(같거나 앞선 상태면 그대로, held) · 완료 취소는 완료 시각을 지운다 (D-082)
  *  v24   2026-11-06  가짜 서버도 조원 기록(MEMBER_PROGRESS)·앞으로만 — 서버와 같은 규칙 (D-081)
  *  v22.1 2026-10-21  지점 미션을 예시 문구로 — 실제 미션은 공개 데모에 두지 않는다 (D-066)
  *  v22   2026-10-17  출발 안내 · 일지 사진 여러 장과 사진마다 ★ — 가짜 서버도 같은 규칙 (D-063·064)
- *  v20.1 2026-10-16  긴급 연락 공지(가짜 번호) — 전화 링크를 보여 준다 (D-058)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -165,6 +165,7 @@ body { padding-top: var(--demobar-h, 76px); }
     JOURNAL_OPEN: true,
     PROGRESS_OPEN: true,
     MEMBER_PROGRESS: true,          // 조원도 도착·완료 (D-081)
+    AUTO_COMPLETE_PREV: true,       // 다음 지점 도착이면 머물던 지점 완료 (D-087)
     SHOW_FEE: true,
     PHOTO_MAX_COUNT: 4,
     NOTICE_TICKER: '09:30까지 PL교회 본당 앞으로 모여 주세요'
@@ -351,6 +352,19 @@ body { padding-top: var(--demobar-h, 76px); }
     }
   }
 
+  /** 서버 writeProgress_ 의 연쇄와 같다 (D-087) — 새 지점에 도착이 들어가면 그 조의 다른 '도착' 지점은 완료. */
+  function closeOthers(t, code, skip) {
+    if (!CONFIG.AUTO_COMPLETE_PREV) return [];
+    var now = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 19) + '+09:00';
+    return Object.keys(t.cells).filter(function (c) {
+      return c !== code && (!skip || skip.indexOf(c) < 0) && t.cells[c].status === '도착';
+    }).map(function (c) {
+      t.cells[c].status = '완료';
+      if (!t.cells[c].completedAt) t.cells[c].completedAt = now;
+      return c;
+    });
+  }
+
   function boardData() {
     return { checkpoints: CHECKPOINTS.map(function (c) { return { code: c.code, name: c.name }; }), teams: TEAMS };
   }
@@ -365,6 +379,7 @@ body { padding-top: var(--demobar-h, 76px); }
         var i = t.route.indexOf(st.code), c = t.cells[st.code] || {}, prev = i > 0 ? t.route[i - 1] : '';
         return { group: t.group, name: t.name, leaderName: t.leaderName, memberCount: t.memberCount,
                  visitOrder: i + 1, prevName: prev ? nameOf[prev] : '', prevStatus: prev ? ((t.cells[prev] || {}).status || '대기') : '',
+                 prevArrivedAt: prev ? ((t.cells[prev] || {}).arrivedAt || '') : '', prevCompletedAt: prev ? ((t.cells[prev] || {}).completedAt || '') : '',
                  status: c.status || '대기', arrivedAt: c.arrivedAt || '', completedAt: c.completedAt || '',
                  score: c.score === undefined ? null : c.score, scoreSource: c.scoreSource || '' };
       })
@@ -484,13 +499,20 @@ body { padding-top: var(--demobar-h, 76px); }
         if (!me().team) return { __error: { code: 'FORBIDDEN', message: '조에 속한 조장·조원만 기록할 수 있습니다.' } };
         if (!me().isLeader && !CONFIG.MEMBER_PROGRESS) return { __error: { code: 'FORBIDDEN', message: '지금은 조장만 기록할 수 있습니다.' } };
         // 첫 기록 유지(D-082): 취소(undo:true)가 아니면 같거나 앞선 상태는 그대로 두고 held 로 알린다
-        var RANK = ['대기', '도착', '완료'], held = [];
-        (Array.isArray(body.items) ? body.items : [body]).forEach(function (it) {
+        var RANK = ['대기', '도착', '완료'], held = [], autoDone = [];
+        var its = Array.isArray(body.items) ? body.items : [body];
+        var codesIn = its.map(function (it) { return it.checkpoint; });
+        its.forEach(function (it) {
           var cur = (MY_TEAM.cells[it.checkpoint] || {}).status || '대기';
           if (it.status && it.undo !== true && RANK.indexOf(cur) >= RANK.indexOf(it.status)) { held.push(it.checkpoint); return; }
           writeCell(MY_TEAM, it.checkpoint, it, me().isLeader ? '조장' : '조원');
+          if (it.status === '도착' && it.undo !== true) autoDone = autoDone.concat(closeOthers(MY_TEAM, it.checkpoint, codesIn));
         });
-        return listFor(MY_TEAM).map(function (p) { return held.indexOf(p.checkpoint) >= 0 ? Object.assign(p, { held: true }) : p; });
+        return listFor(MY_TEAM).map(function (p) {
+          if (held.indexOf(p.checkpoint) >= 0) p.held = true;
+          if (autoDone.indexOf(p.checkpoint) >= 0) p.autoDone = true;
+          return p;
+        });
       }
 
       case 'station.board':
@@ -500,16 +522,20 @@ body { padding-top: var(--demobar-h, 76px); }
       case 'station.set': {
         if (me().mode !== 'station') return { __error: { code: 'FORBIDDEN', message: '담당 지점이 있는 스태프만 쓸 수 있습니다.' } };
         var sess = me().participant.session, code = me().station.code;
-        var bad = null;
+        var bad = null, stHeld = [], stAuto = {};
         (body.items || []).forEach(function (it) {
           var t = TEAMS.filter(function (x) { return x.session === sess && x.group === it.group; })[0];
           if (!t || t.route.indexOf(code) < 0) { bad = it.group; return; }
           var cur = (t.cells[code] || {}).status || '대기';
-          if (it.status && it.undo !== true && ['대기', '도착', '완료'].indexOf(cur) >= ['대기', '도착', '완료'].indexOf(it.status)) return;   // 첫 기록 유지 (D-082)
+          if (it.status && it.undo !== true && ['대기', '도착', '완료'].indexOf(cur) >= ['대기', '도착', '완료'].indexOf(it.status)) { stHeld.push(it.group); return; }   // 첫 기록 유지 (D-082)
           writeCell(t, code, it, '스태프');
+          if (it.status === '도착' && it.undo !== true) {
+            var closed = closeOthers(t, code);
+            if (closed.length) stAuto[it.group] = closed;
+          }
         });
         if (bad) return { __error: { code: 'FORBIDDEN', message: bad + ' 은(는) 이 지점을 지나는 조가 아닙니다.' } };
-        return stationBoard();
+        return Object.assign(stationBoard(), { held: stHeld, autoDone: stAuto });
       }
 
       case 'ops.board': {
@@ -712,6 +738,7 @@ body { padding-top: var(--demobar-h, 76px); }
           GALLERY_SCOPE: CONFIG.GALLERY_SCOPE, JOURNAL_REQUIRE_APPROVAL: CONFIG.JOURNAL_REQUIRE_APPROVAL,
           JOURNAL_OPEN: CONFIG.JOURNAL_OPEN, PROGRESS_OPEN: CONFIG.PROGRESS_OPEN,
           MEMBER_PROGRESS: CONFIG.MEMBER_PROGRESS,
+          AUTO_COMPLETE_PREV: CONFIG.AUTO_COMPLETE_PREV,
           SHOW_FEE: CONFIG.SHOW_FEE, NOTICE_TICKER: CONFIG.NOTICE_TICKER
         };
 

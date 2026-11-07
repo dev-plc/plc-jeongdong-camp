@@ -329,7 +329,8 @@ withBrowser(async (env) => {
     const tr = [...document.querySelectorAll('.board-table tbody tr')].find(r => r.textContent.includes('1조 배재'));
     return { team: tr.cells[0].textContent, cp3: tr.cells[3].textContent, cp4: tr.cells[4].textContent };
   });
-  ok('조 칸에 회차·대상·조장·인원을 모은다', /1조 배재.*10\/31\(토\).*청년부.*조장 김캠티.*4명/.test(row.team), row);
+  // D-088: 첫 줄 "이름 대상", 둘째 줄 "회차 · 조장 · 인원" (전체 회차라 회차가 붙는다)
+  ok('조 칸에 회차·대상·조장·인원을 모은다', row.team === '1조 배재청년부10/31(토) · 조장 김캠티 · 4명', row);
   ok('지점 칸: 몇 번째 · 상태 · 시각', row.cp3 === '1번째완료14:24' && row.cp4 === '2번째도착14:36', row);
   await page.context().close();
 
