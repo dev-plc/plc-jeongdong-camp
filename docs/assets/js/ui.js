@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v23.5 · 2026-10-31
+ * ui.js · v25 · 2026-11-07
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v25   2026-11-07  40분 넘게 소식 없는 조를 이름으로 — 누르면 그 조 카드로 스크롤 (D-084)
  *  v23.5 2026-10-31  사진 띠 ‹ › (PC) · 크게 보기에서도 넘기기 — 일지·검수·시상 사진 (D-073)
  *  v22   2026-10-17  일지 사진 여러 장 — 옆으로 넘기는 띠 · "📷 N장" (D-064)
  *  v20.5 2026-10-17  지도 주소 검색어 다듬기 — 괄호 메모·"대한민국" 을 뺀다 (D-061)
  *  v20.4 2026-10-17  미션 여러 줄 · ※ 주의 줄 강조 · 지도는 좌표 → 주소 → 이름 순 (D-061)
- *  v20.2 2026-10-17  조별 카드: 조를 숫자 순서로(10조는 9조 다음) · 지점을 한 줄씩 이름 전체로 (D-059)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -662,20 +662,60 @@
     });
   }
 
+  /** 조의 마지막 기록 시각(도착·완료 중 가장 늦은 것). 없으면 ''. teamCard 와 같은 식. */
+  function lastRecord(t) {
+    var last = '';
+    (t.route || []).forEach(function (code) {
+      var cell = (t.cells || {})[code] || {};
+      [cell.arrivedAt, cell.completedAt].forEach(function (x) { if (x && x > last) last = x; });
+    });
+    return last;
+  }
+
   function teamGrid(teams, checkpoints, opts) {
-    var stale = 0;
+    var stale = [];
     var nowMs = (opts && opts.nowMs) || Date.now();
+    var showSession = !!(opts && opts.showSession);
     var cards = sortTeams(teams).map(function (t) {
       var html = teamCard(t, checkpoints, Object.assign({}, opts, { nowMs: nowMs }));
-      if (html.indexOf(' is-stale') > 0) stale++;
+      if (html.indexOf(' is-stale') > 0) stale.push({ t: t, ago: minutesSince(lastRecord(t), nowMs) });
       return html;
     }).join('');
+    // 🔴 몇 개가 아니라 **어느 조인지** (D-084). 오래 조용한 조부터, 누르면 그 조 카드로 간다.
+    stale.sort(function (a, b) { return b.ago - a.ago; });
+    var alert = stale.length
+      ? '<div class="team-alert">' +
+          '<p>⚠ ' + stale.length + '개 조가 ' + STALE_MIN + '분 넘게 소식이 없습니다. 누르면 그 조로 갑니다.</p>' +
+          '<div class="team-alert__list">' + stale.map(function (s) {
+            return '<button type="button" class="team-alert__jump" data-jump-team="' + esc(s.t.session + ' ' + s.t.group) + '">' +
+              esc(s.t.name) + (showSession ? ' <small>' + esc(s.t.session) + '</small>' : '') +
+              ' · ' + esc(agoText(s.ago)) + '</button>';
+          }).join('') + '</div>' +
+        '</div>'
+      : '';
     return {
-      stale: stale,
-      html: (stale ? '<p class="team-alert">⚠ ' + stale + '개 조가 ' + STALE_MIN + '분 넘게 소식이 없습니다.</p>' : '') +
-        '<div class="team-grid">' + cards + '</div>'
+      stale: stale.length,
+      html: alert + '<div class="team-grid">' + cards + '</div>'
     };
   }
+
+  /**
+   * 경고 줄의 조 이름을 누르면 그 조 카드로 스크롤하고 잠깐 테두리를 밝힌다 (D-084).
+   * 콘솔·교역자 화면 어디서 그려도 같게 문서 하나에 건다. 카드는 data-team(회차 조)으로 찾는다.
+   */
+  document.addEventListener('click', function (e) {
+    var btn = e.target && e.target.closest ? e.target.closest('[data-jump-team]') : null;
+    if (!btn) return;
+    var key = btn.getAttribute('data-jump-team');
+    var card = $$('.team-card').filter(function (c) { return c.getAttribute('data-team') === key; })[0];
+    if (!card) return;
+    var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    card.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'center' });
+    card.classList.remove('is-jumped');
+    void card.offsetWidth;                 // 같은 조를 다시 눌러도 다시 깜빡이게
+    card.classList.add('is-jumped');
+    setTimeout(function () { card.classList.remove('is-jumped'); }, 2400);
+  });
 
   global.UI = {
     $: $, $$: $$, esc: esc, nl2br: nl2br, telLinks: telLinks, missionHtml: missionHtml, mapUrl: mapUrl,

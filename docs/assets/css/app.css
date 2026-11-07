@@ -3,7 +3,7 @@
     app.css · v25 · 2026-11-07
    ────────────────────────────────────────────────────────────────
     변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
-     v25   2026-11-07  일지 검수 — 체크해서 골라 승인 (D-083)
+     v25   2026-11-07  일지 검수 체크해서 골라 승인 (D-083) · 소식 없는 조 이름 단추·스크롤 (D-084) · 완료 대기 안내 (D-085)
      v23.9 2026-10-31  지점 칸 넷이 한 줄, 안 되면 둘씩 · 이름이 가운데서 안 갈라지게 (D-077)
      v23.8 2026-10-31  지점별 도착·완료 한 줄씩 (D-076)
      v23.7 2026-10-31  지점별 체류: 최단·최장·평균 한 줄씩 (D-075)
@@ -700,11 +700,27 @@ details.cp:not([open]) { padding-top: 12px; padding-bottom: 12px; }
 .cp__actions { align-items: center; }
 .cp__actions .cp__next { flex: 1; padding: 14px 16px; font-size: 16px; }
 .cp__actions .cp__undo { flex: none; }
+/* 도착 3분 안에는 완료가 잠긴다 — 언제 열리는지 (D-085) */
+.cp__wait { margin: 8px 0 0; font-size: 13px; color: var(--warn); font-weight: 500; }
 
 /* ---- 운영콘솔: 조별 진행 카드 ---- */
 .team-alert {
   margin: 0 0 12px; padding: 10px 14px; border-radius: var(--radius-sm);
   background: #f7e3e0; color: #8c2f26; font-size: 14px; font-weight: 500;
+}
+.team-alert p { margin: 0; }
+/* 어느 조인지 (D-084) — 누르면 그 조 카드로. 폰에서 누르기 쉽게 36px 이상 */
+.team-alert__list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.team-alert__jump {
+  min-height: 36px; padding: 6px 12px; border: 1px solid #d9a39a; border-radius: 999px;
+  background: #fff; color: #8c2f26; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.team-alert__jump small { font-size: 13px; font-weight: 400; }
+.team-card { scroll-margin: calc(var(--appbar-h) + 12px) 0 calc(var(--tabbar-h) + 12px); }
+.team-card.is-jumped { animation: team-jumped 2.4s ease-out; }
+@keyframes team-jumped {
+  0%, 50% { box-shadow: 0 0 0 4px rgba(152, 69, 52, .55), var(--shadow); }
+  100% { box-shadow: var(--shadow); }
 }
 /* 카드는 260px 아래로 줄이지 않는다 — 좁히면 지점 이름이 잘린다 (D-059). 폭에 맞춰 1·2·3열 */
 .team-grid {

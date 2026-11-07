@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v25 · 2026-11-06
+ * app.js · v25 · 2026-11-07
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v25   2026-11-07  도착 3분 뒤부터 완료 — 기록된 도착 시각 기준이라 어느 조원 폰에서든 같다 (D-085)
  *  v25   2026-11-06  "저장됨" · 첫 기록 유지(먼저 기록한 시각을 알림) · 완료 취소는 완료 시각을 지운다 · 스태프 취소에도 undo (D-082)
  *  v24   2026-11-06  조원도 도착·완료 — 서버가 MEMBER_PROGRESS 를 켜면 · 낡은 화면은 앞으로만 · 다시 보이면 코스를 새로 읽는다 (D-081)
  *  v23.3 2026-10-29  내 지점·진행: API.stationBoard·opsBoard 로 — 새로고침은 칸만 사본에서 (D-071)
  *  v22   2026-10-17  출발 안내(시청역 몇 번 출구) · 일지 사진 여러 장 (D-063·064)
- *  v20.4 2026-10-17  미션을 시트에 적은 줄 그대로 · 지도는 좌표 → 주소 → 이름 순 (D-061)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -481,16 +481,55 @@
     var undo = UNDO_ACTION[p.status];
     if (!next && !undo) return '';
     var off = coursePaused() ? ' disabled' : '';
+    var opens = completeOpensAt(p);         // 도착 3분 안이면 완료를 잠근다 (D-085)
     return '<div class="cp__actions" data-cp="' + esc(p.checkpoint) + '">' +
       (next
-        ? '<button type="button" class="btn btn--primary cp__next" data-status="' + next.status + '"' + off + '>' +
-            esc(next.label) + '</button>'
+        ? '<button type="button" class="btn btn--primary cp__next" data-status="' + next.status + '"' +
+            (opens ? ' disabled' : off) + '>' + esc(next.label) + '</button>'
         : '') +
       (undo
         ? '<button type="button" class="btn btn--text cp__undo" data-status="' + undo.status + '"' +
             ' data-ask="' + esc(undo.ask) + '"' + off + '>' + esc(undo.label) + '</button>'
         : '') +
-      '</div>';
+      '</div>' +
+      (opens ? '<p class="cp__wait">완료는 도착 ' + MIN_STAY_MIN + '분 뒤 ' + esc(opensText(opens)) + '부터 누를 수 있어요.</p>' : '');
+  }
+
+  /**
+   * 🔴 **도착 뒤 3분은 완료를 누를 수 없다** (운영자 요청 11/07, D-085).
+   *
+   * 아래 3초 잠금(v19.1)은 **한 폰의 연타**만 막는다. 4초 뒤에 누르거나(도착을 잊었다가 끝나고 몰아 누름),
+   * 다른 조원 폰(D-081)에서 누르면 "도착 14:01 · 완료 14:01" 이 그대로 들어갔다.
+   * 그래서 기준을 이 폰이 누른 시각이 아니라 **기록된 도착 시각**(서버가 준 arrivedAt)으로 둔다 — 어느 폰이든 같다.
+   * 3분은 지점별 체류 통계가 "잘못 누른 기록" 으로 빼는 기준과 같다 (D-074).
+   * 거점 스태프 화면과 운영 콘솔 정정은 잠그지 않는다 — 현장 운영진이 몰아 적거나 고치는 곳이다.
+   * 도착 시각을 읽을 수 없으면 잠그지 않는다(막혀서 못 누르는 쪽보다 낫다).
+   */
+  var MIN_STAY_MIN = 3;
+
+  /** 이 지점의 완료가 열리는 시각(ms). 지금 누를 수 있으면 0. */
+  function completeOpensAt(p) {
+    if (!p || p.status !== '도착' || !p.arrivedAt) return 0;
+    var t = new Date(p.arrivedAt).getTime();
+    if (isNaN(t)) return 0;
+    var at = t + MIN_STAY_MIN * 60000;
+    return Date.now() < at ? at : 0;
+  }
+
+  /** 열리는 시각 'HH:MM' — 분 단위로 올려 "그 시각에 누르면 된다" 가 맞게 한다. */
+  function opensText(ms) {
+    return UI.hhmm(UI.localIso(new Date(Math.ceil(ms / 60000) * 60000)));
+  }
+
+  /** 가장 먼저 열리는 완료 시각에 코스를 다시 그린다. 잠금(3초)·다른 화면이면 그쪽이 알아서 그린다. */
+  var minStayTimer = null;
+  function armMinStay() {
+    clearTimeout(minStayTimer);
+    var soon = state.progress.map(completeOpensAt).filter(Boolean).sort(function (a, b) { return a - b; })[0];
+    if (!soon) return;
+    minStayTimer = setTimeout(function () {
+      if (state.view === 'course' && state.me && !coursePaused()) paintCourse();
+    }, soon - Date.now() + 250);
   }
 
   /**
@@ -620,7 +659,7 @@
         '<p class="hint">우리 조 순서대로 표시됩니다.' +
         (canRecord()
           ? (state.boot.config.PROGRESS_OPEN
-              ? ' 도착하면 "도착했어요", 끝나면 "완료했어요" 를 눌러 주세요.' +
+              ? ' 도착하면 "도착했어요", 끝나면 "완료했어요" 를 눌러 주세요. 완료는 도착 ' + MIN_STAY_MIN + '분 뒤부터 눌립니다.' +
                 (state.boot.config.MEMBER_PROGRESS === true ? ' 조원 누구나 누를 수 있고, 한 사람이 누르면 조 전체에 반영됩니다.' : '')
               : ' 진행 기록은 마감되었습니다.')
           : ' 상태는 조장이 기록합니다.') + '</p></section>' +
@@ -631,6 +670,7 @@
 
     if (canEdit) {
       $('#view').addEventListener('click', onProgressClick);
+      armMinStay();
     }
   }
 
@@ -773,6 +813,9 @@
     var code = wrap.getAttribute('data-cp');
     var target = btn.getAttribute('data-status');
     var ask = btn.getAttribute('data-ask');
+    // 그려진 뒤 3분이 안 지났는데 들어온 탭(잠긴 단추를 우회한 경우 포함)도 막는다 (D-085)
+    var opens = target === '완료' && completeOpensAt(state.progress.filter(function (p) { return p.checkpoint === code; })[0]);
+    if (opens) { toast('완료는 도착 ' + MIN_STAY_MIN + '분 뒤 ' + opensText(opens) + '부터 누를 수 있어요.', 'error'); return; }
     if (!ask) { pauseCourse(); queueProgress(code, target, false); return; }
     // 되돌리기는 기록을 지우므로 한 번 묻는다. 잠금은 "확인" 을 누른 뒤부터.
     UI.confirmDialog(ask, btn.textContent).then(function (yes) {
