@@ -8,7 +8,7 @@
  *   11/07 1조  기록 없음
  */
 const { ok, section, done } = require('../lib/check');
-const { withBrowser, adminLogin, noHScroll, smallText } = require('../lib/browser');
+const { withBrowser, adminLogin, allSessions, noHScroll, smallText } = require('../lib/browser');
 
 /** 지점 칸 — 도착·완료(D-076)와 체류(D-075)는 한 줄씩이라 "도착: 4/4 | 완료: 3" · "최단: 20분 · 4조 정동길 | …" 으로 모아 읽는다. */
 const spots = (page) => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.spot-stats .spot')].map(s => {
@@ -32,6 +32,8 @@ async function openProgress(env, width, at) {
   const page = await env.open({ mode: 'admin', width, at });
   await adminLogin(page);
   await page.click('#tabbar [data-view="progress"]');
+  await page.waitForSelector('.spot-stats');
+  await allSessions(page);   // 회차마다 묶는 것까지 본다 — 기본은 오늘 회차(D-083)라 '전체' 를 누른다
   await page.waitForSelector('.spot-stats');
   return page;
 }

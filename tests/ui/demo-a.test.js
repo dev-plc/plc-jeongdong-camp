@@ -3,7 +3,7 @@
  * 원본은 소실된 scratchpad 의 test-a.js — 세션 기록에서 되살려 옮겼다.
  */
 const { ok, section, done } = require('../lib/check');
-const { withBrowser, text, smallText, waitToast } = require('../lib/browser');
+const { withBrowser, allSessions, text, smallText, waitToast } = require('../lib/browser');
 
 withBrowser(async (env) => {
   const open = (at, width) => env.open({ at, width, persona: 'leader' });
@@ -21,6 +21,7 @@ withBrowser(async (env) => {
     await page.waitForSelector('.jcard, .empty');
     await page.click('[data-view="progress"]');
     await page.waitForSelector('.team-card');
+    await allSessions(page);   // 10/31 + 11/07 을 함께 본다 (기본은 오늘 회차, D-083)
   }
 
   // ------------------------------------------------------------ 홈 "지금 · 다음"

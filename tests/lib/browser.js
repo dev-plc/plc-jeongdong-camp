@@ -111,6 +111,13 @@ async function adminLogin(page) {
   await page.waitForSelector('.jcard, .empty');
 }
 
+/** 콘솔 회차를 '전체' 로 — 캠프 당일엔 그 회차가 기본이라(D-083) 데모 시계 10/31 에선 10/31 만 보인다.
+ *  여러 회차를 함께 보는 테스트가 운영자처럼 '전체' 를 누른다. */
+async function allSessions(page) {
+  await page.click('#sessionFilter [data-session="전체"]');
+  await page.waitForSelector('#sessionFilter [data-session="전체"].is-active');
+}
+
 const text = (page, sel) => page.evaluate(s => { const el = document.querySelector(s); return el ? el.textContent : null; }, sel);
 const bodies = (page, action) => page.evaluate(a => window.__BODIES.filter(b => b.action === a), action);
 const noHScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
@@ -136,4 +143,4 @@ const smallText = (page) => page.evaluate(() => {
   return out;
 });
 
-module.exports = { withBrowser, findPlaywright, login, adminLogin, text, bodies, noHScroll, waitToast, smallText };
+module.exports = { withBrowser, findPlaywright, login, adminLogin, allSessions, text, bodies, noHScroll, waitToast, smallText };

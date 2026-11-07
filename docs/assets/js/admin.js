@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v23.12 · 2026-10-31
+ * admin.js · v25 · 2026-11-07
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v25   2026-11-07  캠프 당일이면 그 회차가 기본 · 일지 검수에 회차 필터 · 체크해서 골라 승인 (D-083)
  *  v23.12 2026-10-31  지점별 체류: 1시간 넘는 체류도 통계에서 뺀다 · 저장 확인 알림에서 필터 단정을 뺀다 (D-080·079)
  *  v23.11 2026-10-31  칸 정정: 응답 진행표에 고른 상태가 없으면 "저장했습니다" 대신 빨간 알림 (D-079)
  *  v23.10 2026-10-31  칸 정정: 지금 상태를 미리 고르지 않고, 같은 상태여도 보낸다 · 진행 새로고침·기준 시각 (D-078)
  *  v23.9 2026-10-31  지점 칸 넷이 한 줄(안 되면 둘씩) · 조 이름·머무는 중이 가운데서 갈라지지 않게 (D-077)
- *  v23.8 2026-10-31  지점별 도착·완료를 한 줄씩 — 머무는 중이 껴도 완료가 밀리지 않게 (D-076)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -65,6 +65,7 @@
     API.bootstrap(true)
       .then(function (boot) {
         state.boot = boot;
+        state.session = todaySession(boot);   // 캠프 당일이면 그 회차부터 (D-083)
         if (!API.getToken()) return null;
         // 🔴 토큰 앞부분을 읽어 **만료 전 관리자면 바로 그린다** (D-072). 예전에는 확인용 GAS 호출(2~3초)이 끝나야
         //    첫 탭을 그렸고, 첫 탭도 GAS 라 두 번을 연달아 기다렸다. 서명은 첫 요청에서 서버가 검증한다 —
@@ -183,7 +184,18 @@
   //
   // 부서 필터만 있어서 사전답사를 따로 볼 수가 없었다. 회차는 Config 가 정하므로
   // 목록을 박지 않고 boot.sessions 를 그대로 쓴다 — 회차를 늘려도 따라온다 (D-026).
-  // 기본값은 **전체**다. 지금까지의 동작과 같아 놀랄 일이 없다 (D-031).
+  // 기본값은 **오늘 열리는 회차**, 없으면 전체다 (D-083 — D-031 의 '전체' 를 고침).
+  // 캠프 당일 지난 회차 데이터가 섞여 보였다. 처음 열 때 한 번만 정하므로 '전체' 를 누르면 그대로다.
+
+  /** 날짜가 오늘(이 기기 날짜)인 회차가 **딱 하나**면 그 라벨, 아니면 '전체'.
+   *  같은 날 회차가 둘이면 하나만 고르는 쪽이 오히려 숨긴다. 날짜 비교는 app.js 의 isToday 와 같다. */
+  function todaySession(boot) {
+    var today = UI.localDate();
+    var hit = ((boot && boot.sessions) || []).filter(function (s) {
+      return String(s.date || '').slice(0, 10) === today;
+    });
+    return hit.length === 1 ? hit[0].label : '전체';
+  }
 
   function sessionFilterHtml() {
     var list = (state.boot && state.boot.sessions) || [];
@@ -281,19 +293,27 @@
   function paintReview(data) {
     var items = data.items.filter(function (it) {
       return (state.jstatus === '전체' || it.status === state.jstatus) &&
-        (!state.photoOnly || it.photoUrl);
+        (!state.photoOnly || it.photoUrl) && matchesSession(it.session);
     });
-    var waiting = data.items.filter(function (it) { return it.status === '대기'; }).length;
+    var waiting = data.items.filter(function (it) { return it.status === '대기' && matchesSession(it.session); }).length;
     // 🔴 일괄 승인은 **지금 보이는** 대기 글만 — 필터로 걸러 둔 글까지 승인하면 안 된다 (D-052)
     var shownWaiting = items.filter(function (it) { return it.status === '대기'; });
 
     setView(
       '<section class="section-head"><h2>탐험일지 관리</h2>' +
-        '<p class="hint">검수 대기 ' + waiting + '건 · 전체 ' + data.total + '건. ' +
-        '승인해야 갤러리에 보입니다. 초상권·개인정보가 드러나는 사진은 반려해 주세요.</p></section>' +
+        '<p class="hint">' + (state.session === '전체' ? '' : esc(state.session) + ' · ') +
+        '검수 대기 ' + waiting + '건 · 전체 ' + data.total + '건. ' +
+        '승인해야 갤러리에 보입니다. 초상권·개인정보가 드러나는 사진은 반려해 주세요. ' +
+        '대기 글은 체크해서 골라 승인할 수 있습니다.</p></section>' +
+      sessionFilterHtml() +
       statusFilterHtml() +
       '<div class="review-tools">' +
         '<button type="button" class="tab' + (state.photoOnly ? ' is-active' : '') + '" data-act="photoOnly">📷 사진 있는 글만</button>' +
+        // 체크해서 골라 승인 (D-083) — 예전에는 모두 아니면 하나씩뿐이었다
+        (shownWaiting.length
+          ? '<button type="button" class="btn btn--ghost btn--sm" data-act="pickAll">모두 선택</button>' +
+            '<button type="button" class="btn btn--primary btn--sm" data-act="pickApprove" disabled>선택한 0건 승인</button>'
+          : '') +
         (shownWaiting.length > 1
           ? '<button type="button" class="btn btn--primary btn--sm" data-act="bulk" data-count="' + shownWaiting.length + '">' +
               '보이는 대기 ' + shownWaiting.length + '건 모두 승인</button>'
@@ -305,11 +325,16 @@
       onReviewClick
     );
     bindStatusFilter(function () { paintReview(data); });
+    bindSessionFilter(function () { paintReview(data); });
   }
 
   function reviewCard(item) {
     // 상태에 따라 할 수 있는 일이 다르다. 승인된 글에 '승인' 버튼을 또 두지 않는다.
     var acts = [];
+    if (item.status === '대기') {   // 골라 승인 (D-083) — 대기 글만
+      acts.push('<label class="jcard__pick"><input type="checkbox" data-pick aria-label="' +
+        esc(item.authorName) + ' 글 선택"> 선택</label>');
+    }
     if (item.status !== '승인') {
       acts.push('<button type="button" class="btn btn--primary btn--sm" data-act="approve">승인</button>');
     }
@@ -336,11 +361,20 @@
   }
 
   function onReviewClick(e) {
+    if (e.target.matches && e.target.matches('[data-pick]')) { syncPick(); return; }
     var btn = e.target.closest('[data-act]');
     if (!btn) return;
     var act0 = btn.getAttribute('data-act');
     if (act0 === 'photoOnly') { state.photoOnly = !state.photoOnly; paintReview(state.cache.review); return; }
     if (act0 === 'bulk') { bulkApprove(btn); return; }
+    if (act0 === 'pickAll') {
+      var boxes = UI.$$('#view [data-pick]');
+      var all = boxes.length > 0 && boxes.every(function (b) { return b.checked; });
+      boxes.forEach(function (b) { b.checked = !all; });
+      syncPick();
+      return;
+    }
+    if (act0 === 'pickApprove') { approvePicked(btn); return; }
     var card = btn.closest('[data-id]');
     var id = card.getAttribute('data-id');
     var act = btn.getAttribute('data-act');
@@ -359,6 +393,35 @@
           .catch(function (err) { failed(err); });
       });
     }
+  }
+
+  /** 고른 수를 단추에 적는다 — 0건이면 승인 단추를 잠근다 (D-083). */
+  function syncPick() {
+    var boxes = UI.$$('#view [data-pick]');
+    var n = boxes.filter(function (b) { return b.checked; }).length;
+    var go = $('#view [data-act="pickApprove"]');
+    if (go) { go.textContent = '선택한 ' + n + '건 승인'; go.disabled = n === 0; }
+    var all = $('#view [data-act="pickAll"]');
+    if (all) all.textContent = boxes.length && n === boxes.length ? '선택 해제' : '모두 선택';
+  }
+
+  /** 체크한 대기 글만 승인 (D-083). 일괄 승인과 같은 요청(reviewBatch) — 요청 하나 · 락 한 번.
+   *  직접 고른 것이라 확인 창을 한 번 더 띄우지 않는다. 필터를 바꾸면 다시 그려져 체크가 풀린다
+   *  — 안 보이는 글이 승인되지 않게 (D-052 와 같은 원칙). */
+  function approvePicked(btn) {
+    var ids = UI.$$('#view [data-pick]')
+      .filter(function (b) { return b.checked; })
+      .map(function (b) { return b.closest('[data-id]').getAttribute('data-id'); });
+    if (!ids.length) return;
+    UI.setBusy(btn, true, '승인 중…');
+    API.call('admin.journal.reviewBatch', { ids: ids, decision: '승인' })
+      .then(function (r) {
+        invalidate('review');
+        renderReview();
+        toast(r.approved.length + '건 승인했습니다.' +
+          (r.skipped.length ? ' (' + r.skipped.length + '건은 이미 처리돼 건너뜀)' : ''));
+      })
+      .catch(function (err) { UI.setBusy(btn, false); failed(err); });
   }
 
   /** 보이는 대기 글을 한 번에 승인 (D-052). 요청 하나 · 락 한 번. */

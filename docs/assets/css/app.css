@@ -1,13 +1,13 @@
 /*
    ────────────────────────────────────────────────────────────────
-    app.css · v23.9 · 2026-10-31
+    app.css · v25 · 2026-11-07
    ────────────────────────────────────────────────────────────────
     변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+     v25   2026-11-07  일지 검수 — 체크해서 골라 승인 (D-083)
      v23.9 2026-10-31  지점 칸 넷이 한 줄, 안 되면 둘씩 · 이름이 가운데서 안 갈라지게 (D-077)
      v23.8 2026-10-31  지점별 도착·완료 한 줄씩 (D-076)
      v23.7 2026-10-31  지점별 체류: 최단·최장·평균 한 줄씩 (D-075)
      v23.5 2026-10-31  사진 ‹ › · 크게 보기 · 진행표 한 화면 · 지점별 현황 (D-073)
-     v23.1 2026-10-29  내 정보 칸 이름이 글자 중간에서 끊기지 않게 — 이름 칸을 가장 긴 이름에 맞춤 (D-069)
 
     버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
           — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -503,6 +503,10 @@ body.is-viewing { overflow: hidden; }
   border-radius: var(--radius-sm);
 }
 .jcard__actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+/* 검수 — 체크해서 골라 승인 (D-083). 폰에서 누르기 쉽게 칸을 넉넉히, 고른 카드는 테두리로 */
+.jcard__pick { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; margin-right: auto; font-size: 14px; cursor: pointer; }
+.jcard__pick input { width: 20px; height: 20px; margin: 0; accent-color: var(--brick); }
+.jcard:has([data-pick]:checked) { outline: 2px solid var(--brick); outline-offset: -2px; }
 .jcard__role { font-size: 13px; color: var(--ink-2); }
 
 .members { list-style: none; margin: 0; padding: 0; }
