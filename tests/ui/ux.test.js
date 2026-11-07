@@ -4,7 +4,7 @@
  * 시계는 10/31 15:25 KST.
  */
 const { ok, section, done } = require('../lib/check');
-const { withBrowser, login, adminLogin, text, bodies, noHScroll, smallText } = require('../lib/browser');
+const { withBrowser, login, adminLogin, allSessions, text, bodies, noHScroll, smallText } = require('../lib/browser');
 
 const DRAFT = (pg) => pg.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('plc_jd_draft:')));
 
@@ -229,6 +229,7 @@ withBrowser(async (env) => {
     await adminLogin(page);
     await page.click('#tabbar [data-view="progress"]');
     await page.waitForSelector('.team-card .step__name');
+    await allSessions(page);   // 11/07 1조까지 다섯 조 (기본은 오늘 회차, D-083)
     const names = await page.evaluate(() => [...document.querySelectorAll('.team-card .step__name')].map(el => ({
       text: el.textContent, cut: el.scrollWidth > el.clientWidth + 1 || getComputedStyle(el).textOverflow === 'ellipsis'
     })));
