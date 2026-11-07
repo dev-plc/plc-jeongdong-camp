@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Code.gs · v25 · 2026-11-06
+ * Code.gs · v25 · 2026-11-07
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v25   2026-11-07  다음 지점에 도착하면 머물던 지점은 완료(AUTO_COMPLETE_PREV) · 스태프 보드에 직전 지점 시각 (D-087)
  *  v25   2026-11-06  첫 기록 유지 — 같거나 앞선 상태면 손대지 않는다 · 완료 취소는 완료 시각을 지운다 (D-082)
  *  v24   2026-11-06  조원도 도착·완료(MEMBER_PROGRESS) · 낡은 화면은 앞으로만 · 쓴 뒤 다시 읽어 확인 (D-081·079)
  *  v23   2026-10-21  내 정보: 캠프 모드면 사본 토큰(campToken)을 건네 앱이 사본 경로로 옮긴다 (D-068)
  *  v22   2026-10-17  공개 설정에 PHOTO_MAX_COUNT — 앱이 사진 장수 한도를 안다 (D-064)
- *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -271,6 +271,8 @@ function publicConfig_() {
     // 조원도 우리 조 도착·완료를 기록한다 (D-081). 앱은 이 키가 true 일 때만 조원에게 버튼을 그린다 —
     // 옛 서버는 키가 없으므로 앱이 먼저 나가도 조원이 "조장만" 오류를 보지 않는다.
     MEMBER_PROGRESS: confBool_('MEMBER_PROGRESS', true),
+    // 다음 지점에 도착하면 머물던 지점을 완료로 (D-087). 앱은 true 일 때만 화면에서 미리 바꾼다 — 옛 서버엔 키가 없다.
+    AUTO_COMPLETE_PREV: confBool_('AUTO_COMPLETE_PREV', true),
     SHOW_FEE: confBool_('SHOW_FEE', true),
     PHOTO_MAX_COUNT: photoMaxCount_(),   // 일지 한 편의 사진 수 (D-064)
     NOTICE_TICKER: confStr_('NOTICE_TICKER', '')
@@ -659,6 +661,29 @@ function writeProgress_(actor, pid, entries, T) {
         appendRow_(SHEETS.PROGRESS, patch);
       }
     });
+
+    // 🔴 **다음 지점에 도착하면 머물던 지점은 완료** (D-087, 운영자 요청 11/07).
+    //    한 조는 한 곳에만 있다 — 새 지점에 '도착' 이 실제로 들어가면(그대로 둔 것·취소는 빼고), 그 조의
+    //    다른 '도착' 지점은 떠난 것이다. 완료를 안 누르고 이동해 "도착" 으로 남던 칸을 닫는다.
+    //    완료 시각은 지금(다음 지점 도착 시각) — 그 지점 체류에 이동 시간이 섞인다. 코스 순서가 아니라
+    //    **상태로** 찾는다: 순서를 바꿔 가도 맞고, 아직 안 간(대기) 지점은 건드리지 않는다.
+    //    같은 묶음에 그 지점이 따로 와 있으면 그쪽을 따른다. 콘솔 정정(adminProgressSet_)은 cascade 를 켜지 않는다.
+    var closed = {};                       // 한 묶음에 도착이 둘이어도 같은 행을 두 번 닫지 않는다
+    entries.forEach(function (e) {
+      if (!e.cascade || e.held || e.status !== '도착') return;
+      var tk = teamKey_(e.session, e.group);
+      var inBatch = {};
+      entries.forEach(function (o) { if (teamKey_(o.session, o.group) === tk) inBatch[o.code] = true; });
+      rows.forEach(function (r) {
+        var code = str_(r['지점코드']);
+        if (rowTeamKey_(r) !== tk || inBatch[code] || closed[tk + '#' + code] || str_(r['상태']) !== '도착') return;
+        closed[tk + '#' + code] = true;
+        var patch = { '상태': '완료', '기록자ID': pid, '수정일시': now };
+        if (!str_(r['완료시각'])) patch['완료시각'] = now;
+        updateRow_(SHEETS.PROGRESS, r.__row, patch);
+        (e.autoDone = e.autoDone || []).push(code);
+      });
+    });
     T.write = Date.now() - tWrite;
   });
 
@@ -712,9 +737,11 @@ function progressSet_(ctx, body) {
   if (!raw.length) throw new AppError('BAD_REQUEST', '기록할 지점이 없습니다.');
 
   // 🔴 **전부 먼저 검증한다.** 쓰기 중간에 던지면 일부만 들어간 채로 끝난다.
+  var auto = confBool_('AUTO_COMPLETE_PREV', true);
   var items = raw.map(function (it) {
     var n = normalizeProgressItem_(it, false);
     n.forwardOnly = it.undo !== true;      // 취소(undo:true)만 되돌린다 — 키가 없어도 앞으로만 (D-082)
+    n.cascade = auto && n.forwardOnly;     // 도착하면 머물던 지점은 완료 (D-087)
     return n;
   });
 
@@ -732,6 +759,8 @@ function progressSet_(ctx, body) {
   // 🔴 시트가 먼저, DB 가 나중 (D-038).
   var ignored = writeProgress_(ctx.isLeader ? '조장' : '조원', ctx.pid, entries, T);
   var held = entries.filter(function (e) { return e.held; }).map(function (e) { return e.code; });
+  var autoDone = [];
+  entries.forEach(function (e) { (e.autoDone || []).forEach(function (c) { autoDone.push(c); }); });
 
   // 목록 만들기는 그냥 읽기다 — 락이 지켜야 할 것이 아니다 (D-044).
   var tList = Date.now();
@@ -745,7 +774,10 @@ function progressSet_(ctx, body) {
   mirrorProgressPush_(ctx.session, ctx.group, list);
   T.mirror = Date.now() - tMirror;
   // 그대로 둔 지점을 앱에 알린다 (D-082) — "다른 사람이 먼저 기록했습니다 · 14:00". 사본에는 안 가는 칸이다.
-  list.forEach(function (p) { if (held.indexOf(p.checkpoint) >= 0) p.held = true; });
+  list.forEach(function (p) {
+    if (held.indexOf(p.checkpoint) >= 0) p.held = true;
+    if (autoDone.indexOf(p.checkpoint) >= 0) p.autoDone = true;   // 앱이 "○○ 완료로 바꿨습니다" 를 알린다 (D-087)
+  });
 
   // 🔴 기록도 락 **밖에서** 한다. 로그 쓰기도 시트 쓰기라, 락 안에 두면
   //    다른 조장이 그만큼 더 기다린다 (D-038 과 같은 이유).
@@ -753,7 +785,8 @@ function progressSet_(ctx, body) {
   logEvent_('progress.set', ctx.pid, ctx.teamKey + '/' + codes.join(','),
     (codes.length === 1 ? (byCode[codes[0]].status || '점수') : codes.length + '건') +
       (ignored.length ? ' · 스태프 점수 유지 ' + ignored.join(',') : '') +
-      (held.length ? ' · 앞선 기록 유지 ' + held.join(',') : ''),
+      (held.length ? ' · 앞선 기록 유지 ' + held.join(',') : '') +
+      (autoDone.length ? ' · 머물던 지점 완료 ' + autoDone.join(',') : ''),
     timingText_(T));
 
   return list;
@@ -795,6 +828,7 @@ function stationBoard_(ctx) {
       var i = t.route.indexOf(cp.code);
       var cell = t.cells[cp.code] || {};
       var prevCode = i > 0 ? t.route[i - 1] : '';
+      var prev = prevCode ? (t.cells[prevCode] || {}) : {};
       return {
         group: t.group,
         name: t.name,
@@ -802,7 +836,10 @@ function stationBoard_(ctx) {
         memberCount: t.memberCount,
         visitOrder: i + 1,
         prevName: prevCode ? (nameOf[prevCode] || prevCode) : '',
-        prevStatus: prevCode ? ((t.cells[prevCode] || {}).status || '대기') : '',
+        prevStatus: prevCode ? (prev.status || '대기') : '',
+        // 직전 지점 시각 (D-087) — 스태프가 "언제 기록된 상태인지" 보고 낡은 화면을 알아챈다
+        prevArrivedAt: prev.arrivedAt || '',
+        prevCompletedAt: prev.completedAt || '',
         status: cell.status || '대기',
         arrivedAt: cell.arrivedAt || '',
         completedAt: cell.completedAt || '',
@@ -832,6 +869,7 @@ function stationSet_(ctx, body) {
   var cp = stationCheckpoint_(ctx);
   var raw = Array.isArray(body.items) ? body.items : [body];
   if (!raw.length) throw new AppError('BAD_REQUEST', '기록할 조가 없습니다.');
+  var auto = confBool_('AUTO_COMPLETE_PREV', true);
 
   // 🔴 이 지점을 지나는 **내 회차** 조만. 다른 회차·코스에 없는 조는 거절한다.
   var mine = {};
@@ -848,6 +886,7 @@ function stationSet_(ctx, body) {
     var n = normalizeProgressItem_({ status: it.status, score: it.score, memo: it.memo }, true);
     n.code = cp.code;
     n.forwardOnly = it.undo !== true;      // 스태프도 첫 기록 유지 — 취소만 되돌린다 (D-082)
+    n.cascade = auto && n.forwardOnly;     // "도착 확인" 하면 그 조가 머물던 지점은 완료 (D-087)
     byGroup[group] = Object.assign({ session: ctx.session, group: group }, n);
   });
   var groups = Object.keys(byGroup);
@@ -856,6 +895,8 @@ function stationSet_(ctx, body) {
   var T = { auth: __authMs, n: groups.length };
   var t0 = Date.now();
   writeProgress_('스태프', ctx.pid, entries, T);
+  var autoDone = {};                       // 조 → 완료로 바꾼 지점들. 앱이 알린다 (D-087)
+  entries.forEach(function (e) { if (e.autoDone) autoDone[e.group] = e.autoDone; });
 
   // 조장 화면은 사본에서 읽는다(D-042) — 스태프가 쓴 것도 **조마다** 밀어 둔다.
   groups.forEach(function (g) {
@@ -863,11 +904,16 @@ function stationSet_(ctx, body) {
   });
   T.total = Date.now() - t0;
   var stHeld = entries.filter(function (e) { return e.held; }).map(function (e) { return e.group; });
+  var autoText = Object.keys(autoDone).map(function (g) { return g + ':' + autoDone[g].join('+'); });
   logEvent_('station.set', ctx.pid, ctx.session + '/' + cp.code + '/' + groups.join(','),
     (groups.length === 1 ? (entries[0].status || '점수') : groups.length + '건') +
-      (stHeld.length ? ' · 앞선 기록 유지 ' + stHeld.join(',') : ''), timingText_(T));
+      (stHeld.length ? ' · 앞선 기록 유지 ' + stHeld.join(',') : '') +
+      (autoText.length ? ' · 머물던 지점 완료 ' + autoText.join(',') : ''), timingText_(T));
 
-  return stationBoard_(ctx);
+  var board = stationBoard_(ctx);
+  board.held = stHeld;                     // 그대로 둔 조 — 앱이 "먼저 기록된 것을 그대로" 를 알린다
+  board.autoDone = autoDone;
+  return board;
 }
 
 /** 교역자·스태프 — 내 회차 전체 진행을 **읽기만** (D-051). 관리 기능은 운영 콘솔(PIN). */

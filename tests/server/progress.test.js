@@ -238,6 +238,69 @@ section('🔴 첫 기록 유지 · 취소하면 지운다 (D-082)');
   ok('콘솔 정정으로 완료 → 도착도 완료 시각을 지운다', x.ok && rowAt('CP4')['상태'] === '도착' && rowAt('CP4')['완료시각'] === '', rowAt('CP4'));
 }
 
+section('🔴 다음 지점에 도착하면 머물던 지점은 완료 (D-087)');
+{
+  // C코스: CP3 → CP4 → CP1 → CP2. 라스태는 CP2 거점.
+  const H = camp();
+  H.addPeople([
+    [S1, '가조장', '청4조', '조장', '010-1000-1001', '', 'C코스(보구여관 시작)'],
+    [S1, '나조원', '청4조', '일반', '010-1000-1002', '', 'C코스(보구여관 시작)'],
+    [S1, '다조원', '청4조', '일반', '010-1000-1003', '', 'C코스(보구여관 시작)'],
+    [S1, '라스태', '', '스태프', '010-2000-0001', 'CP2', '']
+  ]);
+  const lead = H.token('가조장', '1001'), m1 = H.token('나조원', '1002'), m2 = H.token('다조원', '1003');
+  const st = H.token('라스태', '0001'), adm = H.adminToken();
+  const pidOf = (t) => H.post({ action: 'me', token: t }).data.participant.id;
+  const rows = () => { const t = H.sheet('Progress'); const h = t[0]; return t.slice(1).map(x => Object.fromEntries(h.map((k, i) => [k, x[i]]))); };
+  const rowAt = (code) => rows().find(x => x['조 배정'] === '청4조' && x['지점코드'] === code);
+  const stateOf = (code) => (rowAt(code) || {})['상태'] || '(행 없음)';
+  const at = (list, code) => list.find(x => x.checkpoint === code);
+  const lastLogText = () => JSON.stringify(H.sheet('Log').slice(-1));
+
+  ok('bootstrap 공개 설정에 AUTO_COMPLETE_PREV = true (기본 켜짐)', H.post({ action: 'bootstrap' }).data.config.AUTO_COMPLETE_PREV === true);
+
+  H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP3', status: '도착', undo: false }] });
+  let x = H.post({ action: 'progress.set', token: m2, items: [{ checkpoint: 'CP4', status: '도착', undo: false }] });
+  ok('🔴 CP4 에 도착하면 머물던 CP3 이 완료로', x.ok && stateOf('CP3') === '완료' && stateOf('CP4') === '도착', rows());
+  ok('   CP3 완료시각이 찍힌다 · 기록자는 도착을 누른 사람', !!rowAt('CP3')['완료시각'] && rowAt('CP3')['기록자ID'] === pidOf(m2), rowAt('CP3'));
+  ok('   응답 목록에 CP3 완료 · autoDone (앱이 알린다)', at(x.data, 'CP3').status === '완료' && at(x.data, 'CP3').autoDone === true &&
+    !at(x.data, 'CP4').autoDone, x.data);
+  ok('   Log 에 "머물던 지점 완료 CP3"', /머물던 지점 완료 CP3/.test(lastLogText()), lastLogText());
+  ok('🔴 아직 안 간(대기) 지점은 건드리지 않는다 — 행도 안 생긴다', !rowAt('CP1') && !rowAt('CP2'), rows().map(r => r['지점코드']));
+
+  // 콘솔 정정은 cascade 하지 않는다 — 일부러 두 곳을 '도착' 으로 만든다
+  x = H.post({ action: 'admin.progress.set', token: adm, session: S1, group: '청4조', checkpoint: 'CP1', status: '도착' });
+  ok('🔴 콘솔 정정으로 CP1 도착 — CP4 는 그대로 도착 (정정은 연쇄하지 않는다)', x.ok && stateOf('CP1') === '도착' && stateOf('CP4') === '도착', rows());
+  x = H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP1', status: '도착', undo: false }] });
+  ok('🔴 이미 도착인 곳의 도착(그대로 둠)은 연쇄하지 않는다', x.ok && at(x.data, 'CP1').held === true && stateOf('CP4') === '도착', rows());
+  H.post({ action: 'progress.set', token: lead, items: [{ checkpoint: 'CP1', status: '완료', undo: false }] });
+  x = H.post({ action: 'progress.set', token: lead, items: [{ checkpoint: 'CP1', status: '도착', undo: true }] });
+  ok('🔴 완료 취소(undo:true)로 도착이 돼도 연쇄하지 않는다', x.ok && stateOf('CP1') === '도착' && stateOf('CP4') === '도착', rows());
+
+  // 스태프 "도착 확인" — 그 조가 도착으로 남긴 곳(CP4·CP1)을 모두 닫는다
+  x = H.post({ action: 'station.set', token: st, items: [{ group: '청4조', status: '도착' }] });
+  ok('🔴 스태프가 CP2 도착 확인 → 도착으로 남아 있던 CP4·CP1 이 완료', x.ok && stateOf('CP4') === '완료' && stateOf('CP1') === '완료' && stateOf('CP2') === '도착', rows());
+  ok('   응답 보드에 autoDone {청4조: CP4·CP1}', JSON.stringify((x.data.autoDone['청4조'] || []).slice().sort()) === JSON.stringify(['CP1', 'CP4']), x.data.autoDone);
+  const team = x.data.teams.find(t => t.group === '청4조');
+  ok('   보드의 직전 지점(CP1) 상태·시각 (prevStatus·prevArrivedAt·prevCompletedAt)', team.prevStatus === '완료' && !!team.prevArrivedAt && !!team.prevCompletedAt, team);
+  ok('   Log 에 조별로', /머물던 지점 완료 청4조:CP(4\+CP1|1\+CP4)/.test(lastLogText()), lastLogText());
+  x = H.post({ action: 'station.set', token: st, items: [{ group: '청4조', status: '도착' }] });
+  ok('🔴 같은 도착 확인을 또 누르면 그대로 — 보드에 held', x.ok && x.data.held.indexOf('청4조') >= 0, x.data.held);
+
+  // 한 묶음에 직전 지점이 따로 오면 그쪽을 따른다
+  H.post({ action: 'admin.progress.set', token: adm, session: S1, group: '청4조', checkpoint: 'CP2', status: '대기' });
+  H.post({ action: 'admin.progress.set', token: adm, session: S1, group: '청4조', checkpoint: 'CP1', status: '도착' });
+  x = H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP1', status: '도착', undo: true }, { checkpoint: 'CP2', status: '도착', undo: false }] });
+  ok('같은 묶음에 CP1 이 따로 오면(도착 유지) 연쇄로 닫지 않는다', x.ok && stateOf('CP1') === '도착' && stateOf('CP2') === '도착', rows());
+
+  // 설정을 끄면 예전대로
+  H.run("configSet_({isAdmin:true}, {key:'AUTO_COMPLETE_PREV', value:'FALSE', allowNew:true})");
+  ok('설정을 끄면 bootstrap 도 false', H.post({ action: 'bootstrap' }).data.config.AUTO_COMPLETE_PREV === false);
+  H.post({ action: 'admin.progress.set', token: adm, session: S1, group: '청4조', checkpoint: 'CP2', status: '대기' });
+  x = H.post({ action: 'progress.set', token: m1, items: [{ checkpoint: 'CP2', status: '도착', undo: false }] });
+  ok('🔴 꺼져 있으면 CP1 은 도착 그대로', x.ok && stateOf('CP1') === '도착' && stateOf('CP2') === '도착', rows());
+}
+
 section('🔴 새 행이 시트에 안 남으면 — 성공이 아니라 오류 (D-079)');
 {
   // 10/31 저녁: 관리자 정정 11건의 새 행이 시트에 남지 않았는데 "저장했습니다" 가 떴다(원인 미확정 —

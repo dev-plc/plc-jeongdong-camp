@@ -3,11 +3,11 @@
  * app.js · v25 · 2026-11-07
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v25   2026-11-07  다음 지점 도착이면 머물던 지점 완료(서버가 켜면) · 내 지점 직전 지점 문구·시각 · 1분마다·다시 보이면 새로 읽기 (D-087)
  *  v25   2026-11-07  도착 3분 뒤부터 완료 — 기록된 도착 시각 기준이라 어느 조원 폰에서든 같다 (D-085)
  *  v25   2026-11-06  "저장됨" · 첫 기록 유지(먼저 기록한 시각을 알림) · 완료 취소는 완료 시각을 지운다 · 스태프 취소에도 undo (D-082)
  *  v24   2026-11-06  조원도 도착·완료 — 서버가 MEMBER_PROGRESS 를 켜면 · 낡은 화면은 앞으로만 · 다시 보이면 코스를 새로 읽는다 (D-081)
  *  v23.3 2026-10-29  내 지점·진행: API.stationBoard·opsBoard 로 — 새로고침은 칸만 사본에서 (D-071)
- *  v22   2026-10-17  출발 안내(시청역 몇 번 출구) · 일지 사진 여러 장 (D-063·064)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -692,9 +692,17 @@
    * · 대기는 둘 다 비운다
    * · 🔴 점수·메모는 **건드리지 않는다.** 앱은 상태만 보낸다(점수 입력은 D-056 에서 뺐다).
    */
-  function applyProgressLocal(list, code, status) {
+  function applyProgressLocal(list, code, status, undo) {
     var now = UI.localIso();
+    // 다음 지점에 도착하면 머물던 지점은 완료 (D-087) — 서버가 AUTO_COMPLETE_PREV 를 켜 보낼 때만 미리 바꾼다.
+    // 옛 서버(v24)는 연쇄하지 않으므로, 미리 바꾸면 응답이 왔을 때 화면이 되돌아 튄다.
+    var target = list.filter(function (p) { return p.checkpoint === code; })[0];
+    var cascade = status === '도착' && !undo && state.boot.config.AUTO_COMPLETE_PREV === true &&
+      !!target && target.status === '대기';
     return list.map(function (p) {
+      if (cascade && p.checkpoint !== code && p.status === '도착') {
+        return Object.assign({}, p, { status: '완료', completedAt: p.completedAt || now, pending: true });
+      }
       if (p.checkpoint !== code) return p;
       var next = Object.assign({}, p, { status: status, pending: true });
       if (status === '대기') {
@@ -734,7 +742,7 @@
   /** undo — 확인 창을 거친 취소 버튼. 보통 버튼(false)은 서버가 **앞으로만** 받는다 (D-081). */
   function queueProgress(code, status, undo) {
     sendQueue[code] = { status: status, undo: !!undo };
-    state.progress = applyProgressLocal(state.progress, code, status);
+    state.progress = applyProgressLocal(state.progress, code, status, undo);
     paintCourse();
 
     if (!sending) flushProgress();
@@ -758,16 +766,20 @@
           var p = list.filter(function (x) { return x.checkpoint === it.checkpoint; })[0];
           return !it.undo && p && (p.held || p.status !== it.status);
         });
+        var nameOf = {};
+        (state.boot.checkpoints || []).forEach(function (c) { nameOf[c.code] = c.name; });
+        // 서버가 머물던 지점을 완료로 바꿨다 (D-087) — 조원이 "왜 완료가 됐지?" 하지 않게 알린다
+        var auto = list.filter(function (p) { return p.autoDone; })
+          .map(function (p) { return (nameOf[p.checkpoint] || p.checkpoint) + ' 완료로 바꿨습니다'; });
         if (held.length) {
-          var nameOf = {};
-          (state.boot.checkpoints || []).forEach(function (c) { nameOf[c.code] = c.name; });
           toast('먼저 기록된 것을 그대로 두었습니다 — ' + held.map(function (it) {
             var p = list.filter(function (x) { return x.checkpoint === it.checkpoint; })[0];
             var at = UI.hhmm(p.status === '완료' ? p.completedAt : p.arrivedAt);
             return (nameOf[it.checkpoint] || it.checkpoint) + ' ' + p.status + (at ? ' ' + at : '');
           }).join(', '));
         } else {
-          toast(items.length === 1 ? '기록했습니다: ' + items[0].status : items.length + '곳을 기록했습니다.');
+          toast((items.length === 1 ? '기록했습니다: ' + items[0].status : items.length + '곳을 기록했습니다.') +
+            (auto.length ? ' · ' + auto.join(', ') : ''));
         }
       })
       .catch(function (err) {
@@ -784,7 +796,7 @@
   // 다시 보이면 코스를 새로 읽는다 (D-081) — 조원 누구나 기록하므로, 폰을 켜면 다른 조원이 누른 것이 보여야 한다.
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden') { if (!sending) flushProgress(); return; }
-    if (document.visibilityState === 'visible') refreshCourse();
+    if (document.visibilityState === 'visible') { refreshCourse(); refreshStation(); }
   });
 
   /** 코스를 조용히 다시 읽는다. 보내는 중·잠금·큐가 있으면 화면이 서버보다 앞서 있으므로 건드리지 않는다. */
@@ -886,10 +898,13 @@
   function stationRow(t, canEdit) {
     var next = ST_NEXT[t.status];
     var undo = ST_UNDO[t.status];
+    // 직전 지점 문구 (D-087) — 상태마다 뜻이 드러나게, 시각을 붙여 언제 적힌 상태인지 보이게.
+    // 예전 "이화여고 박물관 도착" 은 아직 거기 있다는 뜻인지 헷갈렸다.
     var where = t.status !== '대기' ? ''
       : t.visitOrder === 1 ? '첫 지점'
-      : t.prevStatus === '완료' ? '🚶 오는 중 — ' + esc(t.prevName) + ' 완료'
-      : esc(t.prevName) + ' ' + esc(t.prevStatus);
+      : t.prevStatus === '완료' ? '🚶 오는 중 — ' + esc(t.prevName) + ' 완료' + (t.prevCompletedAt ? ' ' + esc(UI.hhmm(t.prevCompletedAt)) : '')
+      : t.prevStatus === '도착' ? '📍 ' + esc(t.prevName) + '에 있음' + (t.prevArrivedAt ? ' (도착 ' + esc(UI.hhmm(t.prevArrivedAt)) + ')' : '')
+      : '⏳ 아직 ' + esc(t.prevName) + ' 전';
     var times = (t.arrivedAt ? '도착 ' + esc(UI.hhmm(t.arrivedAt)) : '') +
       (t.completedAt ? ' · 완료 ' + esc(UI.hhmm(t.completedAt)) : '');
 
@@ -930,19 +945,57 @@
       if (!yes) return;
       UI.$$('button', row).forEach(function (b) { b.disabled = true; });
       UI.setBusy(btn, true, '저장 중…');
+      stationBusy = true;
       API.stationSet([item])
         .then(function (b) {
+          stationBusy = false;
           state.station = b;
           paintStation();
-          toast(item.group + ' ' + item.status);
+          toast(stationSavedText(b, item));
         })
         .catch(function (err) {
+          stationBusy = false;
           UI.$$('button', row).forEach(function (b) { b.disabled = false; });
           UI.setBusy(btn, false);
           toast(err.message, 'error');
         });
     });
   }
+
+  /**
+   * 스태프 기록 뒤 알림 (D-087).
+   * · 먼저 기록된 것이 있어 서버가 그대로 뒀으면(D-082) 그 상태·시각을 — 예전엔 누른 것만 말해 바뀐 줄 알았다.
+   * · 서버가 그 조가 머물던 지점을 완료로 바꿨으면 그것도.
+   */
+  function stationSavedText(b, item) {
+    var t = (b.teams || []).filter(function (x) { return x.group === item.group; })[0];
+    var held = !item.undo && !!t && ((b.held || []).indexOf(item.group) >= 0 || t.status !== item.status);
+    if (held) {
+      var at = UI.hhmm(t.status === '완료' ? t.completedAt : t.arrivedAt);
+      return item.group + ' — 먼저 기록된 것을 그대로 두었습니다 (' + t.status + (at ? ' ' + at : '') + ')';
+    }
+    var nameOf = {};
+    (state.boot.checkpoints || []).forEach(function (c) { nameOf[c.code] = c.name; });
+    var auto = ((b.autoDone || {})[item.group] || []).map(function (c) { return nameOf[c] || c; });
+    return item.group + ' ' + item.status + (auto.length ? ' · ' + auto.join(', ') + ' 완료로 바꿨습니다' : '');
+  }
+
+  /**
+   * 내 지점을 조용히 다시 읽는다 (D-087). 조원·다른 스태프도 기록하므로, 켜 둔 화면이 낡으면 이미 완료한 조를
+   * "대기" 로 보고 "도착 확인" 을 누르게 된다. 다시 보일 때와 1분마다. 저장 중·확인 창이 떠 있으면 건드리지 않는다.
+   */
+  var stationBusy = false;
+  function refreshStation() {
+    var quiet = function () {
+      return state.view === 'course' && !!state.me && modeOf(state.me) === 'station' && !state.stationAll &&
+        !stationBusy && !!state.station && !document.querySelector('.modal') && document.visibilityState !== 'hidden';
+    };
+    if (!quiet()) return;
+    API.stationBoard(stationCp())
+      .then(function (b) { if (quiet()) { state.station = b; paintStation(); } })
+      .catch(function () { /* 다음에 또 읽는다 */ });
+  }
+  setInterval(refreshStation, 60000);
 
   // ------------------------------------------------------------ 진행 (교역자·스태프, 읽기 전용)
 
