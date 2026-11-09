@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
  * ────────────────────────────────────────────────────────────────
- * build-demo.js · v25 · 2026-11-07
+ * build-demo.js · v25 · 2026-11-09
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v25   2026-11-09  데모 사진 설정도 실제와 같게 — 긴 변 3000·품질 0.9·한 장 2.5MB 목표 (D-089)
  *  v25   2026-11-07  가짜 서버도 다음 지점 도착이면 머물던 지점 완료(AUTO_COMPLETE_PREV) · 스태프 보드 직전 시각·held (D-087)
  *  v25   2026-11-06  가짜 서버도 첫 기록 유지(같거나 앞선 상태면 그대로, held) · 완료 취소는 완료 시각을 지운다 (D-082)
  *  v24   2026-11-06  가짜 서버도 조원 기록(MEMBER_PROGRESS)·앞으로만 — 서버와 같은 규칙 (D-081)
  *  v22.1 2026-10-21  지점 미션을 예시 문구로 — 실제 미션은 공개 데모에 두지 않는다 (D-066)
- *  v22   2026-10-17  출발 안내 · 일지 사진 여러 장과 사진마다 ★ — 가짜 서버도 같은 규칙 (D-063·064)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -773,8 +773,9 @@ body { padding-top: var(--demobar-h, 76px); }
 window.APP_CONFIG = {
   API_BASE: window.__DEMO_API,
   TOKEN_KEY: 'plc_jd_token',
-  PHOTO_MAX_EDGE: 1600,
-  PHOTO_QUALITY: 0.8,
+  PHOTO_MAX_EDGE: 3000,              // 실제 config.js 와 같게 (D-089)
+  PHOTO_QUALITY: 0.9,
+  PHOTO_TARGET_BYTES: 2500000,
   BOOTSTRAP_TTL: 1
 };
 </script>

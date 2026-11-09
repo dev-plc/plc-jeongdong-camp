@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v25 · 2026-11-07
+ * ui.js · v25 · 2026-11-09
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v25   2026-11-09  사진을 더 크게 — 한 장 목표 바이트를 넘으면 품질 → 긴 변 순으로 낮춰 다시 만든다 (D-089)
  *  v25   2026-11-07  40분 넘게 소식 없는 조를 이름으로 — 누르면 그 조 카드로 스크롤 (D-084)
  *  v23.5 2026-10-31  사진 띠 ‹ › (PC) · 크게 보기에서도 넘기기 — 일지·검수·시상 사진 (D-073)
  *  v22   2026-10-17  일지 사진 여러 장 — 옆으로 넘기는 띠 · "📷 N장" (D-064)
  *  v20.5 2026-10-17  지도 주소 검색어 다듬기 — 괄호 메모·"대한민국" 을 뺀다 (D-061)
- *  v20.4 2026-10-17  미션 여러 줄 · ※ 주의 줄 강조 · 지도는 좌표 → 주소 → 이름 순 (D-061)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -305,7 +305,12 @@
   /**
    * 사진을 업로드 전에 줄인다.
    * 원본 그대로 보내면 GAS 요청 한도와 Drive 용량을 금방 먹고, 현장 LTE 에서 업로드가 느리다.
-   * 긴 변 PHOTO_MAX_EDGE px, JPEG 품질 PHOTO_QUALITY 로 맞춘다.
+   * 긴 변 PHOTO_MAX_EDGE px, JPEG 품질 PHOTO_QUALITY 로 맞춘다. 작은 사진은 키우지 않는다.
+   *
+   * 🔴 한 장이 PHOTO_TARGET_BYTES 를 넘으면 **품질 → 긴 변** 순으로 낮춰 다시 만든다 (D-089).
+   *    사진을 3000px·0.9 로 키우자 잎·자갈처럼 잔무늬가 많은 사진은 서버 한도(4MB)에 걸릴 수 있다.
+   *    품질은 0.8·0.7 까지, 긴 변은 0.8배씩 1600px 까지만 낮춘다 — 그래도 넘으면 서버가 알린다.
+   *    캔버스로 다시 그리므로 촬영 위치(GPS) 같은 EXIF 는 빠진다(갤러리 사진은 링크 공개다).
    */
   function resizePhoto(file) {
     return new Promise(function (resolve, reject) {
@@ -327,18 +332,34 @@
       var img = new Image();
 
       img.onload = function () {
-        var maxEdge = CFG.PHOTO_MAX_EDGE;
-        var scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
-        var w = Math.round(img.width * scale);
-        var h = Math.round(img.height * scale);
+        var target = CFG.PHOTO_TARGET_BYTES || 0;
+        var minEdge = 1600;
+        var edge = Math.min(CFG.PHOTO_MAX_EDGE, Math.max(img.width, img.height));   // 키우지 않는다
+        var dataUrl = '';
 
-        var canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        /** 긴 변 e, 품질 q 로 한 번 만든다. e 는 위에서 사진 자신의 긴 변을 넘지 않게 잡았다 — 키우지 않는다. */
+        function encode(e, q) {
+          var scale = e / Math.max(img.width, img.height);
+          var canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          return canvas.toDataURL('image/jpeg', q);
+        }
+        var bytesOf = function (d) { return Math.round((d.length - d.indexOf(',') - 1) * 0.75); };
+
+        // 품질 먼저(0.9 → 0.8 → 0.7), 그다음 긴 변(0.8배씩, 1600 까지). 목표가 없으면 한 번만.
+        var qs = [CFG.PHOTO_QUALITY, 0.8, 0.7].filter(function (q, i, a) { return q <= CFG.PHOTO_QUALITY && a.indexOf(q) === i; });
+        for (;;) {
+          for (var i = 0; i < qs.length; i++) {
+            dataUrl = encode(edge, qs[i]);
+            if (!target || bytesOf(dataUrl) <= target) break;
+          }
+          if (!target || bytesOf(dataUrl) <= target || edge <= minEdge) break;
+          edge = Math.max(minEdge, Math.round(edge * 0.8));
+        }
         URL.revokeObjectURL(url);
 
-        var dataUrl = canvas.toDataURL('image/jpeg', CFG.PHOTO_QUALITY);
         var base64 = dataUrl.split(',')[1];
         resolve({
           name: file.name || 'photo.jpg',
