@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Auth.gs · v23 · 2026-10-21
+ * Auth.gs · v26 · 2026-11-10
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v26   2026-11-10  조의 진행자는 캠티 우선, 없으면 조장 — 팀에 leaderRole (D-090)
  *  v23   2026-10-21  캠프 모드에서 사본에 오른 사람은 GAS 로그인도 사본과 같은 토큰 (D-068)
  *  v22   2026-10-17  조 정보에 출발 안내(courseNote) — Courses `비고` (D-063)
  *  v21   2026-10-17  로그인: 참여 일자가 다르면 다른 사람 — 쓸 수 있는 회차 중 가까운 회차 행으로 (D-062)
  *  v19   2026-09-30  명단 사본 — 로그인 키·날짜 고정 토큰 (D-055)
- *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_AUTH = 'v23';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_AUTH = 'v26';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Auth.gs — 인증 / 토큰 / 권한
@@ -462,6 +462,7 @@ function buildMe_(p) {
       color: (team && str_(team['색상'])) || '#984534',
       meetingPoint: team ? str_(team['집결장소']) : '',
       leaderName: leaderNameOf_(members),
+      leaderRole: leaderRoleOf_(members),   // '캠티' | '조장' — 화면의 "캠티 홍길동" (D-090)
       course: courseName,
       route: course.route,
       // 출발 안내 — Courses `비고` (예: "시청역 3번 출구", D-063). 참가자 화면에 그대로 보인다.
@@ -486,11 +487,29 @@ function buildMe_(p) {
   return out;
 }
 
-function leaderNameOf_(members) {
-  for (var i = 0; i < members.length; i++) {
-    if (str_(members[i][COL.ROLE]) === '조장') return displayName_(members[i][COL.NAME]);
+/**
+ * 조를 이끄는 사람 — **캠티 우선, 없으면 조장** (D-090). 캠티가 진행하는 회차와 조장이 진행하는 회차가 따로 있다.
+ * 둘 다 없으면 null.
+ */
+function leaderOf_(members) {
+  var roles = ['캠티', '조장'];
+  for (var k = 0; k < roles.length; k++) {
+    for (var i = 0; i < members.length; i++) {
+      if (str_(members[i][COL.ROLE]) === roles[k]) return { name: displayName_(members[i][COL.NAME]), role: roles[k] };
+    }
   }
-  return '';
+  return null;
+}
+
+function leaderNameOf_(members) {
+  var l = leaderOf_(members);
+  return l ? l.name : '';
+}
+
+/** 진행자 역할 '캠티' | '조장'. 없으면 '조장'(화면 표기의 기본값). */
+function leaderRoleOf_(members) {
+  var l = leaderOf_(members);
+  return l ? l.role : '조장';
 }
 
 /**
@@ -555,4 +574,4 @@ function defaultRoute_() {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_AUTH = 'v23';
+var END_AUTH = 'v26';

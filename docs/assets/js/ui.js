@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v25 · 2026-11-09
+ * ui.js · v26 · 2026-11-10
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v26   2026-11-10  지점 점수(0~100) 공용 — 모드·입력 칸·표시 · 조 카드 점수 · 진행자 "캠티/조장" (D-090)
  *  v25   2026-11-09  사진을 더 크게 — 한 장 목표 바이트를 넘으면 품질 → 긴 변 순으로 낮춰 다시 만든다 (D-089)
  *  v25   2026-11-07  40분 넘게 소식 없는 조를 이름으로 — 누르면 그 조 카드로 스크롤 (D-084)
  *  v23.5 2026-10-31  사진 띠 ‹ › (PC) · 크게 보기에서도 넘기기 — 일지·검수·시상 사진 (D-073)
  *  v22   2026-10-17  일지 사진 여러 장 — 옆으로 넘기는 띠 · "📷 N장" (D-064)
- *  v20.5 2026-10-17  지도 주소 검색어 다듬기 — 괄호 메모·"대한민국" 을 뺀다 (D-061)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -609,6 +609,7 @@
    *
    * opts.showSession — 회차 필터가 '전체' 일 때만 회차를 적는다.
    * opts.editable    — 운영 콘솔: 칸을 누르면 정정 창 (D-052). 교역자 화면은 읽기 전용.
+   * opts.showScore   — 점수 스위치가 켜졌을 때만 칸에 "85점" (D-090).
    */
   function teamCard(t, checkpoints, opts) {
     var o = opts || {};
@@ -628,7 +629,8 @@
       var inner =
         '<span class="step__no">' + (i + 1) + '</span>' +
         '<span class="step__name">' + esc(nameOf[code] || code) + '</span>' +
-        '<span class="step__state">' + esc(status) + (time ? ' ' + esc(time) : '') + '</span>';
+        '<span class="step__state">' + esc(status) + (time ? ' ' + esc(time) : '') +
+          (o.showScore && hasScore(cell.score) ? ' · ' + esc(cell.score) + '점' : '') + '</span>';
       var title = (nameOf[code] || code) + ' · ' + status;
       return '<li class="step step--' + cls + '" title="' + esc(title) + '">' +
         (o.editable
@@ -649,7 +651,7 @@
         '<div><strong>' + esc(t.name) + '</strong>' +
           '<span class="team-card__meta">' +
             (o.showSession ? esc(t.session) + ' · ' : '') +
-            '조장 ' + esc(t.leaderName || '—') + ' · ' + t.memberCount + '명</span></div>' +
+            esc(leaderLabel(t)) + ' · ' + t.memberCount + '명</span></div>' +
         '<span class="chip chip--' + (finished ? 'done' : done ? 'here' : 'wait') + '">' +
           done + '/' + total + '</span>' +
       '</header>' +
@@ -738,6 +740,50 @@
     setTimeout(function () { card.classList.remove('is-jumped'); }, 2400);
   });
 
+  // ---------------------------------------------------------------- 지점 점수 (D-090)
+  //
+  // 기획이 정해지기 전이라 서버 스위치 SCORE_INPUT 로 고른다 — 기본 OFF 면 점수를 **그리지 않는다**(D-056 과 같다).
+  // 옛 서버(v25)엔 키가 없어 OFF 로 읽힌다 → 앱이 먼저 나가도 안전하다.
+
+  /** 'OFF' | 'STAFF' | 'CAMTI' | 'BOTH'. 모르는 값은 OFF. */
+  function scoreMode(config) {
+    var v = String((config && config.SCORE_INPUT) || 'OFF').toUpperCase();
+    return ['STAFF', 'CAMTI', 'BOTH'].indexOf(v) >= 0 ? v : 'OFF';
+  }
+  function scoreOn(config) { return scoreMode(config) !== 'OFF'; }
+  function hasScore(s) { return s !== null && s !== undefined && s !== ''; }
+
+  /** 입력값 → 0~100 정수, 빈 칸은 ''(지우기), 그 밖은 null. 소수·음수·101 은 null. */
+  function parseScore(raw) {
+    var s = String(raw === null || raw === undefined ? '' : raw).trim();
+    if (s === '') return '';
+    if (!/^\d{1,3}$/.test(s)) return null;
+    var n = Number(s);
+    return n <= 100 ? n : null;
+  }
+
+  /**
+   * 점수 입력 줄 — 숫자 칸(0~100) + 저장 + 지우기. attrs 는 이 줄을 가리킬 data-* 속성 문자열.
+   * locked 면 칸과 단추를 잠그고 note 를 붙인다(예: 스태프가 넣은 점수).
+   */
+  function scoreFormHtml(score, attrs, locked, note) {
+    var off = locked ? ' disabled' : '';
+    return '<div class="score-form"' + (attrs || '') + '>' +
+      '<label class="score-form__label"><span>점수</span>' +
+        '<input class="input score-form__input" type="number" inputmode="numeric" min="0" max="100" step="1" ' +
+          'placeholder="0~100" aria-label="점수 (0~100)" value="' + (hasScore(score) ? esc(score) : '') + '"' + off + '>' +
+        '<span class="score-form__max">/ 100</span></label>' +
+      '<button type="button" class="btn btn--primary btn--sm" data-score-save' + off + '>저장</button>' +
+      (hasScore(score) ? '<button type="button" class="btn btn--text" data-score-clear' + off + '>지우기</button>' : '') +
+      (note ? '<span class="score-form__note">' + esc(note) + '</span>' : '') +
+    '</div>';
+  }
+
+  /** "캠티 홍길동" · "조장 홍길동" — 서버가 leaderRole 을 안 주면(옛 서버) 조장 (D-090). */
+  function leaderLabel(t) {
+    return (t && t.leaderRole === '캠티' ? '캠티' : '조장') + ' ' + ((t && t.leaderName) || '—');
+  }
+
   global.UI = {
     $: $, $$: $$, esc: esc, nl2br: nl2br, telLinks: telLinks, missionHtml: missionHtml, mapUrl: mapUrl,
     journalPhotos: journalPhotos, journalPhotosHtml: journalPhotosHtml,
@@ -746,6 +792,8 @@
     resizePhoto: resizePhoto, hhmm: hhmm, localIso: localIso, prettyDateTime: prettyDateTime,
     localDate: localDate, hmToMin: hmToMin, minutesSince: minutesSince, agoText: agoText,
     perfPanel: perfPanel, perfEnabled: perfEnabled,
-    STALE_MIN: STALE_MIN, teamCard: teamCard, teamGrid: teamGrid, sortTeams: sortTeams
+    STALE_MIN: STALE_MIN, teamCard: teamCard, teamGrid: teamGrid, sortTeams: sortTeams,
+    scoreMode: scoreMode, scoreOn: scoreOn, hasScore: hasScore, parseScore: parseScore,
+    scoreFormHtml: scoreFormHtml, leaderLabel: leaderLabel
   };
 })(window);

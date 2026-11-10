@@ -1,13 +1,13 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v25 · 2026-11-07
+ * app.js · v26 · 2026-11-10
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v26   2026-11-10  지점 점수(0~100, 스위치) — 거점 스태프·캠티 입력, 코스에 "⭐ N점" · 진행자 "캠티/조장" (D-090)
  *  v25   2026-11-07  다음 지점 도착이면 머물던 지점 완료(서버가 켜면) · 내 지점 직전 지점 문구·시각 · 1분마다·다시 보이면 새로 읽기 (D-087)
  *  v25   2026-11-07  도착 3분 뒤부터 완료 — 기록된 도착 시각 기준이라 어느 조원 폰에서든 같다 (D-085)
  *  v25   2026-11-06  "저장됨" · 첫 기록 유지(먼저 기록한 시각을 알림) · 완료 취소는 완료 시각을 지운다 · 스태프 취소에도 undo (D-082)
  *  v24   2026-11-06  조원도 도착·완료 — 서버가 MEMBER_PROGRESS 를 켜면 · 낡은 화면은 앞으로만 · 다시 보이면 코스를 새로 읽는다 (D-081)
- *  v23.3 2026-10-29  내 지점·진행: API.stationBoard·opsBoard 로 — 새로고침은 칸만 사본에서 (D-071)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -376,7 +376,7 @@
         '<dl class="kv">' +
           '<div><dt>' + esc(L('name', '이름')) + '</dt><dd>' + esc(me.participant.name) +
             (me.isLeader ? ' <span class="badge">조장</span>' : '') + '</dd></div>' +
-          (team && team.leaderName ? '<div><dt>조장</dt><dd>' + esc(team.leaderName) + '</dd></div>' : '') +
+          (team && team.leaderName ? '<div><dt>' + (team.leaderRole === '캠티' ? '캠티' : '조장') + '</dt><dd>' + esc(team.leaderName) + '</dd></div>' : '') +
           (team && team.meetingPoint ? '<div><dt>집결</dt><dd>' + esc(team.meetingPoint) + '</dd></div>' : '') +
           // 출발 안내 — 코스 비고(예: "시청역 3번 출구", D-063). 지하철에서 내리기 전에 보는 곳이 여기다.
           (team && team.courseNote ? '<div><dt>출발</dt><dd>' + esc(team.courseNote) + '</dd></div>' : '') +
@@ -582,6 +582,7 @@
     var byCode = {};
     (state.boot.checkpoints || []).forEach(function (c) { byCode[c.code] = c; });
     var canEdit = canRecord() && state.boot.config.PROGRESS_OPEN;
+    var scoreHere = canEdit && camtiScores();   // 캠티 점수 칸 (D-090)
     var next = nextCheckpoint(state.progress);
     var done = state.progress.filter(function (p) { return p.status === '완료'; }).length;
 
@@ -598,7 +599,7 @@
         (p.status === '완료'
           ? '<p class="cp__sum">' + times + '</p>'
           : (cp.summary ? '<p class="cp__sum">' + esc(cp.summary) + '</p>' : '')) +
-        savedLine(p) + '</div>' +
+        savedLine(p) + scoreLine(p) + '</div>' +
         '<span class="chip chip--' + statusClass(p.status) + '">' + esc(p.status) +
         (p.pending ? ' · 저장 중' : '') + '</span>';
 
@@ -613,7 +614,8 @@
             : '') +
           (cp.openHours ? '<span class="cp__hours">' + esc(cp.openHours) + '</span>' : '') +
         '</div>' +
-        (canEdit ? courseActions(p) : '');
+        (canEdit ? courseActions(p) : '') +
+        (scoreHere && (p.status !== '대기' || UI.hasScore(p.score)) ? courseScoreForm(p) : '');
 
       // 화면은 이미 바뀌었지만 아직 서버에 안 갔다 — 그 사실을 숨기지 않는다.
       var attrs = ' id="cp-' + esc(p.checkpoint) + '" data-code="' + esc(p.checkpoint) + '"' +
@@ -660,7 +662,8 @@
         (canRecord()
           ? (state.boot.config.PROGRESS_OPEN
               ? ' 도착하면 "도착했어요", 끝나면 "완료했어요" 를 눌러 주세요. 완료는 도착 ' + MIN_STAY_MIN + '분 뒤부터 눌립니다.' +
-                (state.boot.config.MEMBER_PROGRESS === true ? ' 조원 누구나 누를 수 있고, 한 사람이 누르면 조 전체에 반영됩니다.' : '')
+                (state.boot.config.MEMBER_PROGRESS === true ? ' 조원 누구나 누를 수 있고, 한 사람이 누르면 조 전체에 반영됩니다.' : '') +
+                (scoreHere ? ' 점수(0~100)는 도착한 지점 카드에서 넣습니다.' : '')
               : ' 진행 기록은 마감되었습니다.')
           : ' 상태는 조장이 기록합니다.') + '</p></section>' +
       summary +
@@ -815,7 +818,95 @@
       .catch(function () { /* 다음에 다시 보일 때 또 읽는다 */ });
   }
 
+  // ---------------------------------------------------------------- 지점 점수 (D-090)
+  //
+  // 기획이 정해지기 전이라 서버 스위치 SCORE_INPUT 로 고른다(기본 OFF — 아무것도 안 그린다).
+  // 캠티(역할 '캠티')는 자기 조 코스에서, 거점 스태프는 내 지점에서 0~100 을 넣는다. 스태프 점수가 우선이다(서버).
+  // 상태 큐(낙관적 UI)와 섞지 않는다 — 점수는 바로 보내고 응답을 기다린다. 자주 누르는 것이 아니다.
+
+  /** 이 사람이 코스에서 점수를 넣는가 — 스위치 CAMTI·BOTH 이고 역할 '캠티' 인 진행자. */
+  function camtiScores() {
+    var m = UI.scoreMode(state.boot.config);
+    return (m === 'CAMTI' || m === 'BOTH') && !!state.me.isLeader &&
+      !!state.me.participant && state.me.participant.role === '캠티';
+  }
+
+  /** 코스 카드의 "⭐ 점수 85점" — 스위치가 켜졌을 때만. */
+  function scoreLine(p) {
+    return UI.scoreOn(state.boot.config) && UI.hasScore(p.score)
+      ? '<p class="cp__score">⭐ 점수 ' + esc(p.score) + '점</p>' : '';
+  }
+
+  /** 캠티 점수 칸. 스태프가 넣은 점수는 서버가 바꾸지 않으므로 잠근다(BOTH). */
+  function courseScoreForm(p) {
+    var staff = p.scoreSource === '스태프' && UI.hasScore(p.score);
+    return UI.scoreFormHtml(p.score, ' data-score-cp="' + esc(p.checkpoint) + '"', staff, staff ? '스태프가 넣은 점수' : '');
+  }
+
+  /** 점수 줄의 저장·지우기 → { form, score } (점수가 틀리면 알리고 null). */
+  function readScore(btn, holderAttr) {
+    var form = btn.closest('[' + holderAttr + ']');
+    if (!form) return null;
+    var clear = btn.hasAttribute('data-score-clear');
+    var score = clear ? '' : UI.parseScore(form.querySelector('input').value);
+    if (score === null) { toast('점수는 0~100 사이의 정수로 넣어 주세요.', 'error'); return null; }
+    if (score === '' && !clear) { toast('점수를 넣어 주세요. 지우려면 "지우기".', 'error'); return null; }
+    return { form: form, score: score };
+  }
+
+  function lockScoreForm(form, btn, on) {
+    UI.$$('button, input', form).forEach(function (el) { el.disabled = on; });
+    UI.setBusy(btn, on, '저장 중…');
+  }
+
+  /** 캠티 — 지점 점수만 보낸다(상태 없음). 응답의 점수·출처만 옮긴다 — 보내는 중인 도착·완료를 덮지 않게. */
+  function saveCourseScore(btn) {
+    var r = readScore(btn, 'data-score-cp');
+    if (!r) return;
+    var code = r.form.getAttribute('data-score-cp');
+    lockScoreForm(r.form, btn, true);
+    API.progressSetBatch([{ checkpoint: code, score: r.score }])
+      .then(function (list) {
+        var byCp = {};
+        list.forEach(function (x) { byCp[x.checkpoint] = x; });
+        state.progress = state.progress.map(function (p) {
+          var x = byCp[p.checkpoint];
+          return x ? Object.assign({}, p, { score: x.score, scoreSource: x.scoreSource }) : p;
+        });
+        if (!sending && !Object.keys(sendQueue).length) lastServerList = list;
+        paintCourse();
+        var cp = (state.boot.checkpoints || []).filter(function (c) { return c.code === code; })[0];
+        var name = cp ? cp.name : code;
+        var got = byCp[code] || {};
+        if (r.score !== '' && got.score !== r.score && got.scoreSource === '스태프') {
+          toast('스태프가 넣은 점수(' + got.score + '점)라 바꾸지 않았습니다.', 'error');
+        } else {
+          toast(name + (r.score === '' ? ' 점수를 지웠습니다.' : ' 점수 ' + r.score + '점 저장'));
+        }
+      })
+      .catch(function (err) { lockScoreForm(r.form, btn, false); toast(err.message, 'error'); });
+  }
+
+  /** 거점 스태프 — 그 조의 이 지점 점수. 응답(내 지점 보드)으로 다시 그린다. */
+  function saveStationScore(btn) {
+    var r = readScore(btn, 'data-score-group');
+    if (!r) return;
+    var group = r.form.getAttribute('data-score-group');
+    lockScoreForm(r.form, btn, true);
+    stationBusy = true;
+    API.stationSet([{ group: group, score: r.score }])
+      .then(function (b) {
+        stationBusy = false;
+        state.station = b;
+        paintStation();
+        toast(group + (r.score === '' ? ' 점수를 지웠습니다.' : ' 점수 ' + r.score + '점 저장'));
+      })
+      .catch(function (err) { stationBusy = false; lockScoreForm(r.form, btn, false); toast(err.message, 'error'); });
+  }
+
   function onProgressClick(e) {
+    var sb = e.target.closest('[data-score-save],[data-score-clear]');
+    if (sb) { saveCourseScore(sb); return; }
     // 카드 자체에도 data-status(현재 상태)가 달려 있다 — 버튼만 잡는다.
     var btn = e.target.closest('button[data-status]');
     if (!btn) return;
@@ -880,7 +971,9 @@
     setView(
       '<section class="section-head"><h2>📍 ' + esc(cp.name) + '</h2>' +
         '<p class="hint">' + esc(b.session) + ' · 이 지점에 오는 순서대로입니다. 조가 오면 "도착 확인", ' +
-        '미션이 끝나면 "완료".</p></section>' +
+        '미션이 끝나면 "완료".' +
+        (['STAFF', 'BOTH'].indexOf(UI.scoreMode(state.boot.config)) >= 0 ? ' 점수(0~100)는 도착한 조 아래 칸에 넣고 "저장".' : '') +
+        '</p></section>' +
       UI.missionHtml(cp.mission) +
       '<div class="station-bar">' +
         '<span class="course-summary__count">도착 ' + here + '/' + n + ' · 완료 ' + done + '/' + n + '</span>' +
@@ -898,6 +991,8 @@
   function stationRow(t, canEdit) {
     var next = ST_NEXT[t.status];
     var undo = ST_UNDO[t.status];
+    var sm = UI.scoreMode(state.boot.config);
+    var staffScores = sm === 'STAFF' || sm === 'BOTH';   // 거점 스태프가 점수를 넣는가 (D-090)
     // 직전 지점 문구 (D-087) — 상태마다 뜻이 드러나게, 시각을 붙여 언제 적힌 상태인지 보이게.
     // 예전 "이화여고 박물관 도착" 은 아직 거기 있다는 뜻인지 헷갈렸다.
     var where = t.status !== '대기' ? ''
@@ -912,8 +1007,9 @@
       '<header class="st-row__head">' +
         '<span class="cp__no">' + t.visitOrder + '</span>' +
         '<div><strong>' + esc(t.name) + '</strong>' +
-          '<span class="team-card__meta">조장 ' + esc(t.leaderName || '—') + ' · ' + t.memberCount + '명' +
-            (where ? ' · ' + where : '') + (times ? ' · ' + times : '') + '</span></div>' +
+          '<span class="team-card__meta">' + esc(UI.leaderLabel(t)) + ' · ' + t.memberCount + '명' +
+            (where ? ' · ' + where : '') + (times ? ' · ' + times : '') +
+            (UI.scoreOn(state.boot.config) && !staffScores && UI.hasScore(t.score) ? ' · ⭐ ' + esc(t.score) + '점' : '') + '</span></div>' +
         '<span class="chip chip--' + statusClass(t.status) + '">' + esc(t.status) + '</span>' +
       '</header>' +
       (canEdit
@@ -924,11 +1020,16 @@
               ' data-ask="' + esc(undo.ask) + '">' + esc(undo.label) + '</button>' : '') +
           '</div>'
         : '') +
+      // 거점 스태프 점수 (D-090) — 스위치가 STAFF·BOTH 일 때, 도착한 조(또는 점수가 이미 있는 조)에
+      (canEdit && staffScores && (t.status !== '대기' || UI.hasScore(t.score))
+        ? UI.scoreFormHtml(t.score, ' data-score-group="' + esc(t.group) + '"') : '') +
     '</article>';
   }
 
   function onStationClick(e) {
     if (state.view !== 'course' || modeOf(state.me) !== 'station' || state.stationAll) return;
+    var sb = e.target.closest('[data-score-save],[data-score-clear]');
+    if (sb) { saveStationScore(sb); return; }
     var btn = e.target.closest('[data-st]');
     if (!btn) return;
     var act = btn.getAttribute('data-st');
@@ -1008,7 +1109,7 @@
 
   function paintBoard(b) {
     var isStation = modeOf(state.me) === 'station';
-    var grid = UI.teamGrid(b.teams, b.checkpoints, {});
+    var grid = UI.teamGrid(b.teams, b.checkpoints, { showScore: UI.scoreOn(state.boot.config) });
     setView(
       '<section class="section-head"><h2>진행 현황</h2>' +
         '<p class="hint">' + esc(b.session) + ' · 조마다 코스 순서대로입니다. 완주 전인데 ' + UI.STALE_MIN +

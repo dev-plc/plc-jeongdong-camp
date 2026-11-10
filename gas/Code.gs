@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Code.gs · v25 · 2026-11-07
+ * Code.gs · v26 · 2026-11-10
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v26   2026-11-10  지점 점수 스위치 SCORE_INPUT(끔·스태프·캠티·둘 다) · 캠티 기록 출처 · 진행자 역할(leaderRole) (D-090)
  *  v25   2026-11-07  다음 지점에 도착하면 머물던 지점은 완료(AUTO_COMPLETE_PREV) · 스태프 보드에 직전 지점 시각 (D-087)
  *  v25   2026-11-06  첫 기록 유지 — 같거나 앞선 상태면 손대지 않는다 · 완료 취소는 완료 시각을 지운다 (D-082)
  *  v24   2026-11-06  조원도 도착·완료(MEMBER_PROGRESS) · 낡은 화면은 앞으로만 · 쓴 뒤 다시 읽어 확인 (D-081·079)
  *  v23   2026-10-21  내 정보: 캠프 모드면 사본 토큰(campToken)을 건네 앱이 사본 경로로 옮긴다 (D-068)
- *  v22   2026-10-17  공개 설정에 PHOTO_MAX_COUNT — 앱이 사진 장수 한도를 안다 (D-064)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_CODE = 'v25';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_CODE = 'v26';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Code.gs — 웹앱 진입점 및 라우팅
@@ -273,10 +273,25 @@ function publicConfig_() {
     MEMBER_PROGRESS: confBool_('MEMBER_PROGRESS', true),
     // 다음 지점에 도착하면 머물던 지점을 완료로 (D-087). 앱은 true 일 때만 화면에서 미리 바꾼다 — 옛 서버엔 키가 없다.
     AUTO_COMPLETE_PREV: confBool_('AUTO_COMPLETE_PREV', true),
+    // 지점 점수를 누가 넣나 (D-090) — OFF·STAFF·CAMTI·BOTH. 앱은 OFF 가 아닐 때만 점수를 그린다(옛 서버엔 키가 없다).
+    SCORE_INPUT: scoreInput_(),
     SHOW_FEE: confBool_('SHOW_FEE', true),
     PHOTO_MAX_COUNT: photoMaxCount_(),   // 일지 한 편의 사진 수 (D-064)
     NOTICE_TICKER: confStr_('NOTICE_TICKER', '')
   };
+}
+
+/**
+ * 지점 점수(0~100)를 누가 넣나 (D-090). 기획이 정해지기 전이라 **기본은 끔**이다.
+ *   OFF   — 아무도. 앱은 점수 칸·표시를 그리지 않는다(D-056 과 같다)
+ *   STAFF — 거점 스태프 "내 지점"
+ *   CAMTI — 역할 '캠티' 인 진행자가 자기 조 코스에서 (조장이 진행하는 회차엔 캠티가 없다)
+ *   BOTH  — 둘 다. 스태프 점수가 우선(writeProgress_)
+ * 모르는 값은 OFF — 오타로 켜지지 않게.
+ */
+function scoreInput_() {
+  var v = confStr_('SCORE_INPUT', 'OFF').toUpperCase();
+  return ['STAFF', 'CAMTI', 'BOTH'].indexOf(v) >= 0 ? v : 'OFF';
 }
 
 function checkpoints_() {
@@ -568,7 +583,7 @@ function normalizeProgressItem_(item, statusOptional) {
 /**
  * 진행 행을 쓴다 — 조장·스태프·관리자가 **같은 규칙**으로 (D-052).
  * entries: [{ session, group, code, status?, hasScore, score, hasMemo, memo }]
- * actor:   '조장' | '스태프' | '관리자' — 점수를 넣으면 `점수출처` 에 남는다.
+ * actor:   '조장' | '캠티' | '조원' | '스태프' | '관리자' — 점수를 넣으면 `점수출처` 에 남는다.
  *
  * 🔴 **스태프 점수가 우선이다.** 조장이 스태프가 넣은 점수를 바꾸려 하면 **점수만** 무시하고
  *    상태는 기록한다. 거절(throw)하면 같은 배치로 보낸 도착·완료까지 날아간다 — 배치는
@@ -641,7 +656,7 @@ function writeProgress_(actor, pid, entries, T) {
         }
       }
       if (e.hasScore) {
-        if ((actor === '조장' || actor === '조원') && existing && str_(existing['점수출처']) === '스태프') {
+        if ((actor === '조장' || actor === '조원' || actor === '캠티') && existing && str_(existing['점수출처']) === '스태프') {
           ignored.push(e.code);
         } else {
           patch['퀴즈점수'] = e.score;
@@ -738,8 +753,17 @@ function progressSet_(ctx, body) {
 
   // 🔴 **전부 먼저 검증한다.** 쓰기 중간에 던지면 일부만 들어간 채로 끝난다.
   var auto = confBool_('AUTO_COMPLETE_PREV', true);
+  // 점수는 스위치가 CAMTI·BOTH 이고 **역할 '캠티'** 인 진행자만 (D-090). 참가자 조장·조원은 상태만.
+  var scoreMode = scoreInput_();
+  var canScore = ctx.isLeader && ctx.role === '캠티' && (scoreMode === 'CAMTI' || scoreMode === 'BOTH');
   var items = raw.map(function (it) {
-    var n = normalizeProgressItem_(it, false);
+    var scoreOnly = it.score !== undefined && !str_(it.status);   // 캠티가 점수만 넣는 경우 — 지점은 있어야 한다
+    var n = normalizeProgressItem_(it, scoreOnly);
+    if (scoreOnly && !n.code) throw new AppError('BAD_REQUEST', '지점을 선택해 주세요.');
+    if (n.hasScore && !canScore) {
+      throw new AppError('FORBIDDEN', scoreMode === 'OFF' ? '지금은 점수를 받지 않습니다.' :
+        scoreMode === 'STAFF' ? '점수는 거점 스태프가 넣습니다.' : '점수는 캠티만 넣을 수 있습니다.');
+    }
     n.forwardOnly = it.undo !== true;      // 취소(undo:true)만 되돌린다 — 키가 없어도 앞으로만 (D-082)
     n.cascade = auto && n.forwardOnly;     // 도착하면 머물던 지점은 완료 (D-087)
     return n;
@@ -757,7 +781,9 @@ function progressSet_(ctx, body) {
   var t0 = Date.now();
 
   // 🔴 시트가 먼저, DB 가 나중 (D-038).
-  var ignored = writeProgress_(ctx.isLeader ? '조장' : '조원', ctx.pid, entries, T);
+  // 기록 출처 — 캠티는 '캠티' (점수출처에도 그대로 남는다, D-090)
+  var actor = !ctx.isLeader ? '조원' : ctx.role === '캠티' ? '캠티' : '조장';
+  var ignored = writeProgress_(actor, ctx.pid, entries, T);
   var held = entries.filter(function (e) { return e.held; }).map(function (e) { return e.code; });
   var autoDone = [];
   entries.forEach(function (e) { (e.autoDone || []).forEach(function (c) { autoDone.push(c); }); });
@@ -833,6 +859,7 @@ function stationBoard_(ctx) {
         group: t.group,
         name: t.name,
         leaderName: t.leaderName,
+        leaderRole: t.leaderRole || '조장',
         memberCount: t.memberCount,
         visitOrder: i + 1,
         prevName: prevCode ? (nameOf[prevCode] || prevCode) : '',
@@ -870,6 +897,7 @@ function stationSet_(ctx, body) {
   var raw = Array.isArray(body.items) ? body.items : [body];
   if (!raw.length) throw new AppError('BAD_REQUEST', '기록할 조가 없습니다.');
   var auto = confBool_('AUTO_COMPLETE_PREV', true);
+  var scoreMode = scoreInput_();             // 스태프 점수는 STAFF·BOTH 일 때만 (D-090)
 
   // 🔴 이 지점을 지나는 **내 회차** 조만. 다른 회차·코스에 없는 조는 거절한다.
   var mine = {};
@@ -884,6 +912,9 @@ function stationSet_(ctx, body) {
       throw new AppError('FORBIDDEN', group + ' 은(는) ' + ctx.session + ' 에 이 지점(' + cp.name + ')을 지나는 조가 아닙니다.');
     }
     var n = normalizeProgressItem_({ status: it.status, score: it.score, memo: it.memo }, true);
+    if (n.hasScore && scoreMode !== 'STAFF' && scoreMode !== 'BOTH') {
+      throw new AppError('FORBIDDEN', scoreMode === 'OFF' ? '지금은 점수를 받지 않습니다.' : '점수는 캠티가 넣습니다.');
+    }
     n.code = cp.code;
     n.forwardOnly = it.undo !== true;      // 스태프도 첫 기록 유지 — 취소만 되돌린다 (D-082)
     n.cascade = auto && n.forwardOnly;     // "도착 확인" 하면 그 조가 머물던 지점은 완료 (D-087)
@@ -1065,6 +1096,7 @@ function progressBoardData_() {
         audience: t.audience,
         name: teamRow ? (str_(teamRow['조이름']) || t.group) : t.group,
         leaderName: leaderNameOf_(members),
+        leaderRole: leaderRoleOf_(members),     // '캠티' | '조장' (D-090)
         memberCount: members.length,
         course: course,
         route: routeCached_(course),
@@ -1202,4 +1234,4 @@ function configSet_(ctx, body) {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_CODE = 'v25';
+var END_CODE = 'v26';
