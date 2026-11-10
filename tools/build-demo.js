@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
  * ────────────────────────────────────────────────────────────────
- * build-demo.js · v25 · 2026-11-09
+ * build-demo.js · v26 · 2026-11-10
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v26   2026-11-10  데모 캠티 계정 · 점수 스위치(SCORE_INPUT, 기본 끔)와 같은 권한 · 점수 0~100 · 진행자 역할 (D-090)
  *  v25   2026-11-09  데모 사진 설정도 실제와 같게 — 긴 변 3000·품질 0.9·한 장 2.5MB 목표 (D-089)
  *  v25   2026-11-07  가짜 서버도 다음 지점 도착이면 머물던 지점 완료(AUTO_COMPLETE_PREV) · 스태프 보드 직전 시각·held (D-087)
  *  v25   2026-11-06  가짜 서버도 첫 기록 유지(같거나 앞선 상태면 그대로, held) · 완료 취소는 완료 시각을 지운다 (D-082)
- *  v24   2026-11-06  가짜 서버도 조원 기록(MEMBER_PROGRESS)·앞으로만 — 서버와 같은 규칙 (D-081)
  *  v22.1 2026-10-21  지점 미션을 예시 문구로 — 실제 미션은 공개 데모에 두지 않는다 (D-066)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
@@ -111,6 +111,7 @@ body { padding-top: var(--demobar-h, 76px); }
   <span class="demobar__label">로그인 계정</span>
   <span class="demobar__group" id="personaGroup">
     <button type="button" data-persona="leader">조장</button>
+    <button type="button" data-persona="camti">캠티</button>
     <button type="button" data-persona="member">일반 참가자</button>
     <button type="button" data-persona="staff">스태프</button>
     <button type="button" data-persona="pastor">교역자</button>
@@ -166,10 +167,19 @@ body { padding-top: var(--demobar-h, 76px); }
     PROGRESS_OPEN: true,
     MEMBER_PROGRESS: true,          // 조원도 도착·완료 (D-081)
     AUTO_COMPLETE_PREV: true,       // 다음 지점 도착이면 머물던 지점 완료 (D-087)
+    SCORE_INPUT: 'OFF',             // 지점 점수 — 실제처럼 기본 끔. 콘솔 운영 설정에서 켠다 (D-090)
     SHOW_FEE: true,
     PHOTO_MAX_COUNT: 4,
     NOTICE_TICKER: '09:30까지 PL교회 본당 앞으로 모여 주세요'
   };
+  // 콘솔에서 바꾼 설정을 탭 안에서 유지한다 — 계정 단추(새로고침)를 눌러도 점수 스위치가 그대로 (데모 전용)
+  try { Object.assign(CONFIG, JSON.parse(sessionStorage.getItem('demo_config') || '{}')); } catch (e) { /* 없음 */ }
+
+  /** 서버 scoreInput_ 와 같다 (D-090). */
+  function scoreMode() {
+    var v = String(CONFIG.SCORE_INPUT || 'OFF').toUpperCase();
+    return ['STAFF', 'CAMTI', 'BOTH'].indexOf(v) >= 0 ? v : 'OFF';
+  }
 
   // 회차는 Config 가 정한다(D-026). 세 번째는 **비활성**이라 관리자 필터에
   // '비활성' 으로 뜨고 그 회차 참가자는 로그인할 수 없다(D-031).
@@ -262,6 +272,19 @@ body { padding-top: var(--demobar-h, 76px); }
       isLeader: false, isAdmin: false,
       members: []
     },
+    // 캠티 — 역할 '캠티' 인 진행자 (D-090). 2조를 이끈다. 점수 스위치가 CAMTI·BOTH 면 코스에서 점수를 넣는다.
+    camti: {
+      participant: { id: 'P0010', name: '윤지한', audience: '청년부', session: '10/31(토)',
+                     role: '캠티', group: '2조', feeStatus: '면제', insurance: '가입완료' },
+      team: { session: '10/31(토)', group: '2조', name: '2조 정동', color: '#3f7d5a',
+              leaderName: '윤지한', leaderRole: '캠티', meetingPoint: 'PL교회 본당 앞',
+              course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'], courseNote: '' },
+      isLeader: true, isAdmin: false, mode: 'leader',
+      members: [
+        { id: 'P0010', name: '윤지한', role: '캠티', feeStatus: '면제', insurance: '가입완료' },
+        { id: 'P0011', name: '정하늘', role: '일반', feeStatus: '미납', insurance: '가입완료' }
+      ]
+    },
     // 거점 스태프 — 조 없이 담당 지점만 (D-051)
     staff: {
       participant: { id: 'P0031', name: '정스태', audience: '', session: '10/31(토)',
@@ -290,38 +313,42 @@ body { padding-top: var(--demobar-h, 76px); }
   // 🔴 진행은 **조별 칸 한 벌**에 둔다. 조장 코스·스태프 지점·교역자 진행·콘솔이 모두 여기서
   //    읽고 쓴다 — 화면마다 따로 두면 데모에서 서로 다른 말을 한다.
   var TEAMS = [
-    { session: '10/31(토)', group: '1조', audience: '청년부', name: '1조 배재', leaderName: '김캠티', memberCount: 4,
+    { session: '10/31(토)', group: '1조', audience: '청년부', name: '1조 배재', leaderName: '김캠티', leaderRole: '조장', memberCount: 4,
       course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'],
       cells: {
-        CP3: { status: '완료', arrivedAt: '2026-10-31T14:00:00+09:00', completedAt: '2026-10-31T14:24:00+09:00', score: 9, scoreSource: '스태프' },
+        CP3: { status: '완료', arrivedAt: '2026-10-31T14:00:00+09:00', completedAt: '2026-10-31T14:24:00+09:00', score: 90, scoreSource: '스태프' },
         CP4: { status: '도착', arrivedAt: '2026-10-31T14:36:00+09:00', completedAt: '', score: null, scoreSource: '' }
       } },
-    { session: '10/31(토)', group: '2조', audience: '청년부', name: '2조 정동', leaderName: '윤지한', memberCount: 5,
+    { session: '10/31(토)', group: '2조', audience: '청년부', name: '2조 정동', leaderName: '윤지한', leaderRole: '캠티', memberCount: 5,
       course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'],
       cells: {
-        CP1: { status: '완료', arrivedAt: '2026-10-31T14:02:00+09:00', completedAt: '2026-10-31T14:26:00+09:00', score: 10, scoreSource: '스태프' },
-        CP2: { status: '완료', arrivedAt: '2026-10-31T14:38:00+09:00', completedAt: '2026-10-31T15:00:00+09:00', score: 8, scoreSource: '조장' },
+        CP1: { status: '완료', arrivedAt: '2026-10-31T14:02:00+09:00', completedAt: '2026-10-31T14:26:00+09:00', score: 100, scoreSource: '스태프' },
+        CP2: { status: '완료', arrivedAt: '2026-10-31T14:38:00+09:00', completedAt: '2026-10-31T15:00:00+09:00', score: 80, scoreSource: '캠티' },
         CP3: { status: '도착', arrivedAt: '2026-10-31T15:12:00+09:00', completedAt: '', score: null, scoreSource: '' }
       } },
-    { session: '10/31(토)', group: '3조', audience: '청년부', name: '3조 이화', leaderName: '박민수', memberCount: 5,
+    { session: '10/31(토)', group: '3조', audience: '청년부', name: '3조 이화', leaderName: '박민수', leaderRole: '조장', memberCount: 5,
       course: 'B코스(러시아 시작)', route: ['CP2', 'CP3', 'CP4', 'CP1'],
       cells: {
-        CP2: { status: '완료', arrivedAt: '2026-10-31T14:05:00+09:00', completedAt: '2026-10-31T14:30:00+09:00', score: 7, scoreSource: '스태프' },
-        CP3: { status: '완료', arrivedAt: '2026-10-31T14:38:00+09:00', completedAt: '2026-10-31T14:58:00+09:00', score: 9, scoreSource: '스태프' },
-        CP4: { status: '완료', arrivedAt: '2026-10-31T15:03:00+09:00', completedAt: '2026-10-31T15:20:00+09:00', score: 8, scoreSource: '스태프' }
+        CP2: { status: '완료', arrivedAt: '2026-10-31T14:05:00+09:00', completedAt: '2026-10-31T14:30:00+09:00', score: 70, scoreSource: '스태프' },
+        CP3: { status: '완료', arrivedAt: '2026-10-31T14:38:00+09:00', completedAt: '2026-10-31T14:58:00+09:00', score: 90, scoreSource: '스태프' },
+        CP4: { status: '완료', arrivedAt: '2026-10-31T15:03:00+09:00', completedAt: '2026-10-31T15:20:00+09:00', score: 80, scoreSource: '스태프' }
       } },
-    { session: '10/31(토)', group: '4조', audience: '청년부', name: '4조 정동길', leaderName: '서하준', memberCount: 4,
+    { session: '10/31(토)', group: '4조', audience: '청년부', name: '4조 정동길', leaderName: '서하준', leaderRole: '조장', memberCount: 4,
       course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'],
       cells: {
-        CP1: { status: '완료', arrivedAt: '2026-10-31T13:40:00+09:00', completedAt: '2026-10-31T14:00:00+09:00', score: 9, scoreSource: '스태프' },
-        CP2: { status: '완료', arrivedAt: '2026-10-31T14:08:00+09:00', completedAt: '2026-10-31T14:28:00+09:00', score: 10, scoreSource: '스태프' },
-        CP3: { status: '완료', arrivedAt: '2026-10-31T14:36:00+09:00', completedAt: '2026-10-31T14:56:00+09:00', score: 8, scoreSource: '조장' },
-        CP4: { status: '완료', arrivedAt: '2026-10-31T15:00:00+09:00', completedAt: '2026-10-31T15:18:00+09:00', score: 9, scoreSource: '스태프' }
+        CP1: { status: '완료', arrivedAt: '2026-10-31T13:40:00+09:00', completedAt: '2026-10-31T14:00:00+09:00', score: 90, scoreSource: '스태프' },
+        CP2: { status: '완료', arrivedAt: '2026-10-31T14:08:00+09:00', completedAt: '2026-10-31T14:28:00+09:00', score: 100, scoreSource: '스태프' },
+        CP3: { status: '완료', arrivedAt: '2026-10-31T14:36:00+09:00', completedAt: '2026-10-31T14:56:00+09:00', score: 80, scoreSource: '관리자' },
+        CP4: { status: '완료', arrivedAt: '2026-10-31T15:00:00+09:00', completedAt: '2026-10-31T15:18:00+09:00', score: 90, scoreSource: '스태프' }
       } },
-    { session: '11/07(토)', group: '1조', audience: '장년부', name: '1조', leaderName: '이휘영', memberCount: 6,
+    { session: '11/07(토)', group: '1조', audience: '장년부', name: '1조', leaderName: '이휘영', leaderRole: '조장', memberCount: 6,
       course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'], cells: {} }
   ];
-  var MY_TEAM = TEAMS[0];
+  /** 로그인한 계정의 조 — 조장·조원은 1조, 캠티는 2조 (D-090). */
+  function myTeam() {
+    var t = me().team;
+    return t ? (TEAMS.filter(function (x) { return x.session === t.session && x.group === t.group; })[0] || TEAMS[0]) : TEAMS[0];
+  }
 
   function listFor(t) {
     return t.route.map(function (code, i) {
@@ -346,7 +373,7 @@ body { padding-top: var(--demobar-h, 76px); }
         if (it.status === '도착') c.completedAt = '';      // 완료 취소는 완료 시각을 지운다 (D-082)
       }
     }
-    if (it.score !== undefined && !(actor === '조장' && c.scoreSource === '스태프')) {
+    if (it.score !== undefined && !((actor === '조장' || actor === '조원' || actor === '캠티') && c.scoreSource === '스태프')) {
       c.score = it.score === '' || it.score === null ? null : Number(it.score);
       c.scoreSource = c.score === null ? '' : actor;
     }
@@ -377,7 +404,7 @@ body { padding-top: var(--demobar-h, 76px); }
     var teams = TEAMS.filter(function (t) { return t.session === me().participant.session && t.route.indexOf(st.code) >= 0; })
       .map(function (t) {
         var i = t.route.indexOf(st.code), c = t.cells[st.code] || {}, prev = i > 0 ? t.route[i - 1] : '';
-        return { group: t.group, name: t.name, leaderName: t.leaderName, memberCount: t.memberCount,
+        return { group: t.group, name: t.name, leaderName: t.leaderName, leaderRole: t.leaderRole || '조장', memberCount: t.memberCount,
                  visitOrder: i + 1, prevName: prev ? nameOf[prev] : '', prevStatus: prev ? ((t.cells[prev] || {}).status || '대기') : '',
                  prevArrivedAt: prev ? ((t.cells[prev] || {}).arrivedAt || '') : '', prevCompletedAt: prev ? ((t.cells[prev] || {}).completedAt || '') : '',
                  status: c.status || '대기', arrivedAt: c.arrivedAt || '', completedAt: c.completedAt || '',
@@ -491,7 +518,7 @@ body { padding-top: var(--demobar-h, 76px); }
 
       case 'progress.list':
         if (!me().team) return { __error: { code: 'NOT_FOUND', message: '배정된 조가 없습니다.' } };
-        return listFor(MY_TEAM);
+        return listFor(myTeam());
 
       // 🔴 앱은 **묶음**(items)으로 보낸다(D-045). 예전 데모는 단건만 받아 조장 버튼이 되돌아갔다.
       // 조원도 기록한다(D-081) — 서버 progressSet_ 와 같은 규칙: 설정이 켜져 있을 때만, 보통 버튼(undo:false)은 앞으로만.
@@ -501,11 +528,20 @@ body { padding-top: var(--demobar-h, 76px); }
         // 첫 기록 유지(D-082): 취소(undo:true)가 아니면 같거나 앞선 상태는 그대로 두고 held 로 알린다
         var RANK = ['대기', '도착', '완료'], held = [], autoDone = [];
         var its = Array.isArray(body.items) ? body.items : [body];
+        var MY_TEAM = myTeam();
+        var isCamti = me().isLeader && me().participant.role === '캠티';
+        var sm = scoreMode();
+        // 점수는 스위치가 CAMTI·BOTH 이고 역할 '캠티' 일 때만 — 서버 progressSet_ 와 같다 (D-090)
+        if (its.some(function (it) { return it.score !== undefined; }) && !(isCamti && (sm === 'CAMTI' || sm === 'BOTH'))) {
+          return { __error: { code: 'FORBIDDEN', message: sm === 'OFF' ? '지금은 점수를 받지 않습니다.' :
+            sm === 'STAFF' ? '점수는 거점 스태프가 넣습니다.' : '점수는 캠티만 넣을 수 있습니다.' } };
+        }
+        var actor = !me().isLeader ? '조원' : isCamti ? '캠티' : '조장';
         var codesIn = its.map(function (it) { return it.checkpoint; });
         its.forEach(function (it) {
           var cur = (MY_TEAM.cells[it.checkpoint] || {}).status || '대기';
           if (it.status && it.undo !== true && RANK.indexOf(cur) >= RANK.indexOf(it.status)) { held.push(it.checkpoint); return; }
-          writeCell(MY_TEAM, it.checkpoint, it, me().isLeader ? '조장' : '조원');
+          writeCell(MY_TEAM, it.checkpoint, it, actor);
           if (it.status === '도착' && it.undo !== true) autoDone = autoDone.concat(closeOthers(MY_TEAM, it.checkpoint, codesIn));
         });
         return listFor(MY_TEAM).map(function (p) {
@@ -523,6 +559,9 @@ body { padding-top: var(--demobar-h, 76px); }
         if (me().mode !== 'station') return { __error: { code: 'FORBIDDEN', message: '담당 지점이 있는 스태프만 쓸 수 있습니다.' } };
         var sess = me().participant.session, code = me().station.code;
         var bad = null, stHeld = [], stAuto = {};
+        if ((body.items || []).some(function (it) { return it.score !== undefined; }) && scoreMode() !== 'STAFF' && scoreMode() !== 'BOTH') {
+          return { __error: { code: 'FORBIDDEN', message: scoreMode() === 'OFF' ? '지금은 점수를 받지 않습니다.' : '점수는 캠티가 넣습니다.' } };
+        }
         (body.items || []).forEach(function (it) {
           var t = TEAMS.filter(function (x) { return x.session === sess && x.group === it.group; })[0];
           if (!t || t.route.indexOf(code) < 0) { bad = it.group; return; }
@@ -733,12 +772,19 @@ body { padding-top: var(--demobar-h, 76px); }
 
       case 'admin.config.set':
         CONFIG[body.key] = body.value === 'TRUE' ? true : (body.value === 'FALSE' ? false : body.value);
+        if (body.key === 'SCORE_INPUT') CONFIG.SCORE_INPUT = scoreMode();
+        try {   // 탭 안에서 유지 (데모 전용)
+          var keep = JSON.parse(sessionStorage.getItem('demo_config') || '{}');
+          keep[body.key] = CONFIG[body.key];
+          sessionStorage.setItem('demo_config', JSON.stringify(keep));
+        } catch (e) { /* 없음 */ }
         return {
           CAMP_NAME: CONFIG.CAMP_NAME, CAMP_SUBTITLE: CONFIG.CAMP_SUBTITLE,
           GALLERY_SCOPE: CONFIG.GALLERY_SCOPE, JOURNAL_REQUIRE_APPROVAL: CONFIG.JOURNAL_REQUIRE_APPROVAL,
           JOURNAL_OPEN: CONFIG.JOURNAL_OPEN, PROGRESS_OPEN: CONFIG.PROGRESS_OPEN,
           MEMBER_PROGRESS: CONFIG.MEMBER_PROGRESS,
           AUTO_COMPLETE_PREV: CONFIG.AUTO_COMPLETE_PREV,
+          SCORE_INPUT: scoreMode(),
           SHOW_FEE: CONFIG.SHOW_FEE, NOTICE_TICKER: CONFIG.NOTICE_TICKER
         };
 

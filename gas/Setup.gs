@@ -1,20 +1,20 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * Setup.gs · v22 · 2026-10-17
+ * Setup.gs · v26 · 2026-11-10
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v26   2026-11-10  Config 기본값에 SCORE_INPUT(OFF) · 명단 점검이 캠티도 진행자로 센다 (D-090)
  *  v22   2026-10-17  Config 기본값에 PHOTO_MAX_COUNT(4) (D-064)
  *  v21   2026-10-17  명단 점검은 같은 회차 안에서만 로그인 충돌 · 회차 추가: 날짜 모양 이름 거절, 일정 시각을 시각 그대로 복사 (D-062)
  *  v18   2026-09-29  파일 끝 표시 — health 가 잘린 붙여넣기를 알린다 (D-054)
  *  v16   2026-09-26  담당 지점 드롭다운, 명단 점검(사역자·새 열) (D-051)
- *  v15   2026-09-26  파일 버전 표시 시작
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
  * 🔴 이 파일을 고치면 맨 위 줄(이름·버전·날짜)과 이력을 함께 고친다 (CLAUDE.md).
  * ────────────────────────────────────────────────────────────────
  */
-var VERSION_SETUP = 'v22';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
+var VERSION_SETUP = 'v26';   // 헤더의 버전과 같아야 한다. health 가 이 값을 알려 준다.
 
 /**
  * Setup.gs — 최초 1회 실행하는 시트 생성/점검 스크립트
@@ -146,6 +146,7 @@ function seedConfig_() {
       '⚠ 연락처가 임시값인 동안만 TRUE. 실제 연락처를 다 채우면 FALSE 로 내릴 것 (명단 점검이 알려줌)'],
     ['PHOTO_MAX_BYTES', '4000000', '사진 1장 최대 바이트'],
     ['PHOTO_MAX_COUNT', '4', '탐험일지 한 편에 올릴 수 있는 사진 수'],
+    ['SCORE_INPUT', 'OFF', '지점 점수(0~100)를 누가 넣나: OFF(끔) / STAFF(거점 스태프) / CAMTI(캠티) / BOTH(둘 다, 스태프 우선) — 운영 콘솔 설정에서도 바꿈 (D-090)'],
     ['NOTICE_TICKER', '', '앱 상단 한 줄 공지. 비우면 숨김']
   ];
 
@@ -462,12 +463,13 @@ function checkDuplicates() {
     if (!session || !group) return;
     var key = session + ' ' + group;
     if (!groups[key]) groups[key] = { leaders: 0, courses: {} };
-    if (str_(r[COL.ROLE]) === '조장') groups[key].leaders++;
+    var role = str_(r[COL.ROLE]);
+    if (role === '조장' || role === '캠티') groups[key].leaders++;   // 캠티가 진행하는 회차도 있다 (D-090)
     var c = str_(r[COL.COURSE]);
     if (c) groups[key].courses[c] = true;
   });
   Object.keys(groups).sort().forEach(function (key) {
-    if (groups[key].leaders === 0) noLeader.push(key + ': 조장이 없음 — 진행 기록을 할 사람이 없습니다');
+    if (groups[key].leaders === 0) noLeader.push(key + ': 조장·캠티가 없음 — 진행 기록을 할 사람이 없습니다');
     var cs = Object.keys(groups[key].courses);
     if (cs.length > 1) courseMismatch.push(key + ': 배정 코스가 섞여 있음 (' + cs.join(' / ') + ')');
   });
@@ -514,7 +516,7 @@ function checkDuplicates() {
   block_(out, inactive, '⚠ 비활성 회차 인원 (로그인 불가)', '✅ 비활성 회차에 배정된 인원 없음');
   block_(out, badCourse, '⚠ 배정 코스 오타', '✅ 배정 코스 정상');
   block_(out, courseMismatch, '⚠ 조 안에서 배정 코스 불일치', '✅ 조별 배정 코스 일관됨');
-  block_(out, noLeader, '⚠ 조장 없는 조', '✅ 모든 조에 조장 있음');
+  block_(out, noLeader, '⚠ 조장·캠티 없는 조', '✅ 모든 조에 조장 또는 캠티 있음');
   block_(out, roleIssues, '⚠ 역할·담당 지점', '✅ 역할·담당 지점 정상');
   block_(out, noColumn, '❌ 새 열 없음 (v16)', '✅ 새 열(담당 지점·점수출처·수상) 있음');
 
@@ -963,4 +965,4 @@ function onOpen() {
 }
 
 // 🔴 파일 끝 표시 (D-054) — **맨 마지막 줄로 둔다.** 이 줄까지 붙여넣어야 health 의 ends 에 버전이 뜬다.
-var END_SETUP = 'v22';
+var END_SETUP = 'v26';

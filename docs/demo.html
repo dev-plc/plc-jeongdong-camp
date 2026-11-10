@@ -15,14 +15,14 @@
 <style>
 /*
    ────────────────────────────────────────────────────────────────
-    app.css · v25 · 2026-11-07
+    app.css · v26 · 2026-11-10
    ────────────────────────────────────────────────────────────────
     변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+     v26   2026-11-10  지점 점수 칸(0~100)·⭐ 표시 (D-090)
      v25   2026-11-07  표로 보기: 머리 고정 · 조 칸 두 줄 · 상태와 시각 한 줄 (D-088)
      v25   2026-11-07  일지 검수 체크해서 골라 승인 (D-083) · 소식 없는 조 이름 단추·스크롤 (D-084) · 완료 대기 안내 (D-085)
      v23.9 2026-10-31  지점 칸 넷이 한 줄, 안 되면 둘씩 · 이름이 가운데서 안 갈라지게 (D-077)
      v23.8 2026-10-31  지점별 도착·완료 한 줄씩 (D-076)
-     v23.7 2026-10-31  지점별 체류: 최단·최장·평균 한 줄씩 (D-075)
 
     버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
           — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -718,6 +718,18 @@ details.cp:not([open]) { padding-top: 12px; padding-bottom: 12px; }
 /* 도착 3분 안에는 완료가 잠긴다 — 언제 열리는지 (D-085) */
 .cp__wait { margin: 8px 0 0; font-size: 13px; color: var(--warn); font-weight: 500; }
 
+/* 지점 점수 (D-090) — 스위치가 켜졌을 때만 그린다. 칸은 16px(iOS 확대 방지), 단추는 36px 이상 */
+.cp__score { margin: 3px 0 0; font-size: 13px; font-weight: 700; color: var(--warn); }
+.score-form {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line);
+}
+.score-form__label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink-2); }
+.score-form__input { width: 92px; min-height: 40px; padding: 8px 10px; font-size: 16px; font-variant-numeric: tabular-nums; }
+.score-form__max { font-size: 13px; }
+.score-form .btn--sm { min-height: 36px; }
+.score-form__note { flex-basis: 100%; font-size: 13px; color: var(--ink-2); }
+
 /* ---- 운영콘솔: 조별 진행 카드 ---- */
 .team-alert {
   margin: 0 0 12px; padding: 10px 14px; border-radius: var(--radius-sm);
@@ -791,6 +803,7 @@ details.cp:not([open]) { padding-top: 12px; padding-bottom: 12px; }
 .board-grid .team-tag { font-size: 13px; color: var(--ink-2); }
 .board-grid .cell-st { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin-top: 2px; }
 .board-grid .cell-time { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.board-grid .cell-score { font-size: 13px; font-weight: 700; color: var(--warn); font-variant-numeric: tabular-nums; }
 .board-grid tbody tr:nth-child(even) td { background: #fbf8f4; }
 
 /* 지점별 현황 (D-073) — 회차마다 앞선·뒤처진 조, 지점마다 도착·완료·체류 */
@@ -923,6 +936,7 @@ body { padding-top: var(--demobar-h, 76px); }
   <span class="demobar__label">로그인 계정</span>
   <span class="demobar__group" id="personaGroup">
     <button type="button" data-persona="leader">조장</button>
+    <button type="button" data-persona="camti">캠티</button>
     <button type="button" data-persona="member">일반 참가자</button>
     <button type="button" data-persona="staff">스태프</button>
     <button type="button" data-persona="pastor">교역자</button>
@@ -978,10 +992,19 @@ body { padding-top: var(--demobar-h, 76px); }
     PROGRESS_OPEN: true,
     MEMBER_PROGRESS: true,          // 조원도 도착·완료 (D-081)
     AUTO_COMPLETE_PREV: true,       // 다음 지점 도착이면 머물던 지점 완료 (D-087)
+    SCORE_INPUT: 'OFF',             // 지점 점수 — 실제처럼 기본 끔. 콘솔 운영 설정에서 켠다 (D-090)
     SHOW_FEE: true,
     PHOTO_MAX_COUNT: 4,
     NOTICE_TICKER: '09:30까지 PL교회 본당 앞으로 모여 주세요'
   };
+  // 콘솔에서 바꾼 설정을 탭 안에서 유지한다 — 계정 단추(새로고침)를 눌러도 점수 스위치가 그대로 (데모 전용)
+  try { Object.assign(CONFIG, JSON.parse(sessionStorage.getItem('demo_config') || '{}')); } catch (e) { /* 없음 */ }
+
+  /** 서버 scoreInput_ 와 같다 (D-090). */
+  function scoreMode() {
+    var v = String(CONFIG.SCORE_INPUT || 'OFF').toUpperCase();
+    return ['STAFF', 'CAMTI', 'BOTH'].indexOf(v) >= 0 ? v : 'OFF';
+  }
 
   // 회차는 Config 가 정한다(D-026). 세 번째는 **비활성**이라 관리자 필터에
   // '비활성' 으로 뜨고 그 회차 참가자는 로그인할 수 없다(D-031).
@@ -1074,6 +1097,19 @@ body { padding-top: var(--demobar-h, 76px); }
       isLeader: false, isAdmin: false,
       members: []
     },
+    // 캠티 — 역할 '캠티' 인 진행자 (D-090). 2조를 이끈다. 점수 스위치가 CAMTI·BOTH 면 코스에서 점수를 넣는다.
+    camti: {
+      participant: { id: 'P0010', name: '윤지한', audience: '청년부', session: '10/31(토)',
+                     role: '캠티', group: '2조', feeStatus: '면제', insurance: '가입완료' },
+      team: { session: '10/31(토)', group: '2조', name: '2조 정동', color: '#3f7d5a',
+              leaderName: '윤지한', leaderRole: '캠티', meetingPoint: 'PL교회 본당 앞',
+              course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'], courseNote: '' },
+      isLeader: true, isAdmin: false, mode: 'leader',
+      members: [
+        { id: 'P0010', name: '윤지한', role: '캠티', feeStatus: '면제', insurance: '가입완료' },
+        { id: 'P0011', name: '정하늘', role: '일반', feeStatus: '미납', insurance: '가입완료' }
+      ]
+    },
     // 거점 스태프 — 조 없이 담당 지점만 (D-051)
     staff: {
       participant: { id: 'P0031', name: '정스태', audience: '', session: '10/31(토)',
@@ -1102,38 +1138,42 @@ body { padding-top: var(--demobar-h, 76px); }
   // 🔴 진행은 **조별 칸 한 벌**에 둔다. 조장 코스·스태프 지점·교역자 진행·콘솔이 모두 여기서
   //    읽고 쓴다 — 화면마다 따로 두면 데모에서 서로 다른 말을 한다.
   var TEAMS = [
-    { session: '10/31(토)', group: '1조', audience: '청년부', name: '1조 배재', leaderName: '김캠티', memberCount: 4,
+    { session: '10/31(토)', group: '1조', audience: '청년부', name: '1조 배재', leaderName: '김캠티', leaderRole: '조장', memberCount: 4,
       course: 'C코스(보구여관 시작)', route: ['CP3', 'CP4', 'CP1', 'CP2'],
       cells: {
-        CP3: { status: '완료', arrivedAt: '2026-10-31T14:00:00+09:00', completedAt: '2026-10-31T14:24:00+09:00', score: 9, scoreSource: '스태프' },
+        CP3: { status: '완료', arrivedAt: '2026-10-31T14:00:00+09:00', completedAt: '2026-10-31T14:24:00+09:00', score: 90, scoreSource: '스태프' },
         CP4: { status: '도착', arrivedAt: '2026-10-31T14:36:00+09:00', completedAt: '', score: null, scoreSource: '' }
       } },
-    { session: '10/31(토)', group: '2조', audience: '청년부', name: '2조 정동', leaderName: '윤지한', memberCount: 5,
+    { session: '10/31(토)', group: '2조', audience: '청년부', name: '2조 정동', leaderName: '윤지한', leaderRole: '캠티', memberCount: 5,
       course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'],
       cells: {
-        CP1: { status: '완료', arrivedAt: '2026-10-31T14:02:00+09:00', completedAt: '2026-10-31T14:26:00+09:00', score: 10, scoreSource: '스태프' },
-        CP2: { status: '완료', arrivedAt: '2026-10-31T14:38:00+09:00', completedAt: '2026-10-31T15:00:00+09:00', score: 8, scoreSource: '조장' },
+        CP1: { status: '완료', arrivedAt: '2026-10-31T14:02:00+09:00', completedAt: '2026-10-31T14:26:00+09:00', score: 100, scoreSource: '스태프' },
+        CP2: { status: '완료', arrivedAt: '2026-10-31T14:38:00+09:00', completedAt: '2026-10-31T15:00:00+09:00', score: 80, scoreSource: '캠티' },
         CP3: { status: '도착', arrivedAt: '2026-10-31T15:12:00+09:00', completedAt: '', score: null, scoreSource: '' }
       } },
-    { session: '10/31(토)', group: '3조', audience: '청년부', name: '3조 이화', leaderName: '박민수', memberCount: 5,
+    { session: '10/31(토)', group: '3조', audience: '청년부', name: '3조 이화', leaderName: '박민수', leaderRole: '조장', memberCount: 5,
       course: 'B코스(러시아 시작)', route: ['CP2', 'CP3', 'CP4', 'CP1'],
       cells: {
-        CP2: { status: '완료', arrivedAt: '2026-10-31T14:05:00+09:00', completedAt: '2026-10-31T14:30:00+09:00', score: 7, scoreSource: '스태프' },
-        CP3: { status: '완료', arrivedAt: '2026-10-31T14:38:00+09:00', completedAt: '2026-10-31T14:58:00+09:00', score: 9, scoreSource: '스태프' },
-        CP4: { status: '완료', arrivedAt: '2026-10-31T15:03:00+09:00', completedAt: '2026-10-31T15:20:00+09:00', score: 8, scoreSource: '스태프' }
+        CP2: { status: '완료', arrivedAt: '2026-10-31T14:05:00+09:00', completedAt: '2026-10-31T14:30:00+09:00', score: 70, scoreSource: '스태프' },
+        CP3: { status: '완료', arrivedAt: '2026-10-31T14:38:00+09:00', completedAt: '2026-10-31T14:58:00+09:00', score: 90, scoreSource: '스태프' },
+        CP4: { status: '완료', arrivedAt: '2026-10-31T15:03:00+09:00', completedAt: '2026-10-31T15:20:00+09:00', score: 80, scoreSource: '스태프' }
       } },
-    { session: '10/31(토)', group: '4조', audience: '청년부', name: '4조 정동길', leaderName: '서하준', memberCount: 4,
+    { session: '10/31(토)', group: '4조', audience: '청년부', name: '4조 정동길', leaderName: '서하준', leaderRole: '조장', memberCount: 4,
       course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'],
       cells: {
-        CP1: { status: '완료', arrivedAt: '2026-10-31T13:40:00+09:00', completedAt: '2026-10-31T14:00:00+09:00', score: 9, scoreSource: '스태프' },
-        CP2: { status: '완료', arrivedAt: '2026-10-31T14:08:00+09:00', completedAt: '2026-10-31T14:28:00+09:00', score: 10, scoreSource: '스태프' },
-        CP3: { status: '완료', arrivedAt: '2026-10-31T14:36:00+09:00', completedAt: '2026-10-31T14:56:00+09:00', score: 8, scoreSource: '조장' },
-        CP4: { status: '완료', arrivedAt: '2026-10-31T15:00:00+09:00', completedAt: '2026-10-31T15:18:00+09:00', score: 9, scoreSource: '스태프' }
+        CP1: { status: '완료', arrivedAt: '2026-10-31T13:40:00+09:00', completedAt: '2026-10-31T14:00:00+09:00', score: 90, scoreSource: '스태프' },
+        CP2: { status: '완료', arrivedAt: '2026-10-31T14:08:00+09:00', completedAt: '2026-10-31T14:28:00+09:00', score: 100, scoreSource: '스태프' },
+        CP3: { status: '완료', arrivedAt: '2026-10-31T14:36:00+09:00', completedAt: '2026-10-31T14:56:00+09:00', score: 80, scoreSource: '관리자' },
+        CP4: { status: '완료', arrivedAt: '2026-10-31T15:00:00+09:00', completedAt: '2026-10-31T15:18:00+09:00', score: 90, scoreSource: '스태프' }
       } },
-    { session: '11/07(토)', group: '1조', audience: '장년부', name: '1조', leaderName: '이휘영', memberCount: 6,
+    { session: '11/07(토)', group: '1조', audience: '장년부', name: '1조', leaderName: '이휘영', leaderRole: '조장', memberCount: 6,
       course: 'A코스(배재 시작)', route: ['CP1', 'CP2', 'CP3', 'CP4'], cells: {} }
   ];
-  var MY_TEAM = TEAMS[0];
+  /** 로그인한 계정의 조 — 조장·조원은 1조, 캠티는 2조 (D-090). */
+  function myTeam() {
+    var t = me().team;
+    return t ? (TEAMS.filter(function (x) { return x.session === t.session && x.group === t.group; })[0] || TEAMS[0]) : TEAMS[0];
+  }
 
   function listFor(t) {
     return t.route.map(function (code, i) {
@@ -1158,7 +1198,7 @@ body { padding-top: var(--demobar-h, 76px); }
         if (it.status === '도착') c.completedAt = '';      // 완료 취소는 완료 시각을 지운다 (D-082)
       }
     }
-    if (it.score !== undefined && !(actor === '조장' && c.scoreSource === '스태프')) {
+    if (it.score !== undefined && !((actor === '조장' || actor === '조원' || actor === '캠티') && c.scoreSource === '스태프')) {
       c.score = it.score === '' || it.score === null ? null : Number(it.score);
       c.scoreSource = c.score === null ? '' : actor;
     }
@@ -1189,7 +1229,7 @@ body { padding-top: var(--demobar-h, 76px); }
     var teams = TEAMS.filter(function (t) { return t.session === me().participant.session && t.route.indexOf(st.code) >= 0; })
       .map(function (t) {
         var i = t.route.indexOf(st.code), c = t.cells[st.code] || {}, prev = i > 0 ? t.route[i - 1] : '';
-        return { group: t.group, name: t.name, leaderName: t.leaderName, memberCount: t.memberCount,
+        return { group: t.group, name: t.name, leaderName: t.leaderName, leaderRole: t.leaderRole || '조장', memberCount: t.memberCount,
                  visitOrder: i + 1, prevName: prev ? nameOf[prev] : '', prevStatus: prev ? ((t.cells[prev] || {}).status || '대기') : '',
                  prevArrivedAt: prev ? ((t.cells[prev] || {}).arrivedAt || '') : '', prevCompletedAt: prev ? ((t.cells[prev] || {}).completedAt || '') : '',
                  status: c.status || '대기', arrivedAt: c.arrivedAt || '', completedAt: c.completedAt || '',
@@ -1303,7 +1343,7 @@ body { padding-top: var(--demobar-h, 76px); }
 
       case 'progress.list':
         if (!me().team) return { __error: { code: 'NOT_FOUND', message: '배정된 조가 없습니다.' } };
-        return listFor(MY_TEAM);
+        return listFor(myTeam());
 
       // 🔴 앱은 **묶음**(items)으로 보낸다(D-045). 예전 데모는 단건만 받아 조장 버튼이 되돌아갔다.
       // 조원도 기록한다(D-081) — 서버 progressSet_ 와 같은 규칙: 설정이 켜져 있을 때만, 보통 버튼(undo:false)은 앞으로만.
@@ -1313,11 +1353,20 @@ body { padding-top: var(--demobar-h, 76px); }
         // 첫 기록 유지(D-082): 취소(undo:true)가 아니면 같거나 앞선 상태는 그대로 두고 held 로 알린다
         var RANK = ['대기', '도착', '완료'], held = [], autoDone = [];
         var its = Array.isArray(body.items) ? body.items : [body];
+        var MY_TEAM = myTeam();
+        var isCamti = me().isLeader && me().participant.role === '캠티';
+        var sm = scoreMode();
+        // 점수는 스위치가 CAMTI·BOTH 이고 역할 '캠티' 일 때만 — 서버 progressSet_ 와 같다 (D-090)
+        if (its.some(function (it) { return it.score !== undefined; }) && !(isCamti && (sm === 'CAMTI' || sm === 'BOTH'))) {
+          return { __error: { code: 'FORBIDDEN', message: sm === 'OFF' ? '지금은 점수를 받지 않습니다.' :
+            sm === 'STAFF' ? '점수는 거점 스태프가 넣습니다.' : '점수는 캠티만 넣을 수 있습니다.' } };
+        }
+        var actor = !me().isLeader ? '조원' : isCamti ? '캠티' : '조장';
         var codesIn = its.map(function (it) { return it.checkpoint; });
         its.forEach(function (it) {
           var cur = (MY_TEAM.cells[it.checkpoint] || {}).status || '대기';
           if (it.status && it.undo !== true && RANK.indexOf(cur) >= RANK.indexOf(it.status)) { held.push(it.checkpoint); return; }
-          writeCell(MY_TEAM, it.checkpoint, it, me().isLeader ? '조장' : '조원');
+          writeCell(MY_TEAM, it.checkpoint, it, actor);
           if (it.status === '도착' && it.undo !== true) autoDone = autoDone.concat(closeOthers(MY_TEAM, it.checkpoint, codesIn));
         });
         return listFor(MY_TEAM).map(function (p) {
@@ -1335,6 +1384,9 @@ body { padding-top: var(--demobar-h, 76px); }
         if (me().mode !== 'station') return { __error: { code: 'FORBIDDEN', message: '담당 지점이 있는 스태프만 쓸 수 있습니다.' } };
         var sess = me().participant.session, code = me().station.code;
         var bad = null, stHeld = [], stAuto = {};
+        if ((body.items || []).some(function (it) { return it.score !== undefined; }) && scoreMode() !== 'STAFF' && scoreMode() !== 'BOTH') {
+          return { __error: { code: 'FORBIDDEN', message: scoreMode() === 'OFF' ? '지금은 점수를 받지 않습니다.' : '점수는 캠티가 넣습니다.' } };
+        }
         (body.items || []).forEach(function (it) {
           var t = TEAMS.filter(function (x) { return x.session === sess && x.group === it.group; })[0];
           if (!t || t.route.indexOf(code) < 0) { bad = it.group; return; }
@@ -1545,12 +1597,19 @@ body { padding-top: var(--demobar-h, 76px); }
 
       case 'admin.config.set':
         CONFIG[body.key] = body.value === 'TRUE' ? true : (body.value === 'FALSE' ? false : body.value);
+        if (body.key === 'SCORE_INPUT') CONFIG.SCORE_INPUT = scoreMode();
+        try {   // 탭 안에서 유지 (데모 전용)
+          var keep = JSON.parse(sessionStorage.getItem('demo_config') || '{}');
+          keep[body.key] = CONFIG[body.key];
+          sessionStorage.setItem('demo_config', JSON.stringify(keep));
+        } catch (e) { /* 없음 */ }
         return {
           CAMP_NAME: CONFIG.CAMP_NAME, CAMP_SUBTITLE: CONFIG.CAMP_SUBTITLE,
           GALLERY_SCOPE: CONFIG.GALLERY_SCOPE, JOURNAL_REQUIRE_APPROVAL: CONFIG.JOURNAL_REQUIRE_APPROVAL,
           JOURNAL_OPEN: CONFIG.JOURNAL_OPEN, PROGRESS_OPEN: CONFIG.PROGRESS_OPEN,
           MEMBER_PROGRESS: CONFIG.MEMBER_PROGRESS,
           AUTO_COMPLETE_PREV: CONFIG.AUTO_COMPLETE_PREV,
+          SCORE_INPUT: scoreMode(),
           SHOW_FEE: CONFIG.SHOW_FEE, NOTICE_TICKER: CONFIG.NOTICE_TICKER
         };
 
@@ -1595,9 +1654,10 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * api.js · v25 · 2026-11-07
+ * api.js · v26 · 2026-11-10
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v26   2026-11-10  내 지점: 진행자 역할(leaderRole, 캠티·조장)도 — 서버 stationBoard_ 와 같게 (D-090)
  *  v25   2026-11-07  내 지점: 직전 지점 도착·완료 시각도 (서버 stationBoard_ 와 같게, D-087)
  *  v23.4 2026-10-30  운영 콘솔 진행: 뼈대 GAS 10분 + 전 회차 칸 사본 · 토큰 읽기(서명 검증 없이) (D-072)
  *  v23.3 2026-10-29  내 지점·진행: 뼈대는 GAS 10분, 칸은 사본 · 기록 시각은 보낸 시각으로 (D-071)
@@ -2244,6 +2304,7 @@ window.APP_CONFIG = {
           group: t.group,
           name: t.name,
           leaderName: t.leaderName,
+          leaderRole: t.leaderRole || '조장',
           memberCount: t.memberCount,
           visitOrder: i + 1,
           prevName: prevCode ? (nameOf[prevCode] || prevCode) : '',
@@ -2511,14 +2572,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * ui.js · v25 · 2026-11-09
+ * ui.js · v26 · 2026-11-10
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v26   2026-11-10  지점 점수(0~100) 공용 — 모드·입력 칸·표시 · 조 카드 점수 · 진행자 "캠티/조장" (D-090)
  *  v25   2026-11-09  사진을 더 크게 — 한 장 목표 바이트를 넘으면 품질 → 긴 변 순으로 낮춰 다시 만든다 (D-089)
  *  v25   2026-11-07  40분 넘게 소식 없는 조를 이름으로 — 누르면 그 조 카드로 스크롤 (D-084)
  *  v23.5 2026-10-31  사진 띠 ‹ › (PC) · 크게 보기에서도 넘기기 — 일지·검수·시상 사진 (D-073)
  *  v22   2026-10-17  일지 사진 여러 장 — 옆으로 넘기는 띠 · "📷 N장" (D-064)
- *  v20.5 2026-10-17  지도 주소 검색어 다듬기 — 괄호 메모·"대한민국" 을 뺀다 (D-061)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -3120,6 +3181,7 @@ window.APP_CONFIG = {
    *
    * opts.showSession — 회차 필터가 '전체' 일 때만 회차를 적는다.
    * opts.editable    — 운영 콘솔: 칸을 누르면 정정 창 (D-052). 교역자 화면은 읽기 전용.
+   * opts.showScore   — 점수 스위치가 켜졌을 때만 칸에 "85점" (D-090).
    */
   function teamCard(t, checkpoints, opts) {
     var o = opts || {};
@@ -3139,7 +3201,8 @@ window.APP_CONFIG = {
       var inner =
         '<span class="step__no">' + (i + 1) + '</span>' +
         '<span class="step__name">' + esc(nameOf[code] || code) + '</span>' +
-        '<span class="step__state">' + esc(status) + (time ? ' ' + esc(time) : '') + '</span>';
+        '<span class="step__state">' + esc(status) + (time ? ' ' + esc(time) : '') +
+          (o.showScore && hasScore(cell.score) ? ' · ' + esc(cell.score) + '점' : '') + '</span>';
       var title = (nameOf[code] || code) + ' · ' + status;
       return '<li class="step step--' + cls + '" title="' + esc(title) + '">' +
         (o.editable
@@ -3160,7 +3223,7 @@ window.APP_CONFIG = {
         '<div><strong>' + esc(t.name) + '</strong>' +
           '<span class="team-card__meta">' +
             (o.showSession ? esc(t.session) + ' · ' : '') +
-            '조장 ' + esc(t.leaderName || '—') + ' · ' + t.memberCount + '명</span></div>' +
+            esc(leaderLabel(t)) + ' · ' + t.memberCount + '명</span></div>' +
         '<span class="chip chip--' + (finished ? 'done' : done ? 'here' : 'wait') + '">' +
           done + '/' + total + '</span>' +
       '</header>' +
@@ -3249,6 +3312,50 @@ window.APP_CONFIG = {
     setTimeout(function () { card.classList.remove('is-jumped'); }, 2400);
   });
 
+  // ---------------------------------------------------------------- 지점 점수 (D-090)
+  //
+  // 기획이 정해지기 전이라 서버 스위치 SCORE_INPUT 로 고른다 — 기본 OFF 면 점수를 **그리지 않는다**(D-056 과 같다).
+  // 옛 서버(v25)엔 키가 없어 OFF 로 읽힌다 → 앱이 먼저 나가도 안전하다.
+
+  /** 'OFF' | 'STAFF' | 'CAMTI' | 'BOTH'. 모르는 값은 OFF. */
+  function scoreMode(config) {
+    var v = String((config && config.SCORE_INPUT) || 'OFF').toUpperCase();
+    return ['STAFF', 'CAMTI', 'BOTH'].indexOf(v) >= 0 ? v : 'OFF';
+  }
+  function scoreOn(config) { return scoreMode(config) !== 'OFF'; }
+  function hasScore(s) { return s !== null && s !== undefined && s !== ''; }
+
+  /** 입력값 → 0~100 정수, 빈 칸은 ''(지우기), 그 밖은 null. 소수·음수·101 은 null. */
+  function parseScore(raw) {
+    var s = String(raw === null || raw === undefined ? '' : raw).trim();
+    if (s === '') return '';
+    if (!/^\d{1,3}$/.test(s)) return null;
+    var n = Number(s);
+    return n <= 100 ? n : null;
+  }
+
+  /**
+   * 점수 입력 줄 — 숫자 칸(0~100) + 저장 + 지우기. attrs 는 이 줄을 가리킬 data-* 속성 문자열.
+   * locked 면 칸과 단추를 잠그고 note 를 붙인다(예: 스태프가 넣은 점수).
+   */
+  function scoreFormHtml(score, attrs, locked, note) {
+    var off = locked ? ' disabled' : '';
+    return '<div class="score-form"' + (attrs || '') + '>' +
+      '<label class="score-form__label"><span>점수</span>' +
+        '<input class="input score-form__input" type="number" inputmode="numeric" min="0" max="100" step="1" ' +
+          'placeholder="0~100" aria-label="점수 (0~100)" value="' + (hasScore(score) ? esc(score) : '') + '"' + off + '>' +
+        '<span class="score-form__max">/ 100</span></label>' +
+      '<button type="button" class="btn btn--primary btn--sm" data-score-save' + off + '>저장</button>' +
+      (hasScore(score) ? '<button type="button" class="btn btn--text" data-score-clear' + off + '>지우기</button>' : '') +
+      (note ? '<span class="score-form__note">' + esc(note) + '</span>' : '') +
+    '</div>';
+  }
+
+  /** "캠티 홍길동" · "조장 홍길동" — 서버가 leaderRole 을 안 주면(옛 서버) 조장 (D-090). */
+  function leaderLabel(t) {
+    return (t && t.leaderRole === '캠티' ? '캠티' : '조장') + ' ' + ((t && t.leaderName) || '—');
+  }
+
   global.UI = {
     $: $, $$: $$, esc: esc, nl2br: nl2br, telLinks: telLinks, missionHtml: missionHtml, mapUrl: mapUrl,
     journalPhotos: journalPhotos, journalPhotosHtml: journalPhotosHtml,
@@ -3257,7 +3364,9 @@ window.APP_CONFIG = {
     resizePhoto: resizePhoto, hhmm: hhmm, localIso: localIso, prettyDateTime: prettyDateTime,
     localDate: localDate, hmToMin: hmToMin, minutesSince: minutesSince, agoText: agoText,
     perfPanel: perfPanel, perfEnabled: perfEnabled,
-    STALE_MIN: STALE_MIN, teamCard: teamCard, teamGrid: teamGrid, sortTeams: sortTeams
+    STALE_MIN: STALE_MIN, teamCard: teamCard, teamGrid: teamGrid, sortTeams: sortTeams,
+    scoreMode: scoreMode, scoreOn: scoreOn, hasScore: hasScore, parseScore: parseScore,
+    scoreFormHtml: scoreFormHtml, leaderLabel: leaderLabel
   };
 })(window);
 
@@ -3265,14 +3374,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * app.js · v25 · 2026-11-07
+ * app.js · v26 · 2026-11-10
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v26   2026-11-10  지점 점수(0~100, 스위치) — 거점 스태프·캠티 입력, 코스에 "⭐ N점" · 진행자 "캠티/조장" (D-090)
  *  v25   2026-11-07  다음 지점 도착이면 머물던 지점 완료(서버가 켜면) · 내 지점 직전 지점 문구·시각 · 1분마다·다시 보이면 새로 읽기 (D-087)
  *  v25   2026-11-07  도착 3분 뒤부터 완료 — 기록된 도착 시각 기준이라 어느 조원 폰에서든 같다 (D-085)
  *  v25   2026-11-06  "저장됨" · 첫 기록 유지(먼저 기록한 시각을 알림) · 완료 취소는 완료 시각을 지운다 · 스태프 취소에도 undo (D-082)
  *  v24   2026-11-06  조원도 도착·완료 — 서버가 MEMBER_PROGRESS 를 켜면 · 낡은 화면은 앞으로만 · 다시 보이면 코스를 새로 읽는다 (D-081)
- *  v23.3 2026-10-29  내 지점·진행: API.stationBoard·opsBoard 로 — 새로고침은 칸만 사본에서 (D-071)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -3641,7 +3750,7 @@ window.APP_CONFIG = {
         '<dl class="kv">' +
           '<div><dt>' + esc(L('name', '이름')) + '</dt><dd>' + esc(me.participant.name) +
             (me.isLeader ? ' <span class="badge">조장</span>' : '') + '</dd></div>' +
-          (team && team.leaderName ? '<div><dt>조장</dt><dd>' + esc(team.leaderName) + '</dd></div>' : '') +
+          (team && team.leaderName ? '<div><dt>' + (team.leaderRole === '캠티' ? '캠티' : '조장') + '</dt><dd>' + esc(team.leaderName) + '</dd></div>' : '') +
           (team && team.meetingPoint ? '<div><dt>집결</dt><dd>' + esc(team.meetingPoint) + '</dd></div>' : '') +
           // 출발 안내 — 코스 비고(예: "시청역 3번 출구", D-063). 지하철에서 내리기 전에 보는 곳이 여기다.
           (team && team.courseNote ? '<div><dt>출발</dt><dd>' + esc(team.courseNote) + '</dd></div>' : '') +
@@ -3847,6 +3956,7 @@ window.APP_CONFIG = {
     var byCode = {};
     (state.boot.checkpoints || []).forEach(function (c) { byCode[c.code] = c; });
     var canEdit = canRecord() && state.boot.config.PROGRESS_OPEN;
+    var scoreHere = canEdit && camtiScores();   // 캠티 점수 칸 (D-090)
     var next = nextCheckpoint(state.progress);
     var done = state.progress.filter(function (p) { return p.status === '완료'; }).length;
 
@@ -3863,7 +3973,7 @@ window.APP_CONFIG = {
         (p.status === '완료'
           ? '<p class="cp__sum">' + times + '</p>'
           : (cp.summary ? '<p class="cp__sum">' + esc(cp.summary) + '</p>' : '')) +
-        savedLine(p) + '</div>' +
+        savedLine(p) + scoreLine(p) + '</div>' +
         '<span class="chip chip--' + statusClass(p.status) + '">' + esc(p.status) +
         (p.pending ? ' · 저장 중' : '') + '</span>';
 
@@ -3878,7 +3988,8 @@ window.APP_CONFIG = {
             : '') +
           (cp.openHours ? '<span class="cp__hours">' + esc(cp.openHours) + '</span>' : '') +
         '</div>' +
-        (canEdit ? courseActions(p) : '');
+        (canEdit ? courseActions(p) : '') +
+        (scoreHere && (p.status !== '대기' || UI.hasScore(p.score)) ? courseScoreForm(p) : '');
 
       // 화면은 이미 바뀌었지만 아직 서버에 안 갔다 — 그 사실을 숨기지 않는다.
       var attrs = ' id="cp-' + esc(p.checkpoint) + '" data-code="' + esc(p.checkpoint) + '"' +
@@ -3925,7 +4036,8 @@ window.APP_CONFIG = {
         (canRecord()
           ? (state.boot.config.PROGRESS_OPEN
               ? ' 도착하면 "도착했어요", 끝나면 "완료했어요" 를 눌러 주세요. 완료는 도착 ' + MIN_STAY_MIN + '분 뒤부터 눌립니다.' +
-                (state.boot.config.MEMBER_PROGRESS === true ? ' 조원 누구나 누를 수 있고, 한 사람이 누르면 조 전체에 반영됩니다.' : '')
+                (state.boot.config.MEMBER_PROGRESS === true ? ' 조원 누구나 누를 수 있고, 한 사람이 누르면 조 전체에 반영됩니다.' : '') +
+                (scoreHere ? ' 점수(0~100)는 도착한 지점 카드에서 넣습니다.' : '')
               : ' 진행 기록은 마감되었습니다.')
           : ' 상태는 조장이 기록합니다.') + '</p></section>' +
       summary +
@@ -4080,7 +4192,95 @@ window.APP_CONFIG = {
       .catch(function () { /* 다음에 다시 보일 때 또 읽는다 */ });
   }
 
+  // ---------------------------------------------------------------- 지점 점수 (D-090)
+  //
+  // 기획이 정해지기 전이라 서버 스위치 SCORE_INPUT 로 고른다(기본 OFF — 아무것도 안 그린다).
+  // 캠티(역할 '캠티')는 자기 조 코스에서, 거점 스태프는 내 지점에서 0~100 을 넣는다. 스태프 점수가 우선이다(서버).
+  // 상태 큐(낙관적 UI)와 섞지 않는다 — 점수는 바로 보내고 응답을 기다린다. 자주 누르는 것이 아니다.
+
+  /** 이 사람이 코스에서 점수를 넣는가 — 스위치 CAMTI·BOTH 이고 역할 '캠티' 인 진행자. */
+  function camtiScores() {
+    var m = UI.scoreMode(state.boot.config);
+    return (m === 'CAMTI' || m === 'BOTH') && !!state.me.isLeader &&
+      !!state.me.participant && state.me.participant.role === '캠티';
+  }
+
+  /** 코스 카드의 "⭐ 점수 85점" — 스위치가 켜졌을 때만. */
+  function scoreLine(p) {
+    return UI.scoreOn(state.boot.config) && UI.hasScore(p.score)
+      ? '<p class="cp__score">⭐ 점수 ' + esc(p.score) + '점</p>' : '';
+  }
+
+  /** 캠티 점수 칸. 스태프가 넣은 점수는 서버가 바꾸지 않으므로 잠근다(BOTH). */
+  function courseScoreForm(p) {
+    var staff = p.scoreSource === '스태프' && UI.hasScore(p.score);
+    return UI.scoreFormHtml(p.score, ' data-score-cp="' + esc(p.checkpoint) + '"', staff, staff ? '스태프가 넣은 점수' : '');
+  }
+
+  /** 점수 줄의 저장·지우기 → { form, score } (점수가 틀리면 알리고 null). */
+  function readScore(btn, holderAttr) {
+    var form = btn.closest('[' + holderAttr + ']');
+    if (!form) return null;
+    var clear = btn.hasAttribute('data-score-clear');
+    var score = clear ? '' : UI.parseScore(form.querySelector('input').value);
+    if (score === null) { toast('점수는 0~100 사이의 정수로 넣어 주세요.', 'error'); return null; }
+    if (score === '' && !clear) { toast('점수를 넣어 주세요. 지우려면 "지우기".', 'error'); return null; }
+    return { form: form, score: score };
+  }
+
+  function lockScoreForm(form, btn, on) {
+    UI.$$('button, input', form).forEach(function (el) { el.disabled = on; });
+    UI.setBusy(btn, on, '저장 중…');
+  }
+
+  /** 캠티 — 지점 점수만 보낸다(상태 없음). 응답의 점수·출처만 옮긴다 — 보내는 중인 도착·완료를 덮지 않게. */
+  function saveCourseScore(btn) {
+    var r = readScore(btn, 'data-score-cp');
+    if (!r) return;
+    var code = r.form.getAttribute('data-score-cp');
+    lockScoreForm(r.form, btn, true);
+    API.progressSetBatch([{ checkpoint: code, score: r.score }])
+      .then(function (list) {
+        var byCp = {};
+        list.forEach(function (x) { byCp[x.checkpoint] = x; });
+        state.progress = state.progress.map(function (p) {
+          var x = byCp[p.checkpoint];
+          return x ? Object.assign({}, p, { score: x.score, scoreSource: x.scoreSource }) : p;
+        });
+        if (!sending && !Object.keys(sendQueue).length) lastServerList = list;
+        paintCourse();
+        var cp = (state.boot.checkpoints || []).filter(function (c) { return c.code === code; })[0];
+        var name = cp ? cp.name : code;
+        var got = byCp[code] || {};
+        if (r.score !== '' && got.score !== r.score && got.scoreSource === '스태프') {
+          toast('스태프가 넣은 점수(' + got.score + '점)라 바꾸지 않았습니다.', 'error');
+        } else {
+          toast(name + (r.score === '' ? ' 점수를 지웠습니다.' : ' 점수 ' + r.score + '점 저장'));
+        }
+      })
+      .catch(function (err) { lockScoreForm(r.form, btn, false); toast(err.message, 'error'); });
+  }
+
+  /** 거점 스태프 — 그 조의 이 지점 점수. 응답(내 지점 보드)으로 다시 그린다. */
+  function saveStationScore(btn) {
+    var r = readScore(btn, 'data-score-group');
+    if (!r) return;
+    var group = r.form.getAttribute('data-score-group');
+    lockScoreForm(r.form, btn, true);
+    stationBusy = true;
+    API.stationSet([{ group: group, score: r.score }])
+      .then(function (b) {
+        stationBusy = false;
+        state.station = b;
+        paintStation();
+        toast(group + (r.score === '' ? ' 점수를 지웠습니다.' : ' 점수 ' + r.score + '점 저장'));
+      })
+      .catch(function (err) { stationBusy = false; lockScoreForm(r.form, btn, false); toast(err.message, 'error'); });
+  }
+
   function onProgressClick(e) {
+    var sb = e.target.closest('[data-score-save],[data-score-clear]');
+    if (sb) { saveCourseScore(sb); return; }
     // 카드 자체에도 data-status(현재 상태)가 달려 있다 — 버튼만 잡는다.
     var btn = e.target.closest('button[data-status]');
     if (!btn) return;
@@ -4145,7 +4345,9 @@ window.APP_CONFIG = {
     setView(
       '<section class="section-head"><h2>📍 ' + esc(cp.name) + '</h2>' +
         '<p class="hint">' + esc(b.session) + ' · 이 지점에 오는 순서대로입니다. 조가 오면 "도착 확인", ' +
-        '미션이 끝나면 "완료".</p></section>' +
+        '미션이 끝나면 "완료".' +
+        (['STAFF', 'BOTH'].indexOf(UI.scoreMode(state.boot.config)) >= 0 ? ' 점수(0~100)는 도착한 조 아래 칸에 넣고 "저장".' : '') +
+        '</p></section>' +
       UI.missionHtml(cp.mission) +
       '<div class="station-bar">' +
         '<span class="course-summary__count">도착 ' + here + '/' + n + ' · 완료 ' + done + '/' + n + '</span>' +
@@ -4163,6 +4365,8 @@ window.APP_CONFIG = {
   function stationRow(t, canEdit) {
     var next = ST_NEXT[t.status];
     var undo = ST_UNDO[t.status];
+    var sm = UI.scoreMode(state.boot.config);
+    var staffScores = sm === 'STAFF' || sm === 'BOTH';   // 거점 스태프가 점수를 넣는가 (D-090)
     // 직전 지점 문구 (D-087) — 상태마다 뜻이 드러나게, 시각을 붙여 언제 적힌 상태인지 보이게.
     // 예전 "이화여고 박물관 도착" 은 아직 거기 있다는 뜻인지 헷갈렸다.
     var where = t.status !== '대기' ? ''
@@ -4177,8 +4381,9 @@ window.APP_CONFIG = {
       '<header class="st-row__head">' +
         '<span class="cp__no">' + t.visitOrder + '</span>' +
         '<div><strong>' + esc(t.name) + '</strong>' +
-          '<span class="team-card__meta">조장 ' + esc(t.leaderName || '—') + ' · ' + t.memberCount + '명' +
-            (where ? ' · ' + where : '') + (times ? ' · ' + times : '') + '</span></div>' +
+          '<span class="team-card__meta">' + esc(UI.leaderLabel(t)) + ' · ' + t.memberCount + '명' +
+            (where ? ' · ' + where : '') + (times ? ' · ' + times : '') +
+            (UI.scoreOn(state.boot.config) && !staffScores && UI.hasScore(t.score) ? ' · ⭐ ' + esc(t.score) + '점' : '') + '</span></div>' +
         '<span class="chip chip--' + statusClass(t.status) + '">' + esc(t.status) + '</span>' +
       '</header>' +
       (canEdit
@@ -4189,11 +4394,16 @@ window.APP_CONFIG = {
               ' data-ask="' + esc(undo.ask) + '">' + esc(undo.label) + '</button>' : '') +
           '</div>'
         : '') +
+      // 거점 스태프 점수 (D-090) — 스위치가 STAFF·BOTH 일 때, 도착한 조(또는 점수가 이미 있는 조)에
+      (canEdit && staffScores && (t.status !== '대기' || UI.hasScore(t.score))
+        ? UI.scoreFormHtml(t.score, ' data-score-group="' + esc(t.group) + '"') : '') +
     '</article>';
   }
 
   function onStationClick(e) {
     if (state.view !== 'course' || modeOf(state.me) !== 'station' || state.stationAll) return;
+    var sb = e.target.closest('[data-score-save],[data-score-clear]');
+    if (sb) { saveStationScore(sb); return; }
     var btn = e.target.closest('[data-st]');
     if (!btn) return;
     var act = btn.getAttribute('data-st');
@@ -4273,7 +4483,7 @@ window.APP_CONFIG = {
 
   function paintBoard(b) {
     var isStation = modeOf(state.me) === 'station';
-    var grid = UI.teamGrid(b.teams, b.checkpoints, {});
+    var grid = UI.teamGrid(b.teams, b.checkpoints, { showScore: UI.scoreOn(state.boot.config) });
     setView(
       '<section class="section-head"><h2>진행 현황</h2>' +
         '<p class="hint">' + esc(b.session) + ' · 조마다 코스 순서대로입니다. 완주 전인데 ' + UI.STALE_MIN +
@@ -4814,14 +5024,14 @@ window.APP_CONFIG = {
 <script>
 /**
  * ────────────────────────────────────────────────────────────────
- * admin.js · v25 · 2026-11-07
+ * admin.js · v26 · 2026-11-10
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v26   2026-11-10  지점 점수 스위치(운영 설정) · 정정 창 점수 · 카드·표 점수 · 시상 ⭐ 점수 합계 · 진행자 "캠티/조장" (D-090)
  *  v25   2026-11-07  표로 보기: 조 칸 "장1조 장년부 / 조장 · 인원" · 지점 이름 낱말 사이 줄바꿈 · 머리 고정 (D-088)
  *  v25   2026-11-07  캠프 당일이면 그 회차가 기본 · 일지 검수에 회차 필터 · 체크해서 골라 승인 (D-083)
  *  v23.12 2026-10-31  지점별 체류: 1시간 넘는 체류도 통계에서 뺀다 · 저장 확인 알림에서 필터 단정을 뺀다 (D-080·079)
  *  v23.11 2026-10-31  칸 정정: 응답 진행표에 고른 상태가 없으면 "저장했습니다" 대신 빨간 알림 (D-079)
- *  v23.10 2026-10-31  칸 정정: 지금 상태를 미리 고르지 않고, 같은 상태여도 보낸다 · 진행 새로고침·기준 시각 (D-078)
  *
  * 버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
  *       — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -5440,6 +5650,7 @@ window.APP_CONFIG = {
    */
   function progressTable(board, teams) {
     var showSession = state.session === '전체';
+    var showScore = UI.scoreOn(state.boot.config);   // 점수 스위치가 켜졌을 때만 칸에 "85점" (D-090)
     // 🔴 표 머리는 화면 위에 붙어 있다 (D-088) — 조가 많아 내려가도 어느 칸이 어느 지점인지 보인다.
     //    지점 이름은 번호를 윗줄로 떼고, 낱말 중간("박물 / 관")이 아니라 낱말 사이에서 줄을 바꾼다.
     return '<table class="admin-table admin-table--fit board-grid">' +
@@ -5451,7 +5662,7 @@ window.APP_CONFIG = {
       '</tr></thead><tbody>' +
       teams.map(function (t) {
         // 조 칸 (D-088) — 첫 줄 "장1조 장년부", 둘째 줄 "조장 홍길동 · 6명". 전체 회차면 회차를 둘째 줄 앞에.
-        var sub = [showSession ? t.session : '', '조장 ' + (t.leaderName || '—'), t.memberCount + '명']
+        var sub = [showSession ? t.session : '', UI.leaderLabel(t), t.memberCount + '명']
           .filter(function (x) { return x; });
         return '<tr>' +
           '<td><span class="team-line"><strong>' + esc(t.name) + '</strong>' +
@@ -5466,7 +5677,8 @@ window.APP_CONFIG = {
             // 상태와 시각을 한 줄에 — 폭이 모자라면 시각만 다음 줄로 (D-088)
             return '<td>' + (visit >= 0 ? '<small class="cell-no">' + (visit + 1) + '번째</small>' : '') +
               '<span class="cell-st"><span class="chip chip--' + cls + '">' + esc(status) + '</span>' +
-              (time ? '<span class="cell-time">' + esc(time) + '</span>' : '') + '</span></td>';
+              (time ? '<span class="cell-time">' + esc(time) + '</span>' : '') +
+              (showScore && UI.hasScore(cell.score) ? '<span class="cell-score">' + esc(cell.score) + '점</span>' : '') + '</span></td>';
           }).join('') +
         '</tr>';
       }).join('') +
@@ -5692,12 +5904,13 @@ window.APP_CONFIG = {
         var teams = UI.sortTeams(board.teams.filter(function (t) {
           return matchesAudience(t.audience) && matchesSession(t.session);
         }));
-        var grid = UI.teamGrid(teams, board.checkpoints, { showSession: state.session === '전체', editable: true });
+        var scoreOn = UI.scoreOn(state.boot.config);
+        var grid = UI.teamGrid(teams, board.checkpoints, { showSession: state.session === '전체', editable: true, showScore: scoreOn });
 
         setView(
           '<section class="section-head"><h2>' + esc(L('group', '조 배정')) + '별 진행 현황</h2>' +
             '<p class="hint">조마다 배정 코스 순서대로 보입니다. 완주 전인데 ' + STALE_MIN +
-            '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다. 칸을 누르면 상태를 고칠 수 있습니다.</p></section>' +
+            '분 넘게 새 기록이 없으면 ⚠ 가 붙습니다. 칸을 누르면 상태' + (scoreOn ? '·점수' : '') + '를 고칠 수 있습니다.</p></section>' +
           sessionFilterHtml() +
           audienceFilterHtml() +
           '<div class="review-tools">' +
@@ -5736,20 +5949,30 @@ window.APP_CONFIG = {
     if (!team) return;
     var cell = team.cells[code] || {};
     var cur = cell.status || '대기';
+    var scoreOn = UI.scoreOn(state.boot.config);        // 점수 칸은 스위치가 켜졌을 때만 (D-090)
+    var hasScore = UI.hasScore(cell.score);
 
     var wrap = document.createElement('div');
     wrap.className = 'modal';
     wrap.innerHTML =
-      '<form class="modal__panel" id="cellForm" role="dialog" aria-modal="true">' +
+      // novalidate — 점수 칸(0~100)을 브라우저 말풍선이 아니라 앱 알림으로 막는다(스태프·캠티 칸과 같게)
+      '<form class="modal__panel" id="cellForm" role="dialog" aria-modal="true" novalidate>' +
         '<p class="modal__msg"><strong>' + esc(team.name) + '</strong> · ' + esc(cp.name) + '<br>' +
           '<span class="hint">' + esc(session) + ' · 지금 ' + esc(cur) +
+            (scoreOn && hasScore ? ' · ' + esc(cell.score) + '점' + (cell.scoreSource ? '(' + esc(cell.scoreSource) + ')' : '') : '') +
             (progressAtText() ? ' (' + esc(progressAtText()) + ')' : '') + '</span></p>' +
         // 🔴 지금 상태를 **미리 고르지 않는다** (D-078). 미리 골라 두면 '완료' 누름이 안 먹은 채 저장해도
         //    지금 상태가 그대로 가서 무시됐다 — 창만 닫히고 아무 일도 없었다.
         '<div class="seg">' + ['대기', '도착', '완료'].map(function (st) {
           return '<label class="seg__item"><input type="radio" name="status" value="' + st + '"><span>' + st + '</span></label>';
         }).join('') + '</div>' +
-        '<p class="hint">고친 상태는 조장·스태프 화면에도 바로 반영됩니다.</p>' +
+        (scoreOn
+          ? '<label class="field" style="margin-top:14px"><span class="field__label">점수 <em>(0~100, 비우면 지웁니다)</em></span>' +
+              '<input class="input" name="score" type="number" inputmode="numeric" min="0" max="100" step="1" value="' +
+              (hasScore ? esc(cell.score) : '') + '"></label>'
+          : '') +
+        '<p class="hint">고친 ' + (scoreOn ? '상태·점수' : '상태') + '는 조장·스태프 화면에도 바로 반영됩니다.' +
+          (scoreOn ? ' 여기서 넣은 점수는 "관리자" 출처로 남습니다.' : '') + '</p>' +
         '<div class="modal__actions">' +
           '<button type="button" class="btn btn--ghost" data-act="cancel">취소</button>' +
           '<button type="submit" class="btn btn--primary">저장</button>' +
@@ -5765,10 +5988,23 @@ window.APP_CONFIG = {
       ev.preventDefault();
       var f = ev.target;
       var status = (f.querySelector('input[name="status"]:checked') || {}).value;
-      if (!status) { toast('바꿀 상태를 고르세요.', 'error'); return; }
       // 🔴 지금과 같은 상태여도 **보낸다** (D-078). 화면의 "지금" 은 처음 받은 뒤 다시 읽지 않은 값이라
       //    낡았을 수 있다. 서버는 같은 상태면 시각을 그대로 두고, 응답(최신 보드)이 화면을 바로잡는다.
-      var payload = { session: session, group: group, checkpoint: code, status: status };
+      var payload = { session: session, group: group, checkpoint: code };
+      if (status) payload.status = status;
+      // 점수는 **바꾼 경우에만** 보낸다(D-090) — 상태만 고치려다 점수를 덮지 않게(D-039 와 같은 생각)
+      if (scoreOn) {
+        var raw = String(f.score.value).trim();
+        if (raw !== (hasScore ? String(cell.score) : '')) {
+          var sc = UI.parseScore(raw);
+          if (sc === null) { toast('점수는 0~100 사이의 정수로 넣어 주세요.', 'error'); return; }
+          payload.score = sc;
+        }
+      }
+      if (payload.status === undefined && payload.score === undefined) {
+        toast(scoreOn ? '바꿀 상태나 점수를 고르세요.' : '바꿀 상태를 고르세요.', 'error');
+        return;
+      }
       var submit = f.querySelector('button[type="submit"]');
       UI.setBusy(submit, true, '저장 중…');
       API.adminProgressSet(payload)
@@ -5780,11 +6016,18 @@ window.APP_CONFIG = {
           // 🔴 서버가 "됐다" 고 해도 **응답 진행표에서 그 칸을 확인**한다 (D-079). 10/31 저녁 새 행이 시트에 남지 않았는데
           //    "저장했습니다" 가 떠 11번을 다시 눌렀다(원인 미확정).
           var saved = data.teams.filter(function (t) { return t.session === session && t.group === group; })[0];
-          if (!saved || ((saved.cells || {})[code] || {}).status !== status) {
+          var got = saved ? ((saved.cells || {})[code] || {}) : null;
+          var want = payload.score === '' ? null : payload.score;
+          if (!got || (payload.status !== undefined && got.status !== payload.status) ||
+              (payload.score !== undefined && (UI.hasScore(got.score) ? Number(got.score) : null) !== want)) {
             toast('서버는 받았지만 진행표에 들어가지 않았습니다. 다시 저장해 보세요.', 'error');
             return;
           }
-          toast(team.name + ' · ' + cp.name + ' → ' + status + (status === '도착' ? '으로' : '로') + ' 저장했습니다.');
+          var what = payload.score === undefined
+            ? payload.status + (payload.status === '도착' ? '으로' : '로')       // 상태만 — 예전 문구 그대로
+            : (payload.status !== undefined ? payload.status + ' · ' : '') +
+              (payload.score === '' ? '점수 지움' : payload.score + '점') + '으로';
+          toast(team.name + ' · ' + cp.name + ' → ' + what + ' 저장했습니다.');
         })
         .catch(function (err) { UI.setBusy(submit, false); if (authLost(err)) close(); else toast(err.message, 'error'); });
     });
@@ -5816,6 +6059,25 @@ window.APP_CONFIG = {
     });
   }
 
+  /**
+   * ⭐ 점수 합계 (D-090 — D-056 에서 뺀 것을 스위치로 되살림). 지점마다 0~100, 합계 내림차순 · 같으면 채점한 곳이 많은 조.
+   * 한 곳도 채점 안 된 조는 순위에 없다. 출처(스태프·캠티·관리자)도 센다 — 시상 전 확인용.
+   */
+  function scoreRanking(teams) {
+    return withRanks(teams.map(function (t) {
+      var sum = 0, n = 0, src = {};
+      t.route.forEach(function (code) {
+        var c = t.cells[code];
+        if (!c || !UI.hasScore(c.score)) return;
+        sum += Number(c.score); n++;
+        var s = c.scoreSource || '미상';
+        src[s] = (src[s] || 0) + 1;
+      });
+      return { team: t, sum: sum, n: n, total: t.route.length, src: src };
+    }).filter(function (x) { return x.n > 0; })
+      .sort(function (a, b) { return (b.sum - a.sum) || (b.n - a.n); }), 'sum');
+  }
+
   /** 첫 지점 도착 → 마지막 지점 완료. **네 곳 모두 완료한 조만** — 출발 시차와 무관하다. */
   function timeRanking(teams) {
     return withRanks(teams.map(function (t) {
@@ -5842,6 +6104,8 @@ window.APP_CONFIG = {
     var teams = data.board.teams.filter(function (t) { return matchesSession(t.session); });
     var showSession = state.session === '전체';
     var time = timeRanking(teams);
+    var scoreOn = UI.scoreOn(state.boot.config);       // 점수 부문은 스위치가 켜졌을 때만 (D-090)
+    var scores = scoreOn ? scoreRanking(teams) : [];
     // 사진 한 장 = 한 칸 (D-064). ★ 는 사진마다 붙는다 — 한 글에서 제일 나은 한 장을 고른다.
     var photos = [];
     data.journals.forEach(function (j) {
@@ -5866,6 +6130,17 @@ window.APP_CONFIG = {
         (state.present ? '' : '<p class="hint">완주 전 ' + (teams.length - time.length) + '개 조는 순위에 없습니다.</p>')
       : '<p class="empty">네 곳을 모두 마친 조가 아직 없습니다.</p>';
 
+    var scoreHtml = scores.length
+      ? '<ol class="rank">' + scores.filter(function (x) { return x.rank <= top; }).map(function (x) {
+          return '<li class="rank__row"><span class="rank__no">' + x.rank + '</span>' +
+            '<span class="rank__name">' + label(x.team) + '</span>' +
+            '<span class="rank__val">' + x.sum + '점</span>' +
+            (state.present ? '' : '<span class="rank__meta">' + x.n + '/' + x.total + '곳 채점 · ' +
+              Object.keys(x.src).map(function (k) { return esc(k) + ' ' + x.src[k]; }).join(' · ') + '</span>') +
+            '</li>';
+        }).join('') + '</ol>'
+      : '<p class="empty">아직 들어온 점수가 없습니다.</p>';
+
     var shownPhotos = state.present ? starred : photos;
     var photoHtml = shownPhotos.length
       ? '<div class="award-grid">' + shownPhotos.map(function (x) {
@@ -5882,6 +6157,7 @@ window.APP_CONFIG = {
     setView(
       '<section class="section-head"><h2>🏆 시상</h2>' +
         (state.present ? '' : '<p class="hint">분야별 — 소요 시간(첫 도착 → 마지막 완료, 네 곳 모두 마친 조만) · ' +
+          (scoreOn ? '점수 합계(지점마다 100점) · ' : '') +
           '사진(★ 를 눌러 수상작 지정). 발표 때는 "크게 보기".</p>') + '</section>' +
       (state.present ? '' : sessionFilterHtml()) +
       '<div class="review-tools">' +
@@ -5890,6 +6166,7 @@ window.APP_CONFIG = {
         (state.present ? '' : '<button type="button" class="btn btn--ghost btn--sm" data-reload>새로고침</button>') +
       '</div>' +
       '<section class="card award"><h3 class="card__title">⏱ 소요 시간</h3>' + timeHtml + '</section>' +
+      (scoreOn ? '<section class="card award" id="scoreAward"><h3 class="card__title">⭐ 점수 합계</h3>' + scoreHtml + '</section>' : '') +
       '<section class="card award"><h3 class="card__title">📷 사진' +
         (state.present ? '' : ' <span class="hint">★ ' + starred.length + '장</span>') + '</h3>' + photoHtml + '</section>',
       onAwardsClick
@@ -5999,6 +6276,17 @@ window.APP_CONFIG = {
           esc(L('audience', '캠프 대상')) + '이 달라도 같은 날 참여했다면 서로 보입니다.</p>' +
       '</section>' +
 
+      // 지점 점수 (D-090) — 기획이 정해지기 전이라 기본 끔. 켜면 입력·표시·시상 점수 부문이 나타난다.
+      '<section class="card"><h2 class="card__title">지점 점수 (0~100)</h2>' +
+        '<p class="hint">현재: <strong>' + esc(scoreModeLabel(UI.scoreMode(c))) + '</strong></p>' +
+        '<div class="seg" id="scoreSeg">' + SCORE_MODES.map(function (s) {
+          return '<label class="seg__item"><input type="radio" name="scoreMode" value="' + s[0] + '"' +
+            (UI.scoreMode(c) === s[0] ? ' checked' : '') + '><span>' + esc(s[1]) + '</span></label>';
+        }).join('') + '</div>' +
+        '<p class="hint">거점 스태프는 "내 지점", 캠티(명단 역할 \'캠티\')는 자기 조 코스에서 넣습니다. ' +
+          '둘 다면 스태프 점수가 우선입니다. 운영 콘솔은 언제든 칸을 눌러 고칠 수 있습니다.</p>' +
+      '</section>' +
+
       '<section class="card"><h2 class="card__title">기능 열기 / 닫기</h2>' +
         '<ul class="members">' + TOGGLES.map(function (t) {
           return '<li><span>' + esc(t[1]) + '</span>' +
@@ -6016,6 +6304,12 @@ window.APP_CONFIG = {
 
       '<button type="button" class="btn btn--ghost btn--block" id="logoutBtn">로그아웃</button>'
     );
+
+    $('#scoreSeg').addEventListener('change', function (e) {
+      if (e.target.name !== 'scoreMode') return;
+      // 옛 Config 시트엔 키가 없다 — 처음 한 번은 새 행으로 만든다(allowNew)
+      setConfig('SCORE_INPUT', e.target.value, '지점 점수: ' + scoreModeLabel(e.target.value), null, true);
+    });
 
     $('#scopeSeg').addEventListener('change', function (e) {
       if (e.target.name !== 'scope') return;
@@ -6041,18 +6335,24 @@ window.APP_CONFIG = {
     });
   }
 
+  var SCORE_MODES = [['OFF', '끔'], ['STAFF', '거점 스태프'], ['CAMTI', '캠티'], ['BOTH', '둘 다']];
+  function scoreModeLabel(m) {
+    var hit = SCORE_MODES.filter(function (s) { return s[0] === m; })[0];
+    return hit ? hit[1] : '끔';
+  }
+
   function scopeLabel(scope) {
     return scope === 'TEAM' ? '같은 조만' : scope === 'SELF' ? '본인만' : '전체 공개';
   }
 
-  function setConfig(key, value, message, btn) {
+  function setConfig(key, value, message, btn, allowNew) {
     if (btn) UI.setBusy(btn, true, '…');
-    API.call('admin.config.set', { key: key, value: value })
+    API.call('admin.config.set', allowNew ? { key: key, value: value, allowNew: true } : { key: key, value: value })
       .then(function (config) {
         state.boot.config = config;
         try { sessionStorage.removeItem('plc_jd_bootstrap'); } catch (e) { /* 무시 */ }
         // 설정이 바뀌면 다른 화면의 표도 달라질 수 있다(마감 여부·라벨 등).
-        invalidate('review'); invalidate('progress'); invalidate('fee'); invalidate('notice');
+        invalidate('review'); invalidate('progress'); invalidate('fee'); invalidate('notice'); invalidate('awards');
         renderSettings();
         toast(message || '저장했습니다.');
       })

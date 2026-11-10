@@ -1,8 +1,9 @@
 /**
  * ────────────────────────────────────────────────────────────────
- * api.js · v25 · 2026-11-07
+ * api.js · v26 · 2026-11-10
  * ────────────────────────────────────────────────────────────────
  * 변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+ *  v26   2026-11-10  내 지점: 진행자 역할(leaderRole, 캠티·조장)도 — 서버 stationBoard_ 와 같게 (D-090)
  *  v25   2026-11-07  내 지점: 직전 지점 도착·완료 시각도 (서버 stationBoard_ 와 같게, D-087)
  *  v23.4 2026-10-30  운영 콘솔 진행: 뼈대 GAS 10분 + 전 회차 칸 사본 · 토큰 읽기(서명 검증 없이) (D-072)
  *  v23.3 2026-10-29  내 지점·진행: 뼈대는 GAS 10분, 칸은 사본 · 기록 시각은 보낸 시각으로 (D-071)
@@ -649,6 +650,7 @@
           group: t.group,
           name: t.name,
           leaderName: t.leaderName,
+          leaderRole: t.leaderRole || '조장',
           memberCount: t.memberCount,
           visitOrder: i + 1,
           prevName: prevCode ? (nameOf[prevCode] || prevCode) : '',

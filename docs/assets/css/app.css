@@ -1,13 +1,13 @@
 /*
    ────────────────────────────────────────────────────────────────
-    app.css · v25 · 2026-11-07
+    app.css · v26 · 2026-11-10
    ────────────────────────────────────────────────────────────────
     변경 이력 (최근 5건 — 전체는 docs-dev/spec/DECISIONS.md · git log)
+     v26   2026-11-10  지점 점수 칸(0~100)·⭐ 표시 (D-090)
      v25   2026-11-07  표로 보기: 머리 고정 · 조 칸 두 줄 · 상태와 시각 한 줄 (D-088)
      v25   2026-11-07  일지 검수 체크해서 골라 승인 (D-083) · 소식 없는 조 이름 단추·스크롤 (D-084) · 완료 대기 안내 (D-085)
      v23.9 2026-10-31  지점 칸 넷이 한 줄, 안 되면 둘씩 · 이름이 가운데서 안 갈라지게 (D-077)
      v23.8 2026-10-31  지점별 도착·완료 한 줄씩 (D-076)
-     v23.7 2026-10-31  지점별 체류: 최단·최장·평균 한 줄씩 (D-075)
 
     버전: vN = GAS 배포 번호. vN.k = 서버는 vN 그대로 두고 앱·도구만 고친 k번째.
           — 는 버전 기록을 시작하기 전(v12 이전)의 변경.
@@ -703,6 +703,18 @@ details.cp:not([open]) { padding-top: 12px; padding-bottom: 12px; }
 /* 도착 3분 안에는 완료가 잠긴다 — 언제 열리는지 (D-085) */
 .cp__wait { margin: 8px 0 0; font-size: 13px; color: var(--warn); font-weight: 500; }
 
+/* 지점 점수 (D-090) — 스위치가 켜졌을 때만 그린다. 칸은 16px(iOS 확대 방지), 단추는 36px 이상 */
+.cp__score { margin: 3px 0 0; font-size: 13px; font-weight: 700; color: var(--warn); }
+.score-form {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line);
+}
+.score-form__label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink-2); }
+.score-form__input { width: 92px; min-height: 40px; padding: 8px 10px; font-size: 16px; font-variant-numeric: tabular-nums; }
+.score-form__max { font-size: 13px; }
+.score-form .btn--sm { min-height: 36px; }
+.score-form__note { flex-basis: 100%; font-size: 13px; color: var(--ink-2); }
+
 /* ---- 운영콘솔: 조별 진행 카드 ---- */
 .team-alert {
   margin: 0 0 12px; padding: 10px 14px; border-radius: var(--radius-sm);
@@ -776,6 +788,7 @@ details.cp:not([open]) { padding-top: 12px; padding-bottom: 12px; }
 .board-grid .team-tag { font-size: 13px; color: var(--ink-2); }
 .board-grid .cell-st { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin-top: 2px; }
 .board-grid .cell-time { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.board-grid .cell-score { font-size: 13px; font-weight: 700; color: var(--warn); font-variant-numeric: tabular-nums; }
 .board-grid tbody tr:nth-child(even) td { background: #fbf8f4; }
 
 /* 지점별 현황 (D-073) — 회차마다 앞선·뒤처진 조, 지점마다 도착·완료·체류 */

@@ -15,6 +15,7 @@ const { post, run } = G;
 G.addPeople([
   [S1, '가조장', '1조', '조장', '010-1000-1001', '', 'A코스(배재 시작)'],
   [S1, '나조원', '1조', '일반', '010-1000-1002', '', 'A코스(배재 시작)'],
+  [S1, '가캠티', '1조', '캠티', '010-1000-1009', '', 'A코스(배재 시작)'],   // 점수는 캠티가 (D-090)
   [S1, '다조장', '2조', '조장', '010-1000-2001', '', 'B코스(러시아 시작)'],
   [S1, '라조장', '3조', '조장', '010-1000-3001', '', 'C코스(보구여관 시작)'],
   [S2, '마조장', '1조', '조장', '010-1000-4001', '', 'A코스(배재 시작)', '장년부'],
@@ -25,6 +26,7 @@ G.addPeople([
 
 const leader = G.token('가조장', '1001');
 const member = G.token('나조원', '1002');
+const camti = G.token('가캠티', '1009');
 const leader2 = G.token('다조장', '2001');
 const staff = G.token('바스태', '0001');
 const ops = G.token('아교역', '0003');
@@ -36,17 +38,19 @@ const rowOf = (session, group, code) => progressRows().find(r => r['참여 일�
 const lastLog = () => { const t = G.sheet('Log'); const h = t[0]; const r = t[t.length - 1]; return Object.fromEntries(h.map((k, i) => [k, r[i]])); };
 
 // ------------------------------------------------------------------ 조장
-section('조장 — 상태·점수');
+section('조장 — 상태 · 캠티 — 점수 (D-052 → D-090)');
+// 점수는 스위치를 켜야 받는다(기본 OFF). 스태프·캠티 둘 다 — 스태프 우선을 아래에서 본다.
+run("configSet_({isAdmin:true}, {key:'SCORE_INPUT', value:'BOTH', allowNew:true})");
 let r = post({ action: 'progress.set', token: leader, items: [{ checkpoint: 'CP1', status: '도착' }] });
 ok('도착 기록', r.ok && cell(r.data, 'CP1').status === '도착' && !!cell(r.data, 'CP1').arrivedAt, r);
 ok('코스 순서대로 네 지점 (A코스)', r.ok && r.data.map(x => x.checkpoint).join() === 'CP1,CP2,CP3,CP4');
 const firstArrived = cell(r.data, 'CP1').arrivedAt;
 
-r = post({ action: 'progress.set', token: leader, items: [{ checkpoint: 'CP1', status: '도착', score: 7 }] });
-ok('조장 점수 7 · 출처 조장', r.ok && cell(r.data, 'CP1').score === 7 && cell(r.data, 'CP1').scoreSource === '조장', r.data && cell(r.data, 'CP1'));
+r = post({ action: 'progress.set', token: camti, items: [{ checkpoint: 'CP1', status: '도착', score: 70 }] });
+ok('캠티 점수 70 · 출처 캠티', r.ok && cell(r.data, 'CP1').score === 70 && cell(r.data, 'CP1').scoreSource === '캠티', r.data && cell(r.data, 'CP1'));
 
 r = post({ action: 'progress.set', token: leader, items: [{ checkpoint: 'CP1', status: '완료' }] });
-ok('🔴 상태만 보내면 점수는 그대로 (안 보냄 ≠ 비우기, D-039)', r.ok && cell(r.data, 'CP1').score === 7, cell(r.data, 'CP1'));
+ok('🔴 상태만 보내면 점수는 그대로 (안 보냄 ≠ 비우기, D-039)', r.ok && cell(r.data, 'CP1').score === 70, cell(r.data, 'CP1'));
 ok('처음 도착 시각 유지', cell(r.data, 'CP1').arrivedAt === firstArrived);
 ok('완료 시각 기록', !!cell(r.data, 'CP1').completedAt);
 
@@ -61,7 +65,7 @@ r = post({ action: 'progress.set', token: leader, checkpoint: 'CP3', status: '�
 ok('옛 앱의 단건 형식도 받는다', r.ok && cell(r.data, 'CP3').status === '도착');
 r = post({ action: 'progress.set', token: leader, items: [{ checkpoint: 'CP3', status: '대기', undo: true }] });   // 취소 버튼 (D-082)
 ok('대기로 되돌리면 시각을 비운다', r.ok && cell(r.data, 'CP3').status === '대기' && !cell(r.data, 'CP3').arrivedAt);
-r = post({ action: 'progress.set', token: leader, items: [{ checkpoint: 'CP4', status: '도착', score: 150 }] });
+r = post({ action: 'progress.set', token: camti, items: [{ checkpoint: 'CP4', status: '도착', score: 150 }] });
 ok('점수 0~100 밖은 거절', !r.ok && /0~100/.test(r.error.message), r);
 
 section('기록 권한 — 조장·조원 (D-081)');
@@ -83,12 +87,12 @@ ok('🔴 사본 행에는 점수출처가 없다 (스키마 고정)', pushed.eve
   pushed.find(p => p.checkpoint === 'CP1').score === 9, pushed[0]);
 ok('sb_secret_ 키는 Bearer 로 보내지 않는다', !G.FETCH[0].headers.Authorization && G.FETCH[0].headers.apikey === 'sb_secret_TEST_ONLY');
 
-r = post({ action: 'progress.set', token: leader, items: [{ checkpoint: 'CP1', status: '완료', score: 3 }] });
-ok('🔴 조장이 바꾸려 하면 거절이 아니라 점수만 무시', r.ok && cell(r.data, 'CP1').score === 9 && cell(r.data, 'CP1').scoreSource === '스태프', r.data && cell(r.data, 'CP1'));
+r = post({ action: 'progress.set', token: camti, items: [{ checkpoint: 'CP1', status: '완료', score: 30 }] });
+ok('🔴 캠티가 바꾸려 하면 거절이 아니라 점수만 무시', r.ok && cell(r.data, 'CP1').score === 9 && cell(r.data, 'CP1').scoreSource === '스태프', r.data && cell(r.data, 'CP1'));
 ok('로그에 "스태프 점수 유지"', /스태프 점수 유지 CP1/.test(lastLog()['결과']), lastLog());
-r = post({ action: 'progress.set', token: leader, items: [{ checkpoint: 'CP1', status: '도착', score: 1 }, { checkpoint: 'CP4', status: '도착', score: 6 }] });
+r = post({ action: 'progress.set', token: camti, items: [{ checkpoint: 'CP1', status: '도착', score: 10 }, { checkpoint: 'CP4', status: '도착', score: 60 }] });
 // CP1 은 이미 완료 — 취소 표시 없이 '도착' 을 보내면 첫 기록 유지로 그대로 둔다 (D-082)
-ok('🔴 같은 배치의 다른 지점은 들어간다 (CP1 은 완료 그대로 · 점수 9 유지)', r.ok && cell(r.data, 'CP1').status === '완료' && cell(r.data, 'CP4').score === 6 && cell(r.data, 'CP1').score === 9, r.data);
+ok('🔴 같은 배치의 다른 지점은 들어간다 (CP1 은 완료 그대로 · 점수 9 유지)', r.ok && cell(r.data, 'CP1').status === '완료' && cell(r.data, 'CP4').score === 60 && cell(r.data, 'CP1').score === 9, r.data);
 
 section('스태프 — 지점·회차는 서버가 정한다');
 r = post({ action: 'station.board', token: staff });
@@ -333,8 +337,9 @@ section('🔴 새 행이 시트에 안 남으면 — 성공이 아니라 오류 
 section('🔴 점수출처 열이 없으면 (초기 세팅 안 돌림)');
 {
   const H = camp();
-  H.addPeople([[S1, '가조장', '1조', '조장', '010-1000-1001', '', 'A코스(배재 시작)']]);
-  const t = H.token('가조장', '1001');
+  H.addPeople([[S1, '가캠티', '1조', '캠티', '010-1000-1009', '', 'A코스(배재 시작)']]);   // 점수는 캠티가 (D-090)
+  H.run("configSet_({isAdmin:true}, {key:'SCORE_INPUT', value:'CAMTI', allowNew:true})");
+  const t = H.token('가캠티', '1009');
   const sh = H.ss.getSheetByName('Progress').__data();
   const i = sh[0].indexOf('점수출처');
   sh.forEach(row => row.splice(i, 1));
